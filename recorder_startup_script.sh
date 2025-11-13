@@ -18,7 +18,7 @@ sudo service udev start
 sudo rm -r /home/pi/multi_channel_monitoring_data/live_data
 
 tries=0
-max_tries=5
+max_tries=10
 while true; do
 	timeout 2s wget -q --spider http://google.com
 	if [ $? -eq 0 ]; then
@@ -28,7 +28,7 @@ while true; do
 	    printf "Offline\n"
 	fi
 	printf 'Waiting for internet connection before continuing ('$max_tries' tries max)\n'
-	sleep 1
+	sleep 2
 	let tries=tries+1
 	if [[ $tries -eq $max_tries ]] ;then
 		break
@@ -38,7 +38,13 @@ done
 # Change to correct folder
 cd /home/pi/multi-channel-rpi-eco-monitoring
 
+printf 'Turning all 12 LEDs off on the mic array\n'
+chmod +x ./led_off.sh
+chmod +x ./led_on.sh
+sudo bash ./led_off.sh
+
 # Update time from internet
+printf 'Update time from internet\n'
 sudo bash ./bash_update_time.sh
 
 # Start ssh-agent so password not required

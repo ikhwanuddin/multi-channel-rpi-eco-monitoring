@@ -44,13 +44,7 @@ if [ ! -r "$DEVICE" ] || [ ! -w "$DEVICE" ]; then
     exit 1
 fi
 # -----------------------------------------------------------------------------
-# Step 1: Enable sound field map – LED direction indicator only works when map is active
-echo "Enabling sound field map (command: '$SOUND_MAP_CMD')..."
-echo "$SOUND_MAP_CMD" > "$DEVICE"
-sleep 0.1   # Small delay to ensure the command is processed
-
-# Step 2: Turn ON all 12 LEDs
-echo "Turning LEDs ON (command: '$LED_ON_CMD')..."
+echo "Turning LEDs ON..."
 echo "$LED_ON_CMD" > "$DEVICE"
 
 echo "LEDs turned ON successfully!"

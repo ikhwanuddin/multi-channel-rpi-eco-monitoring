@@ -2,7 +2,7 @@
 
 This is the code designed to run a MAARU (Multichannel Autonomous Acoustic Recording Unit). Full details on applications and hardware setup [here](https://beckyheath.github.io/MAARU/).
 
-Code adapted by James Skinner, and Becky Heath from Sarab Sethi's work on Autonomous Ecosystem Monitoring. More information on that project and full details at: https://github.com/sarabsethi/rpi-eco-monitoring.
+Code adapted by Rifqi Ikhwanuddin from Neel Le Penru, James Skinner, Becky Heath, and Sarab Sethi's work on Autonomous Ecosystem Monitoring. More information on that project and full details at: https://github.com/sarabsethi/rpi-eco-monitoring.
 
 Key changes include:
   1. Installation of seeed multi-channel soundcard.
@@ -18,7 +18,7 @@ Key changes include:
 
 NOTE! SD card should have sufficiently fast read/write speed (Class 10, **minimum 150 mb/s**), otherwise you will get overrun errors during recording. This means data won't record properly - you may see dead channels with no data.
 
-This code has been setup to run on a **Raspberry Pi 3B**
+This code has been setup to run on a **Raspberry Pi 3B+** and **Raspberry Pi 4B+**
 
 ## Setup 
 
@@ -40,15 +40,15 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 * Insert SD card into the pi and power on
 * Make sure to use DEFAULT settings (don't change the password - keep as 'raspberry') - just click 'next'
 * Connect to your wifi network
-* **Do not install updates!** Make sure you **skip** this step as updated versions of raspbian are incompatible with the Respeaker sound card
-* Update only the Pi Headers...
-  * Open a new terminal
-  * ``sudo apt-get install raspberrypi-kernel-headers``
-  * ``sudo reboot`` (to ensure headers are properly updated)
-* Then, prevent the kernels from further updates (which may break the Seeed Card firmware)...
-  * Open new terminal
-  * ``sudo apt-mark hold raspberrypi-kernel-headers raspberrypi-kernel``
-  * ``sudo apt-mark showhold``  (to check it worked)
+~~* **Do not install updates!** Make sure you **skip** this step as updated versions of raspbian are incompatible with the Respeaker sound card~~
+~~* Update only the Pi Headers...~~
+  ~~* Open a new terminal~~
+  ~~* ``sudo apt-get install raspberrypi-kernel-headers``~~
+  ~~* ``sudo reboot`` (to ensure headers are properly updated)~~
+~~* Then, prevent the kernels from further updates (which may break the Seeed Card firmware)...~~
+  ~~* Open new terminal~~
+  ~~* ``sudo apt-mark hold raspberrypi-kernel-headers raspberrypi-kernel``~~
+  ~~* ``sudo apt-mark showhold``  (to check it worked)~~
 * Check that Python3 is already installed
   * ``python3`` in terminal --> Should show Python 3.7.3
   * Otherwise, install Python3 - ``sudo apt-get install python3``
@@ -56,19 +56,19 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
   * ``sudo apt-get install exfat-fuse``
   * ``sudo apt-get install exfat-utils``
  
-#### Install [Seeed Voicard](https://wiki.seeedstudio.com/ReSpeaker_6-Mic_Circular_Array_kit_for_Raspberry_Pi/)
+~~#### Install [Seeed Voicard](https://wiki.seeedstudio.com/ReSpeaker_6-Mic_Circular_Array_kit_for_Raspberry_Pi/)~~
 
-* Open Terminal
-* Install git: ``sudo apt-get install git``
-* Clone Seeed voice card repository into home directory of the Raspberry Pi ``git clone https://github.com/respeaker/seeed-voicecard.git``
-* Switch to Seeed repository ``cd seeed-voicecard``
-* Install the sound card ``sudo ./install.sh``
-* Reboot the Pi ``sudo reboot``
+~~* Open Terminal~~
+~~* Install git: ``sudo apt-get install git``~~
+~~* Clone Seeed voice card repository into home directory of the Raspberry Pi ``git clone https://github.com/respeaker/seeed-voicecard.git``~~
+~~* Switch to Seeed repository ``cd seeed-voicecard``~~
+~~* Install the sound card ``sudo ./install.sh``~~
+~~* Reboot the Pi ``sudo reboot``~~
 
 ##### Set up Multi-Channel Eco Monitoring
 
 * Log in and open a terminal
-* Clone this repository into the home directory of the Raspberry pi: ``git clone https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring.git`` (see below regarding branches)
+* Clone this repository into the home directory of the Raspberry pi: ``git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git`` (see below regarding branches)
 * Install the required packages: ``sudo apt-get -y install fswebcam lftp ffmpeg usb-modeswitch ntpdate zip``
 * If you want to use a different config file (e.g., want to upload to FTP server):
   * First, delete config.json from multi-channel-rpi-eco-monitoring folder
@@ -120,7 +120,7 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 ## Authors
 This is a cross disciplinary research project based at Imperial College London, across the Faculties of Engineering, Natural Sciences and Life Sciences.
 
-Work on this repo has been contributed by James Skinner, Becky Heath, Sarab Sethi, Rob Ewers, Nick Jones, David Orme, Lorenzo Picinali
+Work on this repo has been contributed by Rifqi Ikhwanuddin, Neel P L Penru, James Skinner, Becky Heath, Sarab Sethi, Rob Ewers, Nick Jones, David Orme, Lorenzo Picinali.
 
 
 ## Citations

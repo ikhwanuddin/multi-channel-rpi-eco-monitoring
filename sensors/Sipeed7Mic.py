@@ -87,7 +87,7 @@ class Sipeed7Mic(SensorBase):
         ofile = os.path.join(self.pre_upload_dir, self.current_file)
         logging.info('\n{} - Started recording at {} \n'.format(self.current_file, start_time))
         try:
-            cmd = 'sudo arecord -D plughw:1,0 -f S32_LE -r 16000 -c 8 --duration {} {}'
+            cmd = 'sudo arecord -D plughw:1,0 -f S16_LE -r 16000 -c 8 --duration {} {}'
             
             # To remedy unexpected recording faults
 

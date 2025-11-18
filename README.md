@@ -40,6 +40,7 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 * Insert SD card into the pi and power on
 * Make sure to use DEFAULT settings (don't change the password - keep as 'raspberry') - just click 'next'
 * Connect to your wifi network
+  
 ~~* **Do not install updates!** Make sure you **skip** this step as updated versions of raspbian are incompatible with the Respeaker sound card~~
 ~~* Update only the Pi Headers...~~
   ~~* Open a new terminal~~

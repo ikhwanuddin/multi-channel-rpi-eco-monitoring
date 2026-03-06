@@ -28,6 +28,9 @@ class Sipeed7Mic(SensorBase):
         self.compress_data = sensors.set_option('compress_data', config, opts)
         self.capture_delay = sensors.set_option('capture_delay', config, opts)
 
+        # Auto-detect USB audio card
+        self.card = self.find_usb_audio_card()
+
         # set internal variables and required class variables
         self.working_file = 'currentlyRecording.wav'
         self.current_file = None
@@ -54,6 +57,26 @@ class Sipeed7Mic(SensorBase):
                  'default': 0,
                  'prompt': 'How long should the system wait between audio samples?'}
                 ]
+
+    @staticmethod
+    def find_usb_audio_card():
+        """
+        Method to automatically detect the USB audio card number for recording.
+        Returns the card number as a string, defaulting to '1' if not found.
+        """
+        try:
+            result = subprocess.run(['arecord', '-l'], capture_output=True, text=True, timeout=10)
+            lines = result.stdout.split('\n')
+            for line in lines:
+                if 'card' in line and ('USB' in line or 'usb' in line.lower()):
+                    # Parse card number, e.g., "card 1: Device [USB Audio Device]"
+                    parts = line.split()
+                    if len(parts) > 1:
+                        card_part = parts[1].rstrip(':')
+                        return card_part
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+            logging.warning("Failed to detect USB audio card, using default '1'")
+        return '1'  # Default fallback
 
     def setup(self):
 
@@ -87,14 +110,14 @@ class Sipeed7Mic(SensorBase):
         ofile = os.path.join(self.pre_upload_dir, self.current_file)
         logging.info('\n{} - Started recording at {} \n'.format(self.current_file, start_time))
         try:
-            cmd = 'sudo arecord -D plughw:1,0 -f S16_LE -r 16000 -c 8 --duration {} {}'
+            cmd = 'sudo arecord -D plughw:{},0 -f S16_LE -r 16000 -c 8 --duration {} {}'
             
             # To remedy unexpected recording faults
 
             kill_time = self.record_length * 1.1
             # subprocess.call() will return a number (>0 means there was an error)
             try: 
-                subprocess.call(cmd.format(self.record_length, wfile), shell=True, timeout=kill_time)
+                subprocess.call(cmd.format(self.card, self.record_length, wfile), shell=True, timeout=kill_time)
             except: 
                 logging.info('\n{} - Timed Out \n'.format(self.current_file))
                 subprocess.run("sudo pkill -9 arecord", shell = True)

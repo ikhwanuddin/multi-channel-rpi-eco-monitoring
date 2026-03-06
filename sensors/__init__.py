@@ -5,6 +5,7 @@ from sensors.UnixDevice import UnixDevice
 from sensors.Respeaker6Mic import Respeaker6Mic
 from sensors.Respeaker4Mic import Respeaker4Mic
 from sensors.Respeaker_Custom import Respeaker_Custom
+from sensors.Sipeed7Mic import Sipeed7Mic
 
 
 def set_option(var, config, opts):

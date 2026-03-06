@@ -232,12 +232,12 @@ def ftp_server_sync(sync_interval, ftp_config, upload_dir, die):
         start = time.time()
 
         # Update time from internet
-        logging.info('Updating time from internet before ftp sync')
+        logging.info('Updating time from internet before upload sync')
         subprocess.call('bash ./bash_update_time.sh', shell=True)
 
-        logging.info('Started FTP sync at {}'.format(datetime.now()))
-        subprocess.call('bash ./ftp_upload.sh {} {}'.format(ftp_string, upload_dir), shell=True)
-        logging.info('Finished FTP sync at {}'.format(datetime.now()))
+        logging.info('Started upload sync at {}'.format(datetime.now()))
+        subprocess.call('bash ./rclone_upload.sh {} {}'.format(ftp_string, upload_dir), shell=True)
+        logging.info('Finished upload sync at {}'.format(datetime.now()))
 
         # wait until the next sync interval
         wait = sync_interval - (time.time() - start)

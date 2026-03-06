@@ -391,6 +391,13 @@ def record(config_file, logfile_name, log_dir='logs'):
         logging.info('Failed to load config')
         sys.exit()
 
+    # Setup GPIO for sensors that have a button (e.g., ReSpeaker arrays)
+    if sensor_config['sensor_type'] in ['Respeaker6Mic', 'Respeaker4Mic', 'Respeaker_Custom']:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(array_mic_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.add_event_detect(array_mic_button, GPIO.FALLING,
+                              callback=interrupt_button_callback, bouncetime=100)
+
     # Schedule restart at reboot time, running in a separate process
     #logging.info('Scheduling restart for {}'.format(reboot_time))
     #cmd = '(sudo shutdown -c && shutdown -r {}) &'.format(reboot_time)
@@ -526,13 +533,6 @@ def interrupt_button_callback(channel):
 
 
 if __name__ == "__main__":
-    
-    # Setting up the button (on the top of the 6 mic array)
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(array_mic_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    
-    GPIO.add_event_detect(array_mic_button, GPIO.FALLING,
-                          callback=interrupt_button_callback, bouncetime=100)
     
     # run record with three arguements - the path to the config file, the log directory and the log
     record(sys.argv[1], sys.argv[2], sys.argv[3])

@@ -25,7 +25,7 @@ import subprocess
 import logging
 import sys
 import os
-from threading import Timer
+from threading import Timer, Thread
 
 # Configure logging
 logging.basicConfig(
@@ -61,6 +61,8 @@ class ClapDetector:
         self.clap_times = []
         self.confirmation_timer = None
         self.shutting_down = False
+        self.monitoring_active = False
+        self.monitoring_thread = None
 
     def find_audio_device(self):
         """Find the Sipeed 7-Mic Array device index"""
@@ -174,6 +176,31 @@ class ClapDetector:
         except Exception as e:
             logging.error(f"Error during shutdown: {e}")
 
+    def start_monitoring(self):
+        """Start clap detection monitoring"""
+        if not self.monitoring_active:
+            self.monitoring_active = True
+            self.monitoring_thread = Thread(target=self.run, daemon=True)
+            self.monitoring_thread.start()
+            logging.info("Clap detection monitoring started")
+
+    def stop_monitoring(self):
+        """Stop clap detection monitoring"""
+        if self.monitoring_active:
+            self.monitoring_active = False
+            # Wait for thread to finish gracefully
+            if self.monitoring_thread and self.monitoring_thread.is_alive():
+                self.monitoring_thread.join(timeout=2.0)
+            logging.info("Clap detection monitoring stopped")
+
+    def cancel_shutdown(self):
+        """Cancel pending shutdown"""
+        if self.confirmation_timer and self.confirmation_timer.is_alive():
+            self.confirmation_timer.cancel()
+            self.confirmation_timer = None
+            logging.info("Shutdown cancelled by additional clap")
+            self.shutting_down = False
+
     def detect_clap_pattern(self):
         """Check if clap times match the 3-clap pattern"""
         if len(self.clap_times) < 3:
@@ -201,21 +228,27 @@ class ClapDetector:
             self.audio = pyaudio.PyAudio()
             device_index = self.find_audio_device()
 
-            self.stream = self.audio.open(
-                format=FORMAT,
-                channels=CHANNELS,
-                rate=RATE,
-                input=True,
-                input_device_index=device_index,
-                frames_per_buffer=CHUNK
-            )
-
-            logging.info("Clap detection started. Listening for 3 claps pattern...")
+            # Try to open audio stream
+            try:
+                self.stream = self.audio.open(
+                    format=FORMAT,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    input_device_index=device_index,
+                    frames_per_buffer=CHUNK
+                )
+                logging.info("Clap detection started. Listening for 3 claps pattern...")
+            except Exception as e:
+                logging.error(f"Failed to open audio stream: {e}")
+                logging.error("Audio device may be in use by recording process. Retrying in 30 seconds...")
+                time.sleep(30)
+                return  # Exit and let startup script restart
 
             last_clap_time = 0
             debounce_time = 0.2  # Minimum time between clap detections
 
-            while not self.shutting_down:
+            while not self.shutting_down and self.monitoring_active:
                 try:
                     data = self.stream.read(CHUNK, exception_on_overflow=False)
                     rms = self.calculate_rms(data)
@@ -246,7 +279,12 @@ class ClapDetector:
 
                 except IOError as e:
                     logging.error(f"Audio stream error: {e}")
-                    time.sleep(1)  # Wait before retrying
+                    # If device busy, wait and retry
+                    if "Device or resource busy" in str(e):
+                        logging.info("Audio device busy, waiting 10 seconds...")
+                        time.sleep(10)
+                    else:
+                        time.sleep(1)  # Wait before retrying
                 except Exception as e:
                     logging.error(f"Unexpected error in detection loop: {e}")
                     time.sleep(1)
@@ -261,7 +299,10 @@ class ClapDetector:
                 self.stream.close()
             if self.audio:
                 self.audio.terminate()
-            logging.info("Clap detection terminated")
+            if self.monitoring_active:
+                logging.info("Clap detection terminated")
+            else:
+                logging.info("Clap detection paused (monitoring stopped)")
 
 if __name__ == "__main__":
     detector = ClapDetector()

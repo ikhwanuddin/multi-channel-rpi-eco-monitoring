@@ -12,6 +12,14 @@ import sensors
 import RPi.GPIO as GPIO
 import psutil
 
+# Import clap detector for Sipeed7Mic
+try:
+    from clap_shutdown import ClapDetector
+    clap_detector = ClapDetector()
+except ImportError:
+    logging.warning("clap_shutdown module not found, clap detection disabled")
+    clap_detector = None
+
 #Setup button input (on 6 mic array)
 array_mic_button = 26
 
@@ -130,9 +138,17 @@ def record_sensor(sensor, working_dir, upload_dir, sleep=True):
         logging.critical('continuing anyway...')
         #sys.exit()
 
+    # Stop clap monitoring before recording (to avoid device conflict)
+    if clap_detector and sensor_config['sensor_type'] == 'Sipeed7Mic':
+        clap_detector.stop_monitoring()
+
     # Capture data from the sensor
     logging.info('Capturing data from sensor')
     sensor.capture_data(working_dir=session_working_dir, upload_dir=session_upload_dir, pre_upload_dir=session_pre_upload_dir)
+
+    # Start clap monitoring during sleep period
+    if sleep and clap_detector and sensor_config['sensor_type'] == 'Sipeed7Mic':
+        clap_detector.start_monitoring()
 
     # Let the sensor sleep
     if sleep:
@@ -192,6 +208,9 @@ def exit_handler(signal, frame):
     """
 
     logging.info('SIGINT detected, shutting down')
+    # Stop clap monitoring if active
+    if clap_detector:
+        clap_detector.stop_monitoring()
     # set the event to signal threads
     raise StopMonitoring
 

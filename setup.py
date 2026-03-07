@@ -15,7 +15,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     license="MIT",
-    url="https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring",
+    url="https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

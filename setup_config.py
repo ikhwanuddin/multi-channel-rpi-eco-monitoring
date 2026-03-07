@@ -108,7 +108,7 @@ def main():
     sensor_classes = [sc for sc in sensor_classes if sc[0] != 'SensorBase']
     sensor_numbers = [idx + 1 for idx in range(len(sensor_classes))]
     sensor_options = {nm: tp for nm, tp in zip(sensor_numbers, sensor_classes)}
-    sensor_menu = [" " + str(ky) + ": " + tp[0] for ky, tp in sensor_options.items()]
+    sensor_menu = [str(ky) + ": " + tp[0] for ky, tp in sensor_options.items()]
 
     sensor_prompt = ('Hello! Follow these instructions to perform a one-off set up of your '
                      'ecosystem monitoring unit\nFirst lets do the sensor setup. Select one '
@@ -135,7 +135,7 @@ def main():
     # test for offline mode
     offline_options = [{'name': 'offline_mode',
                         'type': int,
-                        'prompt': 'Should the recorder run in offline mode (1) or use rclone to upload data to cloud storage?',
+                        'prompt': 'Should the recorder run in offline mode (1) or use rclone to upload data to cloud storage?\n',
                         'default': 0,
                         'valid': [0, 1]}]
 
@@ -184,7 +184,7 @@ def main():
                    'prompt': 'Enter the time for the daily reboot',
                    'default': '02:00'}]
 
-    print("\nNow let's do the system details...")
+    print("Now let's do the system details...")
     sys_config = {}
 
     # populate the sensor config dictionary
@@ -198,7 +198,7 @@ def main():
     with open(config_file, 'w') as fp:
         json.dump(config, fp, indent=4)
 
-    print('\nAll done!')
+    print('All done!')
 
 
 if __name__ == "__main__":

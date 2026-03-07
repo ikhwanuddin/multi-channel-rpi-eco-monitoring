@@ -53,15 +53,53 @@ eval $(ssh-agent -s)
 # Add in current date and time to log files
 currentDate=$(date +"%Y-%m-%d_%H.%M")
 
-# Check the config exists
-config_file="./config.json"
-if [ ! -f $config_file ]; then
-    echo "Config file not found! Run \'python setup.py\' to generate one";
-    exit 1
+# Check if required Python modules are available
+echo "Checking Python dependencies..."
+python3 -c "import pyaudio, numpy, RPi.GPIO, psutil" 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "WARNING: Some Python dependencies may be missing."
+    echo "Run: pip3 install pyaudio numpy RPi.GPIO psutil"
+    echo "Continuing anyway..."
 fi
 
+# Ensure logs directory exists
+if [ ! -d "$logdir" ]; then
+    echo "Creating logs directory..."
+    mkdir -p "$logdir"
+fi
+
+# Check if required files exist
+echo "Checking required files..."
+required_files="python_record.py discover_serial.py clap_shutdown.py"
+for file in $required_files; do
+    if [ ! -f "$file" ]; then
+        echo "ERROR: Required file '$file' not found!"
+        exit 1
+    fi
+done
+echo "All required files found."
+config_file="./config.json"
+if [ ! -f $config_file ]; then
+        echo "Config file '$config_file' not found!"
+        echo "Would you like to run setup_config.py to create it? (1 for yes, 0 for no) [1]: "
+        read -r response
+        response=${response:-1}
+        if [ "$response" = "1" ]; then
+            python3 setup_config.py
+        else
+            echo "Exiting without creating config."
+            exit 1
+        fi
+
 # export the raspberry pi serial number to an environment variable
-export PI_ID=$(python discover_serial.py)
+echo "Getting Raspberry Pi serial number..."
+if ! PI_ID=$(python3 discover_serial.py 2>&1); then
+    echo "ERROR: Failed to get Raspberry Pi serial number!"
+    echo "Command output: $PI_ID"
+    echo "Please check if discover_serial.py exists and is executable."
+    exit 1
+fi
+export PI_ID
 
 # the file in which to store to store the logging from this run
 logdir='logs'
@@ -69,4 +107,17 @@ logfile_name="multi_rpi_eco_"$PI_ID"_"$currentDate".log"
 
 # Start recording script
 printf 'End of startup script\n'
-sudo -E python3 -u python_record.py $config_file $logfile_name $logdir
+echo "Starting recording with command:"
+echo "sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
+echo ""
+
+if ! sudo -E python3 -u python_record.py $config_file $logfile_name $logdir; then
+    echo ""
+    echo "ERROR: Recording script failed to start!"
+    echo "Please check the following:"
+    echo "1. All dependencies are installed: pip3 install -r requirements.txt"
+    echo "2. Audio devices are properly connected"
+    echo "3. Config file is valid: python3 -c \"import json; json.load(open('$config_file'))\""
+    echo "4. Check system logs for more details"
+    exit 1
+fi

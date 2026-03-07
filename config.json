@@ -4,11 +4,9 @@
         "working_dir": "/home/pi/tmp_dir", 
         "reboot_time": "02:00"
     }, 
-    "ftp": {
-        "uname": "",
-        "host": "",
-        "pword": "",
-        "use_ftps": 0
+    "rclone": {
+        "remote_name": "mybox",
+        "config_path": ""
     }, 
     "sensor": {
         "capture_delay": 60, 

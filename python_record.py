@@ -30,7 +30,7 @@ Sensor setup and recording
 * record_sensor(sensor, wdir, udir, sleep=True) # initiates a single round of sampling
 
 FTP server sync
-* upload_server_sync(ftp_config, udir) # rolling synchronisation, intended to run in thread
+* upload_server_sync(rclone_config, udir) # rolling synchronisation, intended to run in thread
 
 Utility
 * clean_dirs(wdir, udir) # cleans out trash in wdir and udir
@@ -206,25 +206,17 @@ class StopMonitoring(Exception):
     pass
 
 
-def upload_server_sync(sync_interval, ftp_config, upload_dir, die):
+def upload_server_sync(sync_interval, rclone_config, upload_dir, die):
 
     """
     Function to synchronize the upload data folder with the remote storage (rclone)
 
     Parameters:
         sync_interval: The time interval between synchronisation connections
-        ftp_config: A dictionary holding the FTP configuration (now used for rclone args)
+        rclone_config: A dictionary holding the rclone configuration
         upload_dir: The upload directory to synchronise (top level, not the device specific subdirectory)
         die: A threading event to terminate the upload server sync
     """
-
-    # Build ftp string from configured details
-    if ftp_config['use_ftps']:
-        ftp_config['protocol'] = 'ftps'
-    else:
-        ftp_config['protocol'] = 'ftp'
-
-    ftp_string = '{protocol}://{uname}:{pword}@{host}'.format(**ftp_config)
 
     # keep running while the die is not set
     while not die.is_set():
@@ -236,7 +228,7 @@ def upload_server_sync(sync_interval, ftp_config, upload_dir, die):
         subprocess.call('bash ./bash_update_time.sh', shell=True)
 
         logging.info('Started upload sync at {}'.format(datetime.now()))
-        subprocess.call('bash ./rclone_upload.sh {} {}'.format(ftp_string, upload_dir), shell=True)
+        subprocess.call('bash ./rclone_upload.sh {} {}'.format('', upload_dir), shell=True)  # ftp_string now empty
         logging.info('Finished upload sync at {}'.format(datetime.now()))
 
         # wait until the next sync interval
@@ -380,7 +372,7 @@ def record(config_file, logfile_name, log_dir='logs'):
         sys.exit()
 
     try:
-        ftp_config = config['ftp']
+        rclone_config = config['rclone']
         sensor_config = config['sensor']
         offline_mode = config['offline_mode']
         working_dir = config['sys']['working_dir']
@@ -479,7 +471,7 @@ def record(config_file, logfile_name, log_dir='logs'):
     
     if not offline_mode:
         sync_thread = threading.Thread(target=upload_server_sync, args=(sensor.server_sync_interval,
-                                                                     ftp_config, upload_dir, die))
+                                                                     rclone_config, upload_dir, die))
     
     record_thread = threading.Thread(target=continuous_recording, args=(sensor, working_dir,
                                                                     upload_dir_pi, die))

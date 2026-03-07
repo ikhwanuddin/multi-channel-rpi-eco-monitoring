@@ -95,7 +95,10 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
     ```
   * _3 Boot Options_ -> _B1 Desktop / CLI_ -> _B2 Console Autologin_
   * Press ``Esc`` when this is complete -> Say No to reboot
-  * Shutdown with ``sudo shutdown -h now``
+  * Shutdown with 
+    ```
+    sudo shutdown -h now
+    ```
 
 ### RPI Configuration
 
@@ -110,13 +113,21 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
     ```
     cd ~/multi-channel-rpi-eco-monitoring
     ```
-  * Run ``python setup_config.py`` and follow the prompts. This will create a ``config.json``   file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). The config file can be created manually, or imported from external storage without running ``setup_config.py`` if preferred
+  * Run 
+    ```
+    python setup_config.py
+    ``` 
+    and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). The config file can be created manually, or imported from external storage without running ``setup_config.py`` if preferred
   * Make sure the timezone is set correctly. Check by typing 
     ```
     sudo dpkg-reconfigure tzdata
     ``` 
     and following the prompts
-  * Type ``sudo halt`` to shut down the Pi
+  * Type 
+    ```
+    sudo halt
+    ``` 
+    to shut down the Pi
   * After reboot, the Pi should be good to go!
 
 ### Make a new disk image

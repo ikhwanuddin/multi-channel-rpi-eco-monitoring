@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multi-channel-rpi-eco-monitoring"
+version = "1.1.0"
+authors = [
+    {name = "Rifqi Ikhwanuddin", email = "rifqi@ikhwanuddin.com"}
+]
+description = "Multi-channel Raspberry Pi ecosystem monitoring system"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.6"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+]
+dependencies = [
+    "psutil>=5.8.0",
+    "pyaudio>=0.2.11",
+    "numpy>=1.21.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring"
+
+[tool.setuptools.packages.find]
+include = ["sensors*"]

@@ -45,7 +45,7 @@ sudo bash ./led_off.sh
 
 # Update time from internet
 printf 'Update time from internet\n'
-sudo bash ./bash_update_time.sh
+sudo bash ./update_time.sh
 
 # Start ssh-agent so password not required
 eval $(ssh-agent -s)

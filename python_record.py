@@ -30,7 +30,7 @@ Sensor setup and recording
 * record_sensor(sensor, wdir, udir, sleep=True) # initiates a single round of sampling
 
 FTP server sync
-* ftp_server_sync(ftp_config, udir) # rolling synchronisation, intended to run in thread
+* upload_server_sync(ftp_config, udir) # rolling synchronisation, intended to run in thread
 
 Utility
 * clean_dirs(wdir, udir) # cleans out trash in wdir and udir
@@ -206,16 +206,16 @@ class StopMonitoring(Exception):
     pass
 
 
-def ftp_server_sync(sync_interval, ftp_config, upload_dir, die):
+def upload_server_sync(sync_interval, ftp_config, upload_dir, die):
 
     """
-    Function to synchronize the upload data folder with the FTP server
+    Function to synchronize the upload data folder with the remote storage (rclone)
 
     Parameters:
         sync_interval: The time interval between synchronisation connections
-        ftp_config: A dictionary holding the FTP configuration
+        ftp_config: A dictionary holding the FTP configuration (now used for rclone args)
         upload_dir: The upload directory to synchronise (top level, not the device specific subdirectory)
-        die: A threading event to terminate the ftp server sync
+        die: A threading event to terminate the upload server sync
     """
 
     # Build ftp string from configured details
@@ -299,7 +299,7 @@ def continuous_recording(sensor, working_dir, upload_dir, die):
         sensor: A instance of one of the sensor classes
         working_dir: Path to the working directory for recording
         upload_dir: Path to the final directory used to upload processed files
-        die: A threading event to terminate the ftp server sync
+        die: A threading event to terminate the upload server sync
     """
 
     # Start recording
@@ -317,7 +317,7 @@ def continuous_postprocess(sensor, sync_interval, upload_dir, die):
         sensor: A instance of one of the sensor classes
         working_dir: Path to the working directory for recording
         upload_dir: Path to the final directory used to upload processed files
-        die: A threading event to terminate the ftp server sync
+        die: A threading event to terminate the upload server sync
     """
 
     # Start recording
@@ -478,7 +478,7 @@ def record(config_file, logfile_name, log_dir='logs'):
     signal.signal(signal.SIGINT, exit_handler)
     
     if not offline_mode:
-        sync_thread = threading.Thread(target=ftp_server_sync, args=(sensor.server_sync_interval,
+        sync_thread = threading.Thread(target=upload_server_sync, args=(sensor.server_sync_interval,
                                                                      ftp_config, upload_dir, die))
     
     record_thread = threading.Thread(target=continuous_recording, args=(sensor, working_dir,
@@ -501,13 +501,13 @@ def record(config_file, logfile_name, log_dir='logs'):
         postprocess_thread.start()
         
         if offline_mode:
-            logging.info('Running in offline mode - no FTP synchronisation')
+            logging.info('Running in offline mode - no upload synchronisation')
         else:
             # wait a while to allow make the two threads run out of sync
             time.sleep(sensor.server_sync_interval/2)
             # start the FTP sync
             sync_thread.start()
-            logging.info('Starting FTP server sync every {} seconds at {}'.format(sensor.server_sync_interval, datetime.now()))
+            logging.info('Starting upload server sync every {} seconds at {}'.format(sensor.server_sync_interval, datetime.now()))
         
         # now run a loop that will continue with a small grain until
         # an interrupt arrives, this is necessary to keep the program live

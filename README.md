@@ -73,15 +73,11 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
   (installs psutil for system monitoring; uses --break-system-packages for system-wide installation)
 * Install the required system packages: 
   ```
-  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate chrony zip python3-rpi.gpio alsa-utils
+  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate chrony rclone zip python3-rpi.gpio alsa-utils
   ```
   (note: rclone for cloud upload, chrony for enhanced time synchronization)
 * Set up rclone for cloud storage (optional for online upload):
   * **Note**: This step is optional. If you prefer offline mode (no cloud upload), you can skip this setup. The system will record audio locally without uploading to cloud storage. For online monitoring with cloud upload (e.g., to Box), follow these steps.
-  * Install rclone:
-    ```
-    sudo apt-get install rclone
-    ```
   * Run the rclone configuration:
     ```
     rclone config

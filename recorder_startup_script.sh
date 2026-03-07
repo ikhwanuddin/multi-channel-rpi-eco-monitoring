@@ -47,10 +47,6 @@ sudo bash ./led_off.sh
 printf 'Update time from internet\n'
 sudo bash ./update_time.sh
 
-# Start clap detection for shutdown in background
-printf 'Starting clap detection for shutdown\n'
-python3 clap_shutdown.py &
-
 # Start ssh-agent so password not required
 eval $(ssh-agent -s)
 

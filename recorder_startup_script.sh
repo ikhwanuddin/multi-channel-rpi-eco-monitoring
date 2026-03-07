@@ -90,7 +90,7 @@ if [ ! -f $config_file ]; then
             echo "Exiting without creating config."
             exit 1
         fi
-
+fi
 # export the raspberry pi serial number to an environment variable
 echo "Getting Raspberry Pi serial number..."
 if ! PI_ID=$(python3 discover_serial.py 2>&1); then

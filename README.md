@@ -66,11 +66,17 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
   ```
   git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git
   ```
-* Install the package: 
+* Install the package and dependencies: 
   ```
-  cd multi-channel-rpi-eco-monitoring && pip install . --break-system-packages
+  cd multi-channel-rpi-eco-monitoring
+  
+  # Install system audio libraries (required for PyAudio)
+  sudo apt-get install portaudio19-dev python3-dev
+  
+  # Install Python packages
+  pip install . --break-system-packages
   ``` 
-  (installs psutil for system monitoring; uses --break-system-packages for system-wide installation)
+  (installs psutil for system monitoring, pyaudio for audio processing, and numpy for signal processing; uses --break-system-packages for system-wide installation)
 * Install the required system packages: 
   ```
   sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate chrony rclone zip python3-rpi.gpio alsa-utils
@@ -167,7 +173,7 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 
 ## Clap Shutdown Feature
 
-This project now includes a **clap-based shutdown system** for safe remote shutdown without physical access:
+This project now includes a **clap-based shutdown system** for safe remote shutdown without physical access. Requires PyAudio for audio processing (automatically installed during setup).
 
 ### How It Works:
 - **Detection**: Continuously listens for a specific 3-clap pattern (3 claps within 2-3 seconds, 0.3-1 second intervals)
@@ -195,6 +201,34 @@ This project now includes a **clap-based shutdown system** for safe remote shutd
 - Debug logging available for tuning
 
 **Note**: Test in your environment first to ensure no false triggers from ambient noise.
+
+### Troubleshooting PyAudio Installation
+
+If PyAudio installation fails on Raspberry Pi, try these alternatives:
+
+**Option 1: Use system package (recommended for Raspberry Pi)**
+```bash
+sudo apt-get install python3-pyaudio
+```
+
+**Option 2: Manual installation with pip**
+```bash
+# Ensure dependencies are installed
+sudo apt-get install portaudio19-dev python3-dev
+
+# Install PyAudio
+pip install --no-cache-dir pyaudio
+```
+
+**Option 3: Force binary installation**
+```bash
+pip install --only-binary=all pyaudio
+```
+
+**Test installation:**
+```bash
+python3 -c "import pyaudio; print('PyAudio installed successfully')"
+```
 
 ## Authors
 This is a cross disciplinary research project based at Imperial College London, across the Faculties of Engineering, Natural Sciences and Life Sciences.

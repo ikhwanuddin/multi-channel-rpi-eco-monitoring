@@ -33,7 +33,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('/home/pi/clap_shutdown.log')
+        logging.FileHandler(os.path.join(os.path.dirname(__file__), 'clap_shutdown.log'))
     ]
 )
 

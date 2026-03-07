@@ -31,11 +31,6 @@ setup(
     install_requires=[
         "psutil",
     ],
-    entry_points={
-        "console_scripts": [
-            "eco-monitor-setup=setup_config:main",
-        ],
-    },
     include_package_data=True,
     zip_safe=False,
 )

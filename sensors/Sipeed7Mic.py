@@ -62,27 +62,29 @@ class Sipeed7Mic(SensorBase):
     def find_usb_audio_card():
         """
         Method to automatically detect the USB audio card number for recording.
-        Returns the card number as a string, defaulting to '1' if not found.
+        Targets "USB-Audio" devices specifically. Returns the card number as a string, defaulting to '1' if not found.
         """
         try:
             result = subprocess.run(['arecord', '-l'], capture_output=True, text=True, timeout=10)
             lines = result.stdout.split('\n')
             for line in lines:
-                if 'card' in line and ('USB' in line or 'usb' in line.lower()):
-                    # Parse card number, e.g., "card 1: Device [USB Audio Device]"
+                if 'USB-Audio' in line:
+                    # Parse card number, e.g., "card 1: USB-Audio [USB Mixer]"
                     parts = line.split()
-                    if len(parts) > 1:
-                        card_part = parts[1].rstrip(':')
-                        return card_part
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-            logging.warning("Failed to detect USB audio card, using default '1'")
+                    if len(parts) > 1 and parts[0] == 'card':
+                        card_num = parts[1].rstrip(':')
+                        logging.info(f"Detected USB-Audio card: {card_num}")
+                        return card_num
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
+            logging.warning(f"Failed to detect USB audio card: {e}, using default '1'")
+        logging.warning("USB-Audio card not found, using default '1'")
         return '1'  # Default fallback
 
     def setup(self):
 
         try:
             # Load alsactl file - increased microphone volume level
-            subprocess.call('alsactl --file ./audio_sensor_scripts/asound.state restore', shell=True)
+            subprocess.call('alsactl --file ./audio_sensor_scripts/asound.state restore >/dev/null 2>&1', shell=True)
             return True
         except:
             raise EnvironmentError

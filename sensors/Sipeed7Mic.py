@@ -84,7 +84,7 @@ class Sipeed7Mic(SensorBase):
 
         try:
             # Load alsactl file - increased microphone volume level
-            subprocess.call('alsactl --file ./audio_sensor_scripts/asound.state restore >/dev/null 2>&1', shell=True)
+            subprocess.call('alsactl --file ./audio_sensor_scripts/asound.state restore', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return True
         except:
             raise EnvironmentError
@@ -119,10 +119,10 @@ class Sipeed7Mic(SensorBase):
             kill_time = self.record_length * 1.1
             # subprocess.call() will return a number (>0 means there was an error)
             try: 
-                subprocess.call(cmd.format(self.card, self.record_length, wfile), shell=True, timeout=kill_time)
+                subprocess.call(cmd.format(self.card, self.record_length, wfile), shell=True, timeout=kill_time, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except: 
                 logging.info('\n{} - Timed Out \n'.format(self.current_file))
-                subprocess.run("sudo pkill -9 arecord", shell = True)
+                subprocess.run("sudo pkill -9 arecord", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             end_time = time.strftime('%H-%M-%S')
             logging.info('\n{} - Finished recording at {}'.format(self.current_file, end_time))
             self.uncomp_file_name = ofile + '.wav'

@@ -57,7 +57,7 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 ##### Set up Multi-Channel Eco Monitoring
 
 * Log in and open a terminal
-* Clone this repository into the home directory of the Raspberry pi: ``git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git``
+* Clone this repository into the home directory of the Raspberry pi: ```git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git```
 * Install the package: ``cd multi-channel-rpi-eco-monitoring && pip install .`` (installs psutil for system monitoring)
 * Install the required system packages: ``sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpdate zip rclone python3-rpi.gpio alsa-utils`` (note: rclone for cloud upload)
 * To configure the system:

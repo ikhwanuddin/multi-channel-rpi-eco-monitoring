@@ -68,9 +68,9 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
   ```
 * Install the package: 
   ```
-  cd multi-channel-rpi-eco-monitoring && pip install .
+  cd multi-channel-rpi-eco-monitoring && python3 -m venv venv && source venv/bin/activate && pip install .
   ``` 
-  (installs psutil for system monitoring)
+  (installs psutil for system monitoring; uses virtual environment to avoid system conflicts)
 * Install the required system packages: 
   ```
   sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpdate zip rclone python3-rpi.gpio alsa-utils

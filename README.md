@@ -49,28 +49,48 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 * Connect to your wifi network
 * Check that Python3 is already installed
   * ``python3`` in terminal --> Should show Python 3.7.3
-  * Otherwise, install Python3 - ``sudo apt-get install python3``
+  * Otherwise, install Python3 - 
+  ```
+  sudo apt-get install python3
+  ```
 * Install packages to read mounted drives
-  * ``sudo apt-get install exfat-fuse``
-  * ``sudo apt-get install exfat-utils``
+```
+sudo apt-get install exfat-fuse
+sudo apt-get install exfat-utils
+```
 
 ##### Set up Multi-Channel Eco Monitoring
 
 * Log in and open a terminal
-* Clone this repository into the home directory of the Raspberry pi: ```git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git```
-* Install the package: ``cd multi-channel-rpi-eco-monitoring && pip install .`` (installs psutil for system monitoring)
-* Install the required system packages: ``sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpdate zip rclone python3-rpi.gpio alsa-utils`` (note: rclone for cloud upload)
+* Clone this repository into the home directory of the Raspberry pi: 
+```
+git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git
+```
+* Install the package: 
+```
+cd multi-channel-rpi-eco-monitoring && pip install .
+``` 
+(installs psutil for system monitoring)
+* Install the required system packages: 
+```
+sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpdate zip rclone python3-rpi.gpio alsa-utils
+```
+(note: rclone for cloud upload)
 * To configure the system:
   * Run ``eco-monitor-setup`` (after installation) or ``python setup_config.py`` and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details. (Note: setup_config.py is a new interactive script for configuration.)
 * Make sure all the scripts in the repository are executable, and that ``recorder_startup_script.sh`` runs on startup...
   * Open a new terminal
   * ``sudo nano ../../etc/profile`` from the root directory
   * Add the following 2 lines to the end of the file:
-    * ``chmod +x ~/multi-channel-rpi-eco-monitoring/*;``
-    * ``sudo -u pi ~/multi-channel-rpi-eco-monitoring/recorder_startup_script.sh;``
+```
+chmod +x ~/multi-channel-rpi-eco-monitoring/*;
+sudo -u pi ~/multi-channel-rpi-eco-monitoring/recorder_startup_script.sh;
+```
 * Make sure Pi boots to command line upon login (without login required)...
-  * New terminal
-  * ``sudo raspi-config``
+  * Open new terminal and type:
+```
+sudo raspi-config
+```
   * _3 Boot Options_ -> _B1 Desktop / CLI_ -> _B2 Console Autologin_
   * Press ``Esc`` when this is complete -> Say No to reboot
   * Shutdown with ``sudo shutdown -h now``

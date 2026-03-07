@@ -79,18 +79,20 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 * To configure the system:
   * Run ``eco-monitor-setup`` (after installation) or ``python setup_config.py`` and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details. (Note: setup_config.py is a new interactive script for configuration.)
 * Make sure all the scripts in the repository are executable, and that ``recorder_startup_script.sh`` runs on startup...
-  * Open a new terminal
-  * ``sudo nano ../../etc/profile`` from the root directory
+  * Open a new terminal and type this from the root directory:
+    ```
+    sudo nano ../../etc/profile
+    ``` 
   * Add the following 2 lines to the end of the file:
-  ```
-  chmod +x ~/multi-channel-rpi-eco-monitoring/*;
-  sudo -u pi ~/multi-channel-rpi-eco-monitoring/recorder_startup_script.sh;
-  ```
+    ```
+    chmod +x ~/multi-channel-rpi-eco-monitoring/*;
+    sudo -u pi ~/multi-channel-rpi-eco-monitoring/recorder_startup_script.sh;
+    ```
 * Make sure Pi boots to command line upon login (without login required)...
   * Open new terminal and type:
-  ```
-  sudo raspi-config
-  ```
+    ```
+    sudo raspi-config
+    ```
   * _3 Boot Options_ -> _B1 Desktop / CLI_ -> _B2 Console Autologin_
   * Press ``Esc`` when this is complete -> Say No to reboot
   * Shutdown with ``sudo shutdown -h now``
@@ -104,9 +106,16 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
   * 1200 second (20 min) record time intervals (configurable via setup)
   * No upload to cloud storage (fully offline)
 **If you would like the Raspberry Pi to run online**...  press ``Ctrl+C`` when you see "Start of ecosystem monitoring startup script".
-  * Type ``cd ~/multi-channel-rpi-eco-monitoring``
+  * Type:
+    ```
+    cd ~/multi-channel-rpi-eco-monitoring
+    ```
   * Run ``python setup_config.py`` and follow the prompts. This will create a ``config.json``   file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). The config file can be created manually, or imported from external storage without running ``setup_config.py`` if preferred
-  * Make sure the timezone is set correctly. Check by typing ``sudo dpkg-reconfigure tzdata`` and following the prompts
+  * Make sure the timezone is set correctly. Check by typing 
+    ```
+    sudo dpkg-reconfigure tzdata
+    ``` 
+    and following the prompts
   * Type ``sudo halt`` to shut down the Pi
   * After reboot, the Pi should be good to go!
 

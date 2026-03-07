@@ -62,22 +62,22 @@ class Sipeed7Mic(SensorBase):
     def find_usb_audio_card():
         """
         Method to automatically detect the USB audio card number for recording.
-        Targets "USB-Audio" devices specifically. Returns the card number as a string, defaulting to '1' if not found.
+        Targets USB audio devices like MicArray or USB-Audio. Returns the card number as a string, defaulting to '1' if not found.
         """
         try:
             result = subprocess.run(['arecord', '-l'], capture_output=True, text=True, timeout=10)
             lines = result.stdout.split('\n')
             for line in lines:
-                if 'USB-Audio' in line:
-                    # Parse card number, e.g., "card 1: USB-Audio [USB Mixer]"
+                if 'MicArray' in line or 'USB' in line:
+                    # Parse card number, e.g., "card 2: MicArray [SipeedUSB MicArray]"
                     parts = line.split()
                     if len(parts) > 1 and parts[0] == 'card':
                         card_num = parts[1].rstrip(':')
-                        logging.info(f"Detected USB-Audio card: {card_num}")
+                        logging.info(f"Detected USB audio card: {card_num}")
                         return card_num
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
             logging.warning(f"Failed to detect USB audio card: {e}, using default '1'")
-        logging.warning("USB-Audio card not found, using default '1'")
+        logging.warning("USB audio card not found, using default '1'")
         return '1'  # Default fallback
 
     def setup(self):

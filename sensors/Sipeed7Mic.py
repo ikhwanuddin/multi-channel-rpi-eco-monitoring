@@ -108,7 +108,7 @@ class Sipeed7Mic(SensorBase):
         # Record for a specific duration
         wfile = os.path.join(self.working_dir, self.current_file)
         ofile = os.path.join(self.pre_upload_dir, self.current_file)
-        logging.info('\n{} - Started recording at {} \n'.format(self.current_file, start_time))
+        logging.info('\n{} - Started recording at {}'.format(self.current_file, start_time))
         try:
             cmd = 'sudo arecord -D plughw:{},0 -f S16_LE -r 16000 -c 8 --duration {} {}'
             
@@ -122,10 +122,10 @@ class Sipeed7Mic(SensorBase):
                 logging.info('\n{} - Timed Out \n'.format(self.current_file))
                 subprocess.run("sudo pkill -9 arecord", shell = True)
             end_time = time.strftime('%H-%M-%S')
-            logging.info('\n{} - Finished recording at {}\n'.format(self.current_file, end_time))
+            logging.info('\n{} - Finished recording at {}'.format(self.current_file, end_time))
             self.uncomp_file_name = ofile + '.wav'
             os.rename(wfile, self.uncomp_file_name)
-            logging.info('\n{} transferred to {}\n'.format(self.current_file, wfile))
+            logging.info('\n{} transferred to {}'.format(self.current_file, wfile))
         except Exception:
             logging.info('Error recording from audio card. Creating dummy file')
             open(ofile + '_ERROR_audio-record-failed', 'a').close()
@@ -171,17 +171,17 @@ class Sipeed7Mic(SensorBase):
             
             # Audio is compressed using a FLAC Encoding            
             try: 
-                logging.info('\n Starting compression of {} to {} at {}\n'.format(wfile, ofile, time_now))
+                logging.info('\nStarting compression of {}\nto {}\nat {}'.format(wfile, ofile, time_now))
                 cmd = ('ffmpeg -i {} -c:a flac {} >/dev/null 2>&1') 
                 subprocess.call(cmd.format(wfile, ofile), shell=True)
                 os.remove(wfile)
                 time_now = time.strftime('%H-%M-%S')
-                logging.info('\n Finished compression of {} to {} at {}\n'.format(wfile, ofile, time_now))
+                logging.info('\nFinished compression of {}\nto {}\nat {}'.format(wfile, ofile, time_now))
             except Exception:
                 logging.info('Error compressing {}'. format(wfile))
             
 
         else:
             # Don't compress, store as wav
-            logging.info('\n{} - No postprocessing of audio data\n'.format(wfile))
+            logging.info('\n{} - No postprocessing of audio data'.format(wfile))
             os.rename(wfile, ofile)

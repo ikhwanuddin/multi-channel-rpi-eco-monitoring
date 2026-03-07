@@ -73,11 +73,11 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
   (installs psutil for system monitoring; uses --break-system-packages for system-wide installation)
 * Install the required system packages: 
   ```
-  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpdate zip rclone python3-rpi.gpio alsa-utils
+  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate zip rclone python3-rpi.gpio alsa-utils
   ```
   (note: rclone for cloud upload)
 * To configure the system:
-  * Run ``eco-monitor-setup`` (after installation) or ``python setup_config.py`` and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details. (Note: setup_config.py is a new interactive script for configuration.)
+  * Run ``python setup_config.py`` and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). (Note: setup_config.py is the interactive configuration script.)
 * Make sure all the scripts in the repository are executable, and that ``recorder_startup_script.sh`` runs on startup...
   * Open a new terminal and type this from the root directory:
     ```

@@ -95,7 +95,10 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
     - Confirm the remote is configured correctly
   * This sets up rclone to upload files to your Box account under the remote name "mybox"
 * To configure the system:
-  * Run ``python setup_config.py`` and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). (Note: setup_config.py is the interactive configuration script.)
+  * Run and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). (Note: setup_config.py is the interactive configuration script.)
+    ```
+    python setup_config.py
+    ``` 
 * Make sure all the scripts in the repository are executable, and that ``recorder_startup_script.sh`` runs on startup...
   * Open a new terminal and type this from the root directory:
     ```

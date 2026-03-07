@@ -19,7 +19,7 @@ Key changes include:
   8. Old Data is deleted upon boot-up. Make sure that after the battery dies, DiskInternals Linux Reader - https://www.diskinternals.com/linux-reader/ - is used to recover the data.
   9. Migrated from FTP to rclone for cloud storage upload (more reliable and flexible).
   10. Improved subprocess calls to suppress unnecessary output and enhance error handling.
-  11. Converted setup.py to proper setuptools package installer with entry points.
+  11. Migrated to modern pyproject.toml packaging (replacing setup.py) for better compatibility and to avoid deprecation warnings.
   12. Added support for Sipeed 7-Mic Array sensor (Sipeed7Mic.py).
   13. Separated interactive configuration logic into setup_config.py for modularity and ease of use.
 

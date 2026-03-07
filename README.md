@@ -73,9 +73,31 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
   (installs psutil for system monitoring; uses --break-system-packages for system-wide installation)
 * Install the required system packages: 
   ```
-  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate zip rclone python3-rpi.gpio alsa-utils
+  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate chrony zip python3-rpi.gpio alsa-utils
   ```
-  (note: rclone for cloud upload)
+  (note: rclone for cloud upload, chrony for enhanced time synchronization)
+* Set up rclone for cloud storage (optional for online upload):
+  * **Note**: This step is optional. If you prefer offline mode (no cloud upload), you can skip this setup. The system will record audio locally without uploading to cloud storage. For online monitoring with cloud upload (e.g., to Box), follow these steps.
+  * Install rclone:
+    ```
+    sudo apt-get install rclone
+    ```
+  * Run the rclone configuration:
+    ```
+    rclone config
+    ```
+  * Follow the prompts to create a new remote named "mybox" for Box:
+    - Choose 'n' for new remote
+    - Name: mybox
+    - Storage: box
+    - client_id: (leave blank for auto, or enter your Box app client ID if you have one)
+    - client_secret: (leave blank for auto, or enter your Box app client secret)
+    - box_config_file: (leave blank)
+    - box_sub_type: (choose user for personal Box account)
+    - Follow the authorization link in your browser, log in to Box, and grant permissions
+    - Enter the authorization code when prompted
+    - Confirm the remote is configured correctly
+  * This sets up rclone to upload files to your Box account under the remote name "mybox"
 * To configure the system:
   * Run ``python setup_config.py`` and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). (Note: setup_config.py is the interactive configuration script.)
 * Make sure all the scripts in the repository are executable, and that ``recorder_startup_script.sh`` runs on startup...

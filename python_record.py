@@ -210,7 +210,7 @@ class StopMonitoring(Exception):
     pass
 
 
-def upload_server_sync(sync_interval, rclone_config, upload_dir, die):
+def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
 
     """
     Function to synchronize the upload data folder with the remote storage (rclone)
@@ -218,7 +218,7 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir, die):
     Parameters:
         sync_interval: The time interval between synchronisation connections
         rclone_config: A dictionary holding the rclone configuration
-        upload_dir: The upload directory to synchronise (top level, not the device specific subdirectory)
+        upload_dir_pi: The upload directory to synchronise (device-specific directory)
         die: A threading event to terminate the upload server sync
     """
 

@@ -7,7 +7,10 @@ if [ ! -f fs_expanded ]; then
   # Check if root filesystem is already using most of the disk space
   ROOT_SIZE=$(df / | tail -1 | awk '{print $2}')
   DISK_SIZE=$(lsblk -b -o SIZE /dev/mmcblk0 2>/dev/null | head -2 | tail -1)
-  if [ -n "$DISK_SIZE" ] && [ $ROOT_SIZE -gt $((DISK_SIZE * 90 / 100)) ]; then
+  # Convert to same units (KB)
+  ROOT_SIZE_KB=$ROOT_SIZE
+  DISK_SIZE_KB=$((DISK_SIZE / 1024))
+  if [ -n "$DISK_SIZE" ] && [ $ROOT_SIZE_KB -gt $((DISK_SIZE_KB * 90 / 100)) ]; then
     echo "Filesystem already expanded, skipping..."
     touch fs_expanded
   else
@@ -79,7 +82,7 @@ fi
 
 # Check if required files exist
 echo "Checking required files..."
-required_files="python_record.py discover_serial.py clap_shutdown.py"
+required_files="python_record.py discover_serial.py"
 for file in $required_files; do
     if [ ! -f "$file" ]; then
         echo "ERROR: Required file '$file' not found!"

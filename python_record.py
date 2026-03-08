@@ -222,6 +222,10 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
         die: A threading event to terminate the upload server sync
     """
 
+    remote_name = rclone_config.get('remote_name', 'mybox')
+    config_path = rclone_config.get('config_path', '').strip()
+    remote_base_path = rclone_config.get('remote_base_path', 'multi_channel_monitoring_data/live_data')
+
     # keep running while the die is not set
     while not die.is_set():
 
@@ -232,7 +236,16 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
         subprocess.call('bash ./update_time.sh', shell=True)
 
         logging.info('Started upload sync at {}'.format(datetime.now()))
-        subprocess.call('bash ./rclone_upload.sh {} {}'.format('', upload_dir_pi), shell=True)  # ftp_string now empty
+        exit_code = subprocess.call([
+            'bash',
+            './rclone_upload.sh',
+            upload_dir_pi,
+            remote_name,
+            config_path,
+            remote_base_path
+        ])
+        if exit_code != 0:
+            logging.error('Upload sync failed with exit code {}'.format(exit_code))
         logging.info('Finished upload sync at {}'.format(datetime.now()))
 
         # wait until the next sync interval
@@ -476,7 +489,7 @@ def record(config_file, logfile_name, log_dir='logs'):
     
     if not offline_mode:
         sync_thread = threading.Thread(target=upload_server_sync, args=(sensor.server_sync_interval,
-                                                                     rclone_config, upload_dir, die))
+                                                                     rclone_config, upload_dir_pi, die))
     
     record_thread = threading.Thread(target=continuous_recording, args=(sensor, working_dir,
                                                                     upload_dir_pi, sensor_config, die))
@@ -502,7 +515,7 @@ def record(config_file, logfile_name, log_dir='logs'):
         else:
             # wait a while to allow make the two threads run out of sync
             time.sleep(sensor.server_sync_interval/2)
-            # start the FTP sync
+            # start the upload sync
             sync_thread.start()
             logging.info('Starting upload server sync every {} seconds at {}'.format(sensor.server_sync_interval, datetime.now()))
         

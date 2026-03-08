@@ -13,4 +13,12 @@ fi
 data_top_folder_name=$(basename "$data_dir")
 
 # Use rclone to move files to Box (upload and remove from local)
+echo "Starting rclone upload from $data_dir to mybox:$data_top_folder_name"
 rclone move "$data_dir" "mybox:$data_top_folder_name" --delete-empty-src-dirs --progress --log-level INFO
+exit_code=$?
+if [ $exit_code -eq 0 ]; then
+    echo "Rclone upload completed successfully"
+else
+    echo "Rclone upload failed with exit code $exit_code"
+fi
+exit $exit_code

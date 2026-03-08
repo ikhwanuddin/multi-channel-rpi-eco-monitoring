@@ -159,7 +159,7 @@ def main():
                       {'name': 'config_path',
                        'type': str,
                        'prompt': 'Enter the path to rclone config file (leave empty for default ~/.config/rclone/rclone.conf)',
-                       'default': ''}]
+                       'default': '/home/pi/.config/rclone/rclone.conf'}]
 
         print("\nNow let's do the rclone cloud storage details...")
 

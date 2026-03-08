@@ -1,6 +1,6 @@
 #!/bin/bash
 
-printf '#############################################\nStart of ecosystem monitoring startup script\n############################################\n'
+printf '##############################################\n Start of ecosystem monitoring startup script\n##############################################\n'
 
 # One off expanding of filesystem to fill SD card
 if [ ! -f fs_expanded ]; then

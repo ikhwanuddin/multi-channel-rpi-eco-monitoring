@@ -135,7 +135,7 @@ def main():
     # test for offline mode
     offline_options = [{'name': 'offline_mode',
                         'type': int,
-                        'prompt': 'Should the recorder run in offline mode (1) or use rclone to upload data to cloud storage?\n',
+                        'prompt': 'Should the recorder run in offline mode (1) or use rclone (0) to upload data to cloud storage?\n',
                         'default': 0,
                         'valid': [0, 1]}]
 

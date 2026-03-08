@@ -46,7 +46,7 @@ class Sipeed7Mic(SensorBase):
         """
         return [{'name': 'record_length',
                  'type': int,
-                 'default': 1200,
+                 'default': 120,
                  'prompt': 'What is the time in seconds of the audio segments?'},
                 {'name': 'compress_data',
                  'type': bool,
@@ -54,7 +54,7 @@ class Sipeed7Mic(SensorBase):
                  'prompt': 'Should the audio data be compressed from WAV to FLAC Lossless Compression?'},
                 {'name': 'capture_delay',
                  'type': int,
-                 'default': 0,
+                 'default': 120,
                  'prompt': 'How long should the system wait between audio samples?'}
                 ]
 

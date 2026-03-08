@@ -35,7 +35,7 @@ for testing:
 
 Sensor setup and recording
 * configure_sensor(config_file) # returns a configured sensor
-* record_sensor(sensor, wdir, udir, sleep=True) # initiates a single round of sampling
+* record_sensor(sensor, wdir, udir, sensor_config, sleep=True) # initiates a single round of sampling
 
 FTP server sync
 * upload_server_sync(rclone_config, udir) # rolling synchronisation, intended to run in thread
@@ -93,7 +93,7 @@ def configure_sensor(sensor_config):
     return sensor
 
 
-def record_sensor(sensor, working_dir, upload_dir, sleep=True):
+def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
 
     """
     Function to run the common sensor record loop. The sleep between
@@ -102,6 +102,7 @@ def record_sensor(sensor, working_dir, upload_dir, sleep=True):
         sensor: A sensor instance
         working_dir: The working directory to be used by the sensor
         upload_dir: The upload directory root to use for completed files
+        sensor_config: The sensor configuration dictionary
         sleep: Boolean - should the sensor sleep be used.
     """
 
@@ -302,7 +303,7 @@ def storage_check_shutdown():
         safe_shutdown()
         
 
-def continuous_recording(sensor, working_dir, upload_dir, die):
+def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die):
 
     """
     Runs a loop over the sensor sampling process
@@ -310,6 +311,7 @@ def continuous_recording(sensor, working_dir, upload_dir, die):
         sensor: A instance of one of the sensor classes
         working_dir: Path to the working directory for recording
         upload_dir: Path to the final directory used to upload processed files
+        sensor_config: The sensor configuration dictionary
         die: A threading event to terminate the upload server sync
     """
 
@@ -318,7 +320,7 @@ def continuous_recording(sensor, working_dir, upload_dir, die):
         # Before new 1200 s recording, check if sufficient storage available
         storage_check_shutdown()
         # Begin new recording
-        record_sensor(sensor, working_dir, upload_dir, sleep=True)
+        record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True)
 
 
 def continuous_postprocess(sensor, sync_interval, upload_dir, die):
@@ -493,7 +495,7 @@ def record(config_file, logfile_name, log_dir='logs'):
                                                                      rclone_config, upload_dir, die))
     
     record_thread = threading.Thread(target=continuous_recording, args=(sensor, working_dir,
-                                                                    upload_dir_pi, die))
+                                                                    upload_dir_pi, sensor_config, die))
 
     
     # Postprocess the raw data in a separate thread

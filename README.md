@@ -171,37 +171,6 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 * Using a battery bank is a safe option - if it runs out of power, the Pi tends to shutdown safely.
 * To safely power off, use the appropriate method for your sensor (e.g., button on Respeaker 6-Mic array or software shutdown), and wait for the green light (on the Pi) to stop flashing.
 
-## Clap Shutdown Feature
-
-This project now includes a **clap-based shutdown system** for safe remote shutdown without physical access. Requires PyAudio for audio processing (automatically installed during setup).
-
-### How It Works:
-- **Detection**: Continuously listens for a specific 3-clap pattern (3 claps within 2-3 seconds, 0.3-1 second intervals)
-- **Safety**: If recording is active when 3 claps detected:
-  - Sends SIGINT signal to recording process for graceful shutdown
-  - Waits 10 seconds for cleanup (saving files, stopping threads)
-  - Then proceeds with system shutdown
-- **Confirmation**: 5-second confirmation window with LED blinking (if available)
-- **Cancel**: Additional clap during confirmation cancels shutdown
-
-### Usage:
-1. **Automatic**: Runs in background on system boot
-2. **Manual Shutdown**: Clap 3 times → wait for LED blink → system shuts down safely
-3. **Cancel**: Clap again during LED blink to cancel
-
-### Safety Features:
-- **Recording Protection**: Won't interrupt active recording abruptly
-- **Graceful Stop**: Allows recording process to save data and cleanup
-- **Visual Feedback**: LED blinking during confirmation
-- **Error Handling**: Robust audio device detection and error recovery
-
-### Configuration:
-- RMS threshold adjustable in `clap_shutdown.py` (default: 0.1)
-- Timing parameters customizable
-- Debug logging available for tuning
-
-**Note**: Test in your environment first to ensure no false triggers from ambient noise.
-
 ### Troubleshooting PyAudio Installation
 
 If PyAudio installation fails on Raspberry Pi, try these alternatives:

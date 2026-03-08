@@ -232,7 +232,7 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir, die):
         subprocess.call('bash ./update_time.sh', shell=True)
 
         logging.info('Started upload sync at {}'.format(datetime.now()))
-        subprocess.call('bash ./rclone_upload.sh {} {}'.format('', upload_dir), shell=True)  # ftp_string now empty
+        subprocess.call('bash ./rclone_upload.sh {} {}'.format('', upload_dir_pi), shell=True)  # ftp_string now empty
         logging.info('Finished upload sync at {}'.format(datetime.now()))
 
         # wait until the next sync interval

@@ -157,8 +157,7 @@ class Sipeed7Mic(SensorBase):
             if not os.path.exists(session_upload_dir):
                 os.makedirs(session_upload_dir)
         except OSError:
-            logging.critical('Could not create upload directory for '
-                            'recording: {}'.format(session_upload_dir))
+            logging.critical('Could not create upload directory for recording: \n{}'.format(session_upload_dir))
             sys.exit()
 
         # Determine Path for Postprocessed Files: 
@@ -173,12 +172,12 @@ class Sipeed7Mic(SensorBase):
             
             # Audio is compressed using a FLAC Encoding            
             try: 
-                logging.info('\nStarting compression of {}\nto {}\nat {}'.format(wfile, ofile, time_now))
+                logging.info('\nStarting compression of {}\nto {} at {}\n'.format(wfile, ofile, time_now))
                 cmd = ('ffmpeg -i {} -c:a flac {} >/dev/null 2>&1') 
                 subprocess.call(cmd.format(wfile, ofile), shell=True)
                 os.remove(wfile)
                 time_now = time.strftime('%H-%M-%S')
-                logging.info('\nFinished compression of {}\nto {}\nat {}'.format(wfile, ofile, time_now))
+                logging.info('\nFinished compression of {}\nto {} at {}\n'.format(wfile, ofile, time_now))
             except Exception:
                 logging.info('Error compressing {}'. format(wfile))
             

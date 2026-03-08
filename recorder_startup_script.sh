@@ -4,9 +4,18 @@ printf '#############################################\nStart of ecosystem monito
 
 # One off expanding of filesystem to fill SD card
 if [ ! -f fs_expanded ]; then
-  sudo touch fs_expanded
-  sudo raspi-config --expand-rootfs
-  sudo reboot
+  # Check if root filesystem is already using most of the disk space
+  ROOT_SIZE=$(df / | tail -1 | awk '{print $2}')
+  DISK_SIZE=$(lsblk -b -o SIZE /dev/mmcblk0 2>/dev/null | head -2 | tail -1)
+  if [ -n "$DISK_SIZE" ] && [ $ROOT_SIZE -gt $((DISK_SIZE * 90 / 100)) ]; then
+    echo "Filesystem already expanded, skipping..."
+    touch fs_expanded
+  else
+    echo "Expanding filesystem..."
+    sudo touch fs_expanded
+    sudo raspi-config --expand-rootfs
+    sudo reboot
+  fi
 fi
 
 # Restart udev to simulate hotplugging of 3G dongle

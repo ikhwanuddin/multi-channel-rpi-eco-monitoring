@@ -199,6 +199,9 @@ pip install --only-binary=all pyaudio
 python3 -c "import pyaudio; print('PyAudio installed successfully')"
 ```
 
+## List To Do
+- [ ] Add configuration option to always delete recorded data clean or always keep the fles in ```setup_config.py```.
+
 ## Authors
 This is a cross disciplinary research project based at Imperial College London, across the Faculties of Engineering, Natural Sciences and Life Sciences.
 

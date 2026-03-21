@@ -5,6 +5,7 @@ This document contains additional setup instructions for specialized configurati
 ## Shutdown Button Setup for Sipeed 7-Mic Array
 
 ![GPIO Pin on Raspberry Pi Zero 2 W](https://i.sstatic.net/yHddo.png)
+
 *GPIO Pin on Raspberry Pi Zero 2 W.*
 
 If using Sipeed 7-Mic Array sensor, you can set up a hardware shutdown button using device tree overlay:

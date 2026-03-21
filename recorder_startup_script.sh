@@ -27,8 +27,7 @@ sudo service udev start
 
 # On boot up, remove all the prev data (that should have been retrieved)
 # so we don't run out of SD card storage space.
-
-# sudo rm -r /home/pi/multi_channel_monitoring_data/live_data
+# NOTE: This is now controlled by config.json 'wipe_data_on_boot' setting
 
 tries=0
 max_tries=10
@@ -59,6 +58,21 @@ sudo bash ./led_off.sh
 # Update time from internet
 printf 'Update time from internet\n'
 sudo bash ./update_time.sh
+
+# Check if data wipe is enabled in config
+config_file="./config.json"
+if [ -f "$config_file" ]; then
+    wipe_enabled=$(python3 -c "import json; config=json.load(open('$config_file')); print(config.get('sys', {}).get('wipe_data_on_boot', 0))")
+    if [ "$wipe_enabled" = "1" ]; then
+        printf 'Wiping old data on boot as configured\n'
+        sudo rm -rf /home/pi/multi_channel_monitoring_data/live_data
+        printf 'Old data wiped\n'
+    else
+        printf 'Data wipe disabled in config, keeping existing data\n'
+    fi
+else
+    printf 'Config file not found, skipping data wipe\n'
+fi
 
 # Start ssh-agent so password not required
 eval $(ssh-agent -s)

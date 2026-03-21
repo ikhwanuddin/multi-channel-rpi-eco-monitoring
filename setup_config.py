@@ -145,6 +145,21 @@ def main():
     for option in offline_options:
         config_parse(option, offline_config)
 
+    # Ask about internet connectivity for deployment information
+    deployment_info_options = [{'name': 'has_internet',
+                                'type': int,
+                                'prompt': ('Will this deployment have internet connectivity for long-term monitoring?\n'
+                                          '1 = Yes (data will be uploaded periodically to server. Reboot can clear live_data)\n'
+                                          '0 = No (data stays on micro SD card. Reboot only refreshes internal memory)'),
+                                'default': 1,
+                                'valid': [0, 1]}]
+
+    deployment_config = {}
+
+    # populate the deployment config dictionary
+    for option in deployment_info_options:
+        config_parse(option, deployment_config)
+
     # Populate the rclone config unless the user has chosen offline mode
 
     rclone_config = {}
@@ -182,7 +197,12 @@ def main():
                   {'name': 'reboot_time',
                    'type': str,
                    'prompt': 'Enter the time for the daily reboot',
-                   'default': '02:00'}]
+                   'default': '02:00'},
+                  {'name': 'wipe_data_on_boot',
+                   'type': int,
+                   'prompt': 'Should old data be wiped on boot to prevent storage overflow? (1 for yes, 0 for no)',
+                   'default': 0,
+                   'valid': [0, 1]}]
 
     print("Now let's do the system details...")
     sys_config = {}
@@ -192,6 +212,7 @@ def main():
         config_parse(option, sys_config)
 
     config = {'rclone': rclone_config, 'offline_mode': offline_config['offline_mode'],
+              'has_internet': deployment_config['has_internet'],
               'sensor': sensor_config, 'sys': sys_config}
 
     # save the config

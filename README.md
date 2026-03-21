@@ -200,7 +200,7 @@ python3 -c "import pyaudio; print('PyAudio installed successfully')"
 ```
 
 ## List To Do
-- [ ] Add configuration option to always delete recorded data clean or always keep the fles in ```setup_config.py```.
+- [x] Add configuration option to always delete recorded data clean or always keep the fles in ```setup_config.py```.
 - [ ] More efficient raspberry pi with better scheduling.
 
 ## Authors

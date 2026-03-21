@@ -409,9 +409,9 @@ def record(config_file, logfile_name, log_dir='logs'):
                               callback=interrupt_button_callback, bouncetime=100)
 
     # Schedule restart at reboot time, running in a separate process
-    #logging.info('Scheduling restart for {}'.format(reboot_time))
-    #cmd = '(sudo shutdown -c && shutdown -r {}) &'.format(reboot_time)
-    #subprocess.call(cmd, shell=True)
+    logging.info('Scheduling restart for {}'.format(reboot_time))
+    cmd = '(sudo shutdown -c && shutdown -r {}) &'.format(reboot_time)
+    subprocess.call(cmd, shell=True)
     
     # Schedule a shutdown after X hours, based on battery life...
     # Set the number a couple hours lower than expected (to be safe)

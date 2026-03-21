@@ -27,6 +27,8 @@ NOTE! SD card should have sufficiently fast read/write speed (Class 10, **minimu
 
 This code has been setup to run on a **Raspberry Pi Zero 2 W+**, **Raspberry Pi 3B+**, and **Raspberry Pi 4B+**
 
+📖 **For advanced configuration options** (shutdown buttons, power saving, troubleshooting): see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md)
+
 ## Setup 
 
 ### Pre setup image: 
@@ -127,33 +129,6 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
     sudo shutdown -h now
     ```
 
-### Shutdown Button Setup for Sipeed 7-Mic Array
-
-![GPIO Pin on Raspberry Pi Zero 2 W](https://i.sstatic.net/yHddo.png)
-
-If using Sipeed 7-Mic Array sensor, you can set up a hardware shutdown button using device tree overlay:
-
-* Edit `/boot/config.txt` (or `/boot/firmware/config.txt` on newer OS versions):
-  ```
-  sudo nano /boot/config.txt
-  ```
-
-* Add this line at the end of the file:
-  ```
-  dtoverlay=gpio-shutdown,gpio_pin=21,active_low=1,gpio_pull=up
-  ```
-
-* Save and exit (Ctrl+X, Y, Enter)
-
-* Reboot the Raspberry Pi:
-  ```
-  sudo reboot
-  ```
-
-This configures GPIO pin 21 as a shutdown button. Connect a momentary push button between GPIO 21 and GND. Pressing the button will trigger a safe system shutdown.
-
-**Note**: This is a system-level configuration that works independently of the Python monitoring script.
-
 ### RPI Configuration
 
 * Boot the Raspberry Pi with our prepared SD card inserted
@@ -184,47 +159,9 @@ This configures GPIO pin 21 as a shutdown button. Connect a momentary push butto
     to shut down the Pi
   * After reboot, the Pi should be good to go!
 
-### Make a new disk image
+### Additional Configuration
 
-* Take the microSD card from the Pi, and make a copy of it onto your computer [(How?)](https://howchoo.com/pi/create-a-backup-image-of-your-raspberry-pi-sd-card-in-mac-osx). 
-  * Note: May need to run ``sudo -i`` (before sudo dd...) - this puts the terminal into root mode
-  * Note: After running sudo dd... it may take a while - You get no indication of how far through you are - as long as the no error appears in the terminal, or no new line for code entry, just wait (up to 1 hour for 32 GB SD card)
-* Now you can clone as many of these SD cards as you need for your monitoring devices with no extra setup required - install on new SD card with Balena Etcher
-
-
-### Side Notes
-
-* Be careful not to pull the power cable from the Pi (or pull the plug out the socket) - this has been known to corrupt the SD card, and requires a fresh install.
-* Using a battery bank is a safe option - if it runs out of power, the Pi tends to shutdown safely.
-* To safely power off, use the appropriate method for your sensor (e.g., button on Respeaker 6-Mic array or software shutdown), and wait for the green light (on the Pi) to stop flashing.
-
-### Troubleshooting PyAudio Installation
-
-If PyAudio installation fails on Raspberry Pi, try these alternatives:
-
-**Option 1: Use system package (recommended for Raspberry Pi)**
-```bash
-sudo apt-get install python3-pyaudio
-```
-
-**Option 2: Manual installation with pip**
-```bash
-# Ensure dependencies are installed
-sudo apt-get install portaudio19-dev python3-dev
-
-# Install PyAudio
-pip install --no-cache-dir pyaudio
-```
-
-**Option 3: Force binary installation**
-```bash
-pip install --only-binary=all pyaudio
-```
-
-**Test installation:**
-```bash
-python3 -c "import pyaudio; print('PyAudio installed successfully')"
-```
+For advanced configuration options including shutdown button setup, power saving configurations, troubleshooting, and additional notes, see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md).
 
 ## List To Do
 - [x] Add configuration option to always delete recorded data clean or always keep the fles in ```setup_config.py```.

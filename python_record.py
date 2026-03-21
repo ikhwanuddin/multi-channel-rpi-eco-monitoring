@@ -12,11 +12,8 @@ import sensors
 import RPi.GPIO as GPIO
 import psutil
 
-# Clap detection disabled for now
-clap_detector = None
-
-#Setup button input (on 6 mic array)
-array_mic_button = 26
+#Setup button input pins for different sensors
+array_mic_button = 26  # Respeaker series
 
 
 # set a global name for a common logging for functions using this module
@@ -401,12 +398,17 @@ def record(config_file, logfile_name, log_dir='logs'):
         logging.info('Failed to load config')
         sys.exit()
 
-    # Setup GPIO for sensors that have a button (e.g., ReSpeaker arrays)
+    # Setup GPIO for sensors that have a button
+    GPIO.setmode(GPIO.BCM)
+
+    # Setup button for Respeaker series (GPIO 26)
     if sensor_config['sensor_type'] in ['Respeaker6Mic', 'Respeaker4Mic', 'Respeaker_Custom']:
-        GPIO.setmode(GPIO.BCM)
         GPIO.setup(array_mic_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(array_mic_button, GPIO.FALLING,
                               callback=interrupt_button_callback, bouncetime=100)
+
+    # Note: Sipeed7Mic uses system-level GPIO shutdown via dtoverlay in /boot/config.txt
+    # No Python GPIO setup needed for Sipeed7Mic button
 
     # Schedule restart at reboot time, running in a separate process
     logging.info('Scheduling restart for {}'.format(reboot_time))

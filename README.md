@@ -127,6 +127,33 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
     sudo shutdown -h now
     ```
 
+### Shutdown Button Setup for Sipeed 7-Mic Array
+
+![GPIO Pin on Raspberry Pi Zero 2 W](https://i.sstatic.net/yHddo.png)
+
+If using Sipeed 7-Mic Array sensor, you can set up a hardware shutdown button using device tree overlay:
+
+* Edit `/boot/config.txt` (or `/boot/firmware/config.txt` on newer OS versions):
+  ```
+  sudo nano /boot/config.txt
+  ```
+
+* Add this line at the end of the file:
+  ```
+  dtoverlay=gpio-shutdown,gpio_pin=21,active_low=1,gpio_pull=up
+  ```
+
+* Save and exit (Ctrl+X, Y, Enter)
+
+* Reboot the Raspberry Pi:
+  ```
+  sudo reboot
+  ```
+
+This configures GPIO pin 21 as a shutdown button. Connect a momentary push button between GPIO 21 and GND. Pressing the button will trigger a safe system shutdown.
+
+**Note**: This is a system-level configuration that works independently of the Python monitoring script.
+
 ### RPI Configuration
 
 * Boot the Raspberry Pi with our prepared SD card inserted

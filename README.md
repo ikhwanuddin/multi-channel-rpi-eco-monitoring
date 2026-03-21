@@ -25,7 +25,7 @@ Key changes include:
 
 NOTE! SD card should have sufficiently fast read/write speed (Class 10, **minimum 150 mb/s**), otherwise you will get overrun errors during recording. This means data won't record properly - you may see dead channels with no data.
 
-This code has been setup to run on a **Raspberry Pi 3B+** and **Raspberry Pi 4B+**
+This code has been setup to run on a **Raspberry Pi Zero 2 W+**, **Raspberry Pi 3B+**, and **Raspberry Pi 4B+**
 
 ## Setup 
 
@@ -43,7 +43,7 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 
 * Use a clean SD card - to erase contents of prev SD card, use 'Disk Utility' program on Mac or you can format the SD card fresh. 
 * Download and extract the [recommended OS](https://downloads.raspberrypi.org/raspbian_full/images/raspbian_full-2020-02-14/) (the zip file) onto your computer.
-* Flash the OS (.img file) to the SD card - you can use [Balana Etcher](https://www.balena.io/etcher/)
+* Flash the OS (.img file) to the SD card - you can use [Balena Etcher](https://www.balena.io/etcher/)
 * Insert SD card into the pi and power on
 * Make sure to use DEFAULT settings (don't change the password - keep as 'raspberry') - just click 'next'
 * Connect to your wifi network

@@ -283,18 +283,22 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
         time.sleep(wait)
 
 
-def clean_dirs(working_dir, upload_dir, pre_upload_dir):
+def clean_dirs(working_dir, upload_dir, pre_upload_dir, clean_working_dir=True):
     """
-    Function to tidy up the directory structure, any files left in the working
-    directory and any directories in upload emptied by FTP mirroring
+    Function to tidy up the directory structure, optionally cleaning the working
+    directory and removing empty directories in upload/pre-upload paths.
 
     Args
         working_dir: Path to the working directory
         upload_dir: Path to the upload directory
+        clean_working_dir: Boolean, should working_dir be deleted at startup
     """
 
-    logging.info('Cleaning up working directory')
-    shutil.rmtree(working_dir, ignore_errors=True)
+    if clean_working_dir:
+        logging.info('Cleaning up working directory')
+        shutil.rmtree(working_dir, ignore_errors=True)
+    else:
+        logging.info('Skipping working directory cleanup (wipe_data_on_boot disabled)')
 
     # Remove empty directories in the upload directory, from bottom up
     for subdir, dirs, files in os.walk(upload_dir, topdown=False):
@@ -419,12 +423,14 @@ def record(config_file, logfile_name, log_dir='logs'):
         sys.exit()
 
     try:
+        sys_config = config['sys']
         rclone_config = config['rclone']
         sensor_config = config['sensor']
         offline_mode = config['offline_mode']
-        working_dir = config['sys']['working_dir']
-        upload_dir = config['sys']['upload_dir']
-        reboot_time = config['sys']['reboot_time']
+        working_dir = sys_config['working_dir']
+        upload_dir = sys_config['upload_dir']
+        reboot_time = sys_config['reboot_time']
+        wipe_data_on_boot = int(sys_config.get('wipe_data_on_boot', 0))
         logging.info('Config loaded')
     except KeyError:
         logging.info('Failed to load config')
@@ -496,8 +502,8 @@ def record(config_file, logfile_name, log_dir='logs'):
             logging.critical('Could not create {} as upload directory'.format(upload_dir_pi))
             sys.exit()
 
-    # Clean directories
-    clean_dirs(working_dir,upload_dir,pre_upload_dir)
+    # Clean directories, following wipe_data_on_boot policy.
+    clean_dirs(working_dir, upload_dir, pre_upload_dir, clean_working_dir=(wipe_data_on_boot == 1))
 
     # move any existing logs into the upload folder for this pi
     try:

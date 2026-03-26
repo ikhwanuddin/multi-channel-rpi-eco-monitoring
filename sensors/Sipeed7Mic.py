@@ -8,6 +8,9 @@ from sensors.SensorBase import SensorBase
 
 class Sipeed7Mic(SensorBase):
 
+    # WAV files smaller than 1 MB are considered invalid for this pipeline.
+    MIN_VALID_AUDIO_BYTES = 1024 * 1024
+
     def __init__(self, config=None):
 
         """
@@ -111,25 +114,49 @@ class Sipeed7Mic(SensorBase):
         wfile = os.path.join(self.working_dir, self.current_file)
         ofile = os.path.join(self.pre_upload_dir, self.current_file)
         logging.info('\n{} - Started recording at {}'.format(self.current_file, start_time))
+        record_result = None
         try:
-            cmd = 'sudo arecord -D plughw:{},0 -f S16_LE -r 16000 -c 8 --duration {} {}'
+            cmd = ['sudo', 'arecord', '-D', 'plughw:{},0'.format(self.card), '-f', 'S16_LE', '-r', '16000', '-c', '8', '--duration', str(self.record_length), wfile]
             
             # To remedy unexpected recording faults
 
-            kill_time = self.record_length * 1.1
-            # subprocess.call() will return a number (>0 means there was an error)
-            try: 
-                subprocess.call(cmd.format(self.card, self.record_length, wfile), shell=True, timeout=kill_time, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except: 
+            kill_time = self.record_length * 1.5
+            try:
+                record_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                record_process.wait(timeout=kill_time)
+                record_result = subprocess.CompletedProcess(cmd, record_process.returncode)
+            except subprocess.TimeoutExpired:
                 logging.info('\n{} - Timed Out \n'.format(self.current_file))
-                subprocess.run("sudo pkill -9 arecord", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # Graceful stop first so WAV headers/data can be finalized.
+                record_process.terminate()
+                try:
+                    record_process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    logging.info('{} - arecord did not terminate gracefully, forcing kill'.format(self.current_file))
+                    record_process.kill()
+                    record_process.wait(timeout=2)
+
+                record_result = subprocess.CompletedProcess(cmd, record_process.returncode or 124)
+
             end_time = time.strftime('%H-%M-%S')
             logging.info('\n{} - Finished recording at {}'.format(self.current_file, end_time))
+
+            if record_result is not None and record_result.returncode != 0:
+                raise RuntimeError('arecord exited with status {}'.format(record_result.returncode))
+
+            if (not os.path.exists(wfile)) or (os.path.getsize(wfile) < self.MIN_VALID_AUDIO_BYTES):
+                if os.path.exists(wfile):
+                    file_size = os.path.getsize(wfile)
+                    os.remove(wfile)
+                else:
+                    file_size = 0
+                raise RuntimeError('Recorded file too small ({} bytes), marking as invalid'.format(file_size))
+
             self.uncomp_file_name = ofile + '.wav'
             os.rename(wfile, self.uncomp_file_name)
             logging.info('\n{} transferred to {}'.format(self.current_file, wfile))
-        except Exception:
-            logging.info('Error recording from audio card. Creating dummy file')
+        except Exception as exc:
+            logging.info('Error recording from audio card: {}. Creating dummy file'.format(exc))
             open(ofile + '_ERROR_audio-record-failed', 'a').close()
             time.sleep(1)
 
@@ -163,6 +190,10 @@ class Sipeed7Mic(SensorBase):
         # Determine Path for Postprocessed Files: 
         ofile= wfile.replace(pre_upload_dir, upload_dir)
 
+        if (not os.path.exists(wfile)) or (os.path.getsize(wfile) < self.MIN_VALID_AUDIO_BYTES):
+            logging.warning('Skipping compression for invalid or missing WAV: {}'.format(wfile))
+            return
+
         if self.compress_data:
 
             # Get Filename Ready for Compression
@@ -171,15 +202,19 @@ class Sipeed7Mic(SensorBase):
             time_now = time.strftime('%H-%M-%S')
             
             # Audio is compressed using a FLAC Encoding            
-            try: 
+            try:
                 logging.info('\nStarting compression of {}\nto {} at {}\n'.format(wfile, ofile, time_now))
-                cmd = ('ffmpeg -i {} -c:a flac {} >/dev/null 2>&1') 
-                subprocess.call(cmd.format(wfile, ofile), shell=True)
+                cmd = ['ffmpeg', '-y', '-i', wfile, '-c:a', 'flac', ofile]
+                compress_result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if compress_result.returncode != 0:
+                    raise RuntimeError('ffmpeg exited with status {}'.format(compress_result.returncode))
+                if (not os.path.exists(ofile)) or (os.path.getsize(ofile) == 0):
+                    raise RuntimeError('FLAC output missing or empty: {}'.format(ofile))
                 os.remove(wfile)
                 time_now = time.strftime('%H-%M-%S')
                 logging.info('\nFinished compression of {}\nto {} at {}\n'.format(wfile, ofile, time_now))
-            except Exception:
-                logging.info('Error compressing {}'. format(wfile))
+            except Exception as exc:
+                logging.info('Error compressing {}: {}'. format(wfile, exc))
             
 
         else:

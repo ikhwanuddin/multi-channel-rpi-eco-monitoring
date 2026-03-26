@@ -9,7 +9,7 @@ DEFAULT_TARGET="/home/pi/multi_channel_monitoring_data/live_data"
 TARGET_DIR="${1:-$DEFAULT_TARGET}"
 
 printf '##############################################\n'
-printf ' Clean live_data utility\n'
+printf '          Clean live_data utility\n'
 printf '##############################################\n'
 printf 'Target directory: %s\n' "$TARGET_DIR"
 

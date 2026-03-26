@@ -132,19 +132,24 @@ export PI_ID
 logdir='logs'
 logfile_name="multi_rpi_eco_"$PI_ID"_"$currentDate".log"
 
-# Start recording script
+# Start recording script with auto-restart on failure
 printf 'End of startup script\n'
-echo "Starting recording with command:"
-echo "sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
+echo "Starting recording with auto-restart on failure"
+echo "Command: sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
 echo ""
 
-if ! sudo -E python3 -u python_record.py $config_file $logfile_name $logdir; then
-    echo ""
-    echo "ERROR: Recording script failed to start!"
-    echo "Please check the following:"
-    echo "1. All dependencies are installed: pip3 install -r requirements.txt"
-    echo "2. Audio devices are properly connected"
-    echo "3. Config file is valid: python3 -c \"import json; json.load(open('$config_file'))\""
-    echo "4. Check system logs for more details"
-    exit 1
-fi
+restart_count=0
+while true; do
+    echo "Attempting to start recording script (attempt $((restart_count + 1)))..."
+    if sudo -E python3 -u python_record.py $config_file $logfile_name $logdir; then
+        echo "Recording script exited successfully."
+        break
+    else
+        echo ""
+        echo "ERROR: Recording script failed (attempt $((restart_count + 1)))!"
+        echo "Will retry in 10 seconds..."
+        echo "Check logs at $logdir/$logfile_name for details."
+        sleep 10
+        restart_count=$((restart_count + 1))
+    fi
+done

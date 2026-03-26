@@ -85,6 +85,36 @@ def configure_sensor(sensor_config):
     return sensor
 
 
+def check_last_recording_size(upload_dir_pi):
+    """
+    Check if the last recording file in upload_dir_pi is smaller than 1 MB.
+    If so, restart the system to prevent corrupted recordings.
+    """
+    try:
+        # Find all recording files (assuming .wav or .flac extensions)
+        recording_files = []
+        for root, dirs, files in os.walk(upload_dir_pi):
+            for file in files:
+                if file.endswith(('.wav', '.flac', '.mp3')):  # Add more extensions if needed
+                    recording_files.append(os.path.join(root, file))
+        
+        if not recording_files:
+            logging.info('No recording files found for size check.')
+            return
+        
+        # Get the latest file by modification time
+        latest_file = max(recording_files, key=os.path.getmtime)
+        file_size = os.path.getsize(latest_file)
+        
+        if file_size < 1048576:  # 1 MB in bytes
+            logging.warning(f'Last recording file {latest_file} is too small ({file_size} bytes < 1 MB). Restarting system to prevent corrupted recordings.')
+            subprocess.call('sudo reboot', shell=True)
+        else:
+            logging.info(f'Last recording file {latest_file} size is {file_size} bytes, OK.')
+    except Exception as e:
+        logging.error(f'Error checking recording file size: {e}')
+
+
 def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
 
     """
@@ -315,6 +345,8 @@ def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die):
         storage_check_shutdown()
         # Begin new recording
         record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True)
+        # Check if last recording file is too small, restart if necessary
+        check_last_recording_size(upload_dir)
 
 
 def continuous_postprocess(sensor, sync_interval, upload_dir, die):

@@ -73,10 +73,10 @@ class Sipeed7Mic(SensorBase):
                     parts = line.split()
                     if len(parts) > 1 and parts[0] == 'card':
                         card_num = parts[1].rstrip(':')
-                        logging.info(f"Detected USB audio card: {card_num}")
+                        logging.info("Detected USB audio card: {}".format(card_num))
                         return card_num
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError) as e:
-            logging.warning(f"Failed to detect USB audio card: {e}, using default '1'")
+            logging.warning("Failed to detect USB audio card: {}, using default '1'".format(e))
         logging.warning("USB audio card not found, using default '1'")
         return '1'  # Default fallback
 

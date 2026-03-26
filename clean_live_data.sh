@@ -47,10 +47,15 @@ fi
 
 # Remove everything inside live_data, including hidden files/folders.
 # Keep the live_data directory itself.
-if find "$TARGET_DIR" -mindepth 1 -print -quit | grep -q .; then
+# Use sudo because files may be owned by root (python_record.py runs as sudo).
+if sudo find "$TARGET_DIR" -mindepth 1 -print -quit | grep -q .; then
     echo "Cleaning all contents inside: $TARGET_DIR"
-    rm -rf -- "$TARGET_DIR"/* "$TARGET_DIR"/.[!.]* "$TARGET_DIR"/..?* 2>/dev/null || true
-    echo "Clean completed successfully."
+    if sudo find "$TARGET_DIR" -mindepth 1 -delete; then
+        echo "Clean completed successfully."
+    else
+        echo "ERROR: Some files could not be deleted. Check permissions."
+        exit 1
+    fi
 else
     echo "Nothing to clean. Directory is already empty."
 fi

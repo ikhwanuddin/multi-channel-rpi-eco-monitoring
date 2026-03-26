@@ -68,17 +68,6 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
   ```
   git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git
   ```
-* Install the package and dependencies: 
-  ```
-  cd multi-channel-rpi-eco-monitoring
-  
-  # Install system audio libraries (required for PyAudio)
-  sudo apt-get install portaudio19-dev python3-dev
-  
-  # Install Python packages
-  pip install . --break-system-packages
-  ``` 
-  (installs psutil for system monitoring, pyaudio for audio processing, and numpy for signal processing; uses --break-system-packages for system-wide installation)
 * Install the required system packages: 
   ```
   sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate chrony rclone zip python3-rpi.gpio alsa-utils

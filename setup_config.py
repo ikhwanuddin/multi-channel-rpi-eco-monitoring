@@ -41,10 +41,19 @@ def config_parse(opt, cnfg):
     print('{prompt} [{name}{vld_str}]{dft_str}'.format(**opt))
 
     while not valid_choice:
+        # Python 2 input() evaluates input as code and breaks on empty Enter.
+        # Use raw_input() on Python 2 and input() on Python 3.
         try:
-            value = input()  # Changed from raw_input() for Python 3 compatibility
+            input_func = raw_input
         except NameError:
-            value = raw_input()  # Fallback for Python 2
+            input_func = input
+
+        try:
+            value = input_func()
+        except EOFError:
+            print('Input stream ended unexpectedly. Please try again.')
+            continue
+
         try:
             # check for input and handle defaults
             if value == '' and 'default' in opt.keys():

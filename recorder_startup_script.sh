@@ -50,17 +50,28 @@ done
 # Change to correct folder
 cd /home/pi/multi-channel-rpi-eco-monitoring
 
-printf 'Turning all 12 LEDs off on the mic array\n'
-chmod +x ./led_off.sh
-chmod +x ./led_on.sh
-sudo bash ./led_off.sh
+config_file="./config.json"
+sensor_type=""
+if [ -f "$config_file" ]; then
+    sensor_type=$(python3 -c "import json; config=json.load(open('$config_file')); print(config.get('sensor', {}).get('sensor_type', ''))" 2>/dev/null)
+fi
+
+if [ "$sensor_type" = "Sipeed7Mic" ]; then
+    printf 'Turning all 12 LEDs off on the mic array (Sipeed7Mic)\n'
+    chmod +x ./led_off.sh
+    chmod +x ./led_on.sh
+    sudo bash ./led_off.sh
+elif [[ "$sensor_type" == Respeaker* ]]; then
+    printf 'Sensor is %s, skipping Sipeed LED control\n' "$sensor_type"
+else
+    printf 'Sensor type unknown or not Sipeed, skipping Sipeed LED control\n'
+fi
 
 # Update time from internet
 printf 'Update time from internet\n'
 sudo bash ./update_time.sh
 
 # Check if data wipe is enabled in config
-config_file="./config.json"
 if [ -f "$config_file" ]; then
     wipe_enabled=$(python3 -c "import json; config=json.load(open('$config_file')); print(config.get('sys', {}).get('wipe_data_on_boot', 0))")
     if [ "$wipe_enabled" = "1" ]; then
@@ -105,7 +116,6 @@ for file in $required_files; do
     fi
 done
 echo "All required files found."
-config_file="./config.json"
 if [ ! -f $config_file ]; then
         echo "Config file '$config_file' not found!"
         echo "Would you like to run setup_config.py to create it? (1 for yes, 0 for no) [1]: "

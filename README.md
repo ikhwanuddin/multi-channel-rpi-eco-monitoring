@@ -110,7 +110,7 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 * Make sure all the scripts in the repository are executable, and that ``recorder_startup_script.sh`` runs on startup...
   * Open a new terminal and type this from the root directory:
     ```
-    sudo nano ../../etc/profile
+    sudo nano /etc/profile
     ``` 
   * Add the following 2 lines to the end of the file:
     ```

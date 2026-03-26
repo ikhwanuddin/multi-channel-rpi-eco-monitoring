@@ -35,8 +35,9 @@ if [[ "$TARGET_DIR" != */live_data ]]; then
 fi
 
 echo ""
-echo "This action will permanently delete all contents inside:"
+echo "This action will permanently delete recording data inside:"
 echo "  $TARGET_DIR"
+echo "All folder structure will be preserved exactly as-is."
 echo "Type 'yes' to continue, or anything else to cancel."
 read -r confirm
 
@@ -45,12 +46,12 @@ if [ "$confirm" != "yes" ]; then
     exit 0
 fi
 
-# Remove everything inside live_data, including hidden files/folders.
-# Keep the live_data directory itself.
+# Remove only files (including hidden files) under live_data.
+# Keep all directories so folder structure remains unchanged.
 # Use sudo because files may be owned by root (python_record.py runs as sudo).
 if sudo find "$TARGET_DIR" -mindepth 1 -print -quit | grep -q .; then
-    echo "Cleaning all contents inside: $TARGET_DIR"
-    if sudo find "$TARGET_DIR" -mindepth 1 -delete; then
+    echo "Cleaning recording files while preserving all folder structure in: $TARGET_DIR"
+    if sudo find "$TARGET_DIR" -type f -delete; then
         echo "Clean completed successfully."
     else
         echo "ERROR: Some files could not be deleted. Check permissions."

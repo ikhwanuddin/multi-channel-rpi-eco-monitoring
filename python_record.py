@@ -107,12 +107,12 @@ def check_last_recording_size(upload_dir_pi):
         file_size = os.path.getsize(latest_file)
         
         if file_size < 1048576:  # 1 MB in bytes
-            logging.warning(f'Last recording file {latest_file} is too small ({file_size} bytes < 1 MB). Restarting system to prevent corrupted recordings.')
+            logging.warning('Last recording file {} is too small ({} bytes < 1 MB). Restarting system to prevent corrupted recordings.'.format(latest_file, file_size))
             subprocess.call('sudo reboot', shell=True)
         else:
-            logging.info(f'Last recording file {latest_file} size is {file_size} bytes, OK.')
+            logging.info('Last recording file {} size is {} bytes, OK.'.format(latest_file, file_size))
     except Exception as e:
-        logging.error(f'Error checking recording file size: {e}')
+        logging.error('Error checking recording file size: {}'.format(e))
 
 
 def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):

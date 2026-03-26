@@ -38,13 +38,21 @@ echo ""
 echo "This action will permanently delete recording data inside:"
 echo "  $TARGET_DIR"
 echo "All folder structure will be preserved exactly as-is."
-echo "Type 'yes' to continue, or anything else to cancel."
+echo "Type 'y' to continue delete, or 'n' to cancel."
 read -r confirm
 
-if [ "$confirm" != "yes" ]; then
-    echo "Canceled. No data was deleted."
-    exit 0
-fi
+case "$confirm" in
+    y)
+        ;;
+    n)
+        echo "Canceled. No data was deleted."
+        exit 0
+        ;;
+    *)
+        echo "Invalid input. Canceled for safety."
+        exit 0
+        ;;
+esac
 
 # Remove only files (including hidden files) under live_data.
 # Keep all directories so folder structure remains unchanged.

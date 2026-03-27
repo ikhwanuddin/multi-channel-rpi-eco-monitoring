@@ -6,6 +6,33 @@ This is the code designed to run a MAARU (Multichannel Autonomous Acoustic Recor
 
 Code adapted by Rifqi Ikhwanuddin from Neel Le Penru, James Skinner, Becky Heath, and Sarab Sethi's work on Autonomous Ecosystem Monitoring. More information on that project and full details at: https://github.com/sarabsethi/rpi-eco-monitoring.
 
+## Hardware Paths
+
+This project now has two practical deployment paths, depending on which microphone array you want to use.
+
+### Legacy Path: Respeaker 4-Mic / 6-Mic
+
+Choose this path if you want to keep using the older Respeaker hardware from the original MAARU workflow.
+
+* Recommended reference repository: [BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring)
+* Use an older Raspberry Pi OS / Raspbian Buster image from the 2020 era, because the Seeed audio driver stack is tied to older kernels.
+* Install the Seeed Voicecard / soundcard driver as required by the Respeaker hardware.
+* Do **not** update the kernel after the audio stack is working.
+* Avoid `rpi-update`, `apt full-upgrade`, or any other upgrade path that changes the kernel or low-level audio driver stack.
+* In practice, this is the "legacy" line and should be treated as a frozen deployment environment.
+
+### Modern Path: Sipeed 7-Mic Array
+
+Choose this path if you want to use the newer Sipeed 7-Mic Array, which is the primary focus of this fork.
+
+* Recommended repository: this fork
+* You can use newer Raspberry Pi OS releases.
+* No Seeed Voicecard installation is required.
+* You do not need to freeze the kernel just to support the microphone array.
+* This is the recommended path for new deployments.
+
+The setup steps below are primarily for the modern Sipeed path. If you are deploying Respeaker hardware, follow the legacy path constraints above first and use the original repository as your baseline.
+
 Key changes include:
   1. Focus on Sipeed 7-Mic Array for multichannel recording and ecosystem monitoring.
   2. Additional staging step for postprocessing.
@@ -19,7 +46,7 @@ Key changes include:
   8. Old Data is deleted upon boot-up. Make sure that after the battery dies, DiskInternals Linux Reader - https://www.diskinternals.com/linux-reader/ - is used to recover the data.
   9. Migrated from FTP to rclone for cloud storage upload (more reliable and flexible).
   10. Improved subprocess calls to suppress unnecessary output and enhance error handling.
-  11. Migrated to modern pyproject.toml packaging (replacing setup.py) for better compatibility and to avoid deprecation warnings.
+  11. Removed the legacy setup.py file; repository metadata now lives in pyproject.toml.
   12. Added support for Sipeed 7-Mic Array sensor (Sipeed7Mic.py).
   13. Separated interactive configuration logic into setup_config.py for modularity and ease of use.
 
@@ -29,28 +56,92 @@ This code has been setup to run on a **Raspberry Pi Zero 2 W+**, **Raspberry Pi 
 
 📖 **For advanced configuration options** (shutdown buttons, power saving, troubleshooting): see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md)
 
-## Setup 
+## Setup
 
-### Pre setup image: 
+### Prebuilt Image
 
 We have made a new disk image for this fork. If using this image, clone the image to and SD card then skip ahead to the "RPI Configuration" steps below to customise your ecosystem monitoring protocol and finish install. This image can be found [here](https://drive.google.com/file/d/1sTKPgUOcT4SQeJqtF6wdd6rjtqFLZzfR/view?usp=sharing). If you'd like to set the Raspberry Pi up manually follow the manual setup below and *then* the Configuration procedure. 
 
-### Manual Setup 
+### Manual Setup
 
-If you would rather start using a stock Raspbian image, there's an extra couple of steps before you start the setup process. The seeed soundcard only works on older versions of Raspbian Buster (Rasbian Buster, 13th Feb 2020 works well). 
+If you would rather start using a stock Raspberry Pi OS image, pick the correct path first:
 
-### Setup overview
+* **Respeaker legacy path**: use an older Raspbian Buster image from early 2020, install the Seeed soundcard stack, and do not update the kernel afterward.
+* **Sipeed modern path**: use a current Raspberry Pi OS image and continue with the setup steps below. No Seeed Voicecard install is needed.
 
-#### Pi OS setup: 
+### Setup Overview
+
+#### Legacy Respeaker Setup
+
+Use this only if you are deliberately deploying Respeaker 4-Mic or 6-Mic hardware and are prepared to keep the system on the older software stack.
+
+##### Legacy Respeaker OS Setup
+
+* Use a clean SD card - to erase contents of prev SD card, use 'Disk Utility' program on Mac or you can format the SD card fresh.
+* Download and extract the recommended older Raspberry Pi OS / Raspbian Buster image onto your computer.
+* Flash the OS (.img file) to the SD card - you can use [Balena Etcher](https://www.balena.io/etcher/).
+* Insert SD card into the Pi and power on.
+* Make sure to use DEFAULT settings (don't change the password - keep as 'raspberry') - just click 'next'.
+* Connect to your wifi network.
+* Do **not** install general OS updates. Updated Raspbian / Raspberry Pi OS versions are known to break compatibility with the Respeaker sound card stack.
+* Update only the Pi kernel headers:
+  ```bash
+  sudo apt-get install raspberrypi-kernel-headers
+  sudo reboot
+  ```
+* After reboot, prevent further kernel-related updates:
+  ```bash
+  sudo apt-mark hold raspberrypi-kernel-headers raspberrypi-kernel
+  sudo apt-mark showhold
+  ```
+* Check that Python3 is already installed.
+  * `python3` in terminal should show Python 3.7.3.
+  * Otherwise, install Python3:
+    ```bash
+    sudo apt-get install python3
+    ```
+* Install packages to read mounted drives:
+  ```bash
+  sudo apt-get install exfat-fuse
+  sudo apt-get install exfat-utils
+  ```
+
+##### Legacy Respeaker Voicecard Setup
+
+* Open a terminal.
+* Install git if needed:
+  ```bash
+  sudo apt-get install git
+  ```
+* Clone the Seeed Voicecard repository into the home directory of the Raspberry Pi:
+  ```bash
+  git clone https://github.com/respeaker/seeed-voicecard.git
+  ```
+* Enter the repository:
+  ```bash
+  cd seeed-voicecard
+  ```
+* Install the sound card stack:
+  ```bash
+  sudo ./install.sh
+  ```
+* Reboot the Pi:
+  ```bash
+  sudo reboot
+  ```
+
+After that point, keep the deployment frozen. Do not remove the kernel hold and do not run broad system upgrades unless you are prepared to rebuild the legacy audio setup from scratch.
+
+#### Sipeed 7-Mic Setup
 
 * Use a clean SD card - to erase contents of prev SD card, use 'Disk Utility' program on Mac or you can format the SD card fresh. 
-* Download and extract the [recommended OS](https://downloads.raspberrypi.org/raspbian_full/images/raspbian_full-2020-02-14/) (the zip file) onto your computer.
+* Download and extract a current Raspberry Pi OS image onto your computer.
 * Flash the OS (.img file) to the SD card - you can use [Balena Etcher](https://www.balena.io/etcher/)
 * Insert SD card into the pi and power on
 * Make sure to use DEFAULT settings (don't change the password - keep as 'raspberry') - just click 'next'
 * Connect to your wifi network
 * Check that Python3 is already installed
-  * ``python3`` in terminal --> Should show Python 3.7.3
+  * ``python3`` in terminal --> Should show an installed Python 3 version
   * Otherwise, install Python3 - 
     ```
     sudo apt-get install python3
@@ -61,18 +152,24 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
   sudo apt-get install exfat-utils
   ```
 
-##### Set up Multi-Channel Eco Monitoring
+##### Sipeed Recorder Setup
 
 * Log in and open a terminal
 * Clone this repository into the home directory of the Raspberry pi: 
   ```
   git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git
   ```
+* This repository is run directly from source on the Raspberry Pi. There is no `pip install .` step.
 * Install the required system packages: 
   ```
-  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate chrony rclone zip python3-rpi.gpio alsa-utils
+  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate chrony rclone zip python3-rpi.gpio python3-numpy python3-pyaudio alsa-utils
   ```
   (note: rclone for cloud upload, chrony for enhanced time synchronization)
+* Install the Python package used by the recorder scripts:
+  ```
+  python3 -m pip install -r requirements.txt
+  ```
+* If you are intentionally deploying the old Respeaker path instead, stop here and switch to the legacy repository/instructions before installing newer OS-specific components.
 * Set up rclone for cloud storage (optional for online upload):
   * **Note**: This step is optional. If you prefer offline mode (no cloud upload), you can skip this setup. The system will record audio locally without uploading to cloud storage. For online monitoring with cloud upload (e.g., to Box), follow these steps.
   * Run the rclone configuration:
@@ -118,7 +215,7 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
     sudo shutdown -h now
     ```
 
-### RPI Configuration
+### Raspberry Pi Configuration
 
 * Boot the Raspberry Pi with our prepared SD card inserted
 * On first boot, the RasPi should automatically reboot, to expand the file system to max capacity of the SD Card (image is only 8 GB)
@@ -152,8 +249,8 @@ If you would rather start using a stock Raspbian image, there's an extra couple 
 
 For advanced configuration options including shutdown button setup, power saving configurations, troubleshooting, and additional notes, see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md).
 
-## List To Do
-- [x] Add configuration option to always delete recorded data clean or always keep the fles in ```setup_config.py```.
+## To Do
+- [x] Add configuration option to always delete recorded data clean or always keep the files in ```setup_config.py```.
 - [ ] More efficient raspberry pi with better scheduling.
 
 ## Authors

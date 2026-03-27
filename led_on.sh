@@ -25,6 +25,7 @@ BAUD_RATE=9600                 # Correct baud rate for command interface
 SOUND_MAP_CMD="f"              # Enable sound field map (required for LED control)
 LED_OFF_CMD="e"                # Turn LEDs OFF
 LED_ON_CMD="E"                 # Turn LEDs ON
+SETTLE_DELAY="0.2"            # Short pause so firmware can process commands
 # -----------------------------------------------------------------------------
 
 # --------------------------- VALIDATION --------------------------------------
@@ -45,7 +46,14 @@ if [ ! -r "$DEVICE" ] || [ ! -w "$DEVICE" ]; then
 fi
 # -----------------------------------------------------------------------------
 echo "Turning LEDs ON..."
-echo "$LED_ON_CMD" > "$DEVICE"
+
+# Configure the ACM port for single-byte command writes without local echo.
+stty -F "$DEVICE" "$BAUD_RATE" raw -echo
+
+# Sipeed firmware expects sound-map mode to be enabled before LED commands.
+printf '%s' "$SOUND_MAP_CMD" > "$DEVICE"
+sleep "$SETTLE_DELAY"
+printf '%s' "$LED_ON_CMD" > "$DEVICE"
 
 echo "LEDs turned ON successfully!"
 echo "  → Visual check: All 12 LEDs on the mic array should be light."

@@ -25,6 +25,7 @@ BAUD_RATE=9600                 # Correct baud rate for command interface
 SOUND_MAP_CMD="f"              # Enable sound field map (required for LED control)
 LED_OFF_CMD="e"                # Turn LEDs OFF
 LED_ON_CMD="E"                 # Turn LEDs ON
+SETTLE_DELAY="0.2"            # Short pause so firmware can process commands
 # -----------------------------------------------------------------------------
 
 # --------------------------- VALIDATION --------------------------------------
@@ -47,10 +48,18 @@ fi
 
 # --------------------------- MAIN CONTROL ------------------------------------
 echo "Turning LEDs OFF..."
-echo "$LED_OFF_CMD" > "$DEVICE"
+
+# Configure the ACM port for single-byte command writes without local echo.
+stty -F "$DEVICE" "$BAUD_RATE" raw -echo
+
+# Sipeed firmware expects sound-map mode to be enabled before LED commands.
+printf '%s' "$SOUND_MAP_CMD" > "$DEVICE"
+sleep "$SETTLE_DELAY"
+printf '%s' "$LED_OFF_CMD" > "$DEVICE"
 
 echo "LEDs turned OFF successfully!"
-echo "  → Visual check: All 12 LEDs on the mic array should be dark."
+echo "  → Visual check: Most or all ring LEDs should be dark."
+echo "  → If one ring LED stays on, try: python3 ./sipeed_led_force_off.py"
 echo "  → To turn ON again: echo '$LED_ON_CMD' > $DEVICE"
 # -----------------------------------------------------------------------------
 
@@ -58,6 +67,9 @@ echo "  → To turn ON again: echo '$LED_ON_CMD' > $DEVICE"
 # • Auto-run on boot (add before 'exit 0' in /etc/rc.local):
 #     (sleep 5; stty -F /dev/ttyACM0 9600 raw -echo; \
 #      echo 'f' > /dev/ttyACM0; echo 'e' > /dev/ttyACM0) &
+#
+# • Experimental hard-off fallback for stubborn ring LEDs:
+#     python3 ./sipeed_led_force_off.py
 #
 # • Monitor sound map output (hex dump):
 #     timeout 5 cat /dev/ttyACM0 | hexdump -C

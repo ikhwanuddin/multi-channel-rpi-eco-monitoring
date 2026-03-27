@@ -33,6 +33,7 @@ setup(
         "psutil>=5.8.0",
         "pyaudio>=0.2.11",
         "numpy>=1.21.0",
+        "pyserial>=3.5",
     ],
     include_package_data=True,
     zip_safe=False,

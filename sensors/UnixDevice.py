@@ -50,7 +50,7 @@ class UnixDevice(SensorBase):
         """
         Simple static method defining the config options and defaults. The use of a list
         here is to provide a static order in which the options are set using the configuration
-        setup.py script.
+        setup_config.py script.
         """
 
         return [{'name': 'device',

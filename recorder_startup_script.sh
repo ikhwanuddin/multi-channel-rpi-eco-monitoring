@@ -96,7 +96,8 @@ echo "Checking Python dependencies..."
 python3 -c "import pyaudio, numpy, RPi.GPIO, psutil" 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "WARNING: Some Python dependencies may be missing."
-    echo "Run: pip3 install pyaudio numpy RPi.GPIO psutil"
+    echo "Run: sudo apt-get install python3-rpi.gpio python3-numpy python3-pyaudio"
+    echo "Then: python3 -m pip install -r requirements.txt"
     echo "Continuing anyway..."
 fi
 

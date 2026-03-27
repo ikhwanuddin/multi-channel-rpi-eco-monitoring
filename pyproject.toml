@@ -1,6 +1,6 @@
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+# Repository metadata only.
+# This project is run directly from source on Raspberry Pi devices and is not
+# intended to be built or installed as a distributable Python package.
 
 [project]
 name = "multi-channel-rpi-eco-monitoring"
@@ -25,12 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "psutil>=5.8.0",
-    "pyaudio>=0.2.11",
-    "numpy>=1.21.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring"
-
-[tool.setuptools.packages.find]
-include = ["sensors*"]

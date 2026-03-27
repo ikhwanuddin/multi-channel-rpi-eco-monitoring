@@ -35,18 +35,6 @@ This configures GPIO pin 21 as a shutdown button. Connect a momentary push butto
 
 For long-term battery-powered monitoring deployments, you can reduce power consumption with these configurations:
 
-## Sipeed LED Troubleshooting
-
-If using the Sipeed 7-Mic Array, the startup script calls `led_off.sh` to disable the LED ring over `/dev/ttyACM0`.
-
-* The normal control path now sends `f` first and then `e` with raw serial settings, which is more reliable than writing `e` alone.
-* If one red ring LED remains on after `led_off.sh`, try the experimental fallback:
-  ```bash
-  python3 ./sipeed_led_force_off.py
-  ```
-* The fallback sends the usual firmware commands first, then a raw SK9822-style all-black frame as an experiment. This depends on the board firmware accepting raw payload bytes over the CDC ACM port.
-* The orange LED on the MA-USB8 carrier is typically a hardware power indicator and is not expected to turn off via software.
-
 ### Disable HDMI Output
 * **Option 1: Run on startup** (add to `recorder_startup_script.sh`):
   ```

@@ -193,6 +193,7 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
     ```
     python setup_config.py
     ``` 
+  * The setup now supports one or two daily reboot times. The primary reboot defaults to ``02:00`` and the second reboot time is optional.
 * Make sure all the scripts in the repository are executable, and that ``recorder_startup_script.sh`` runs on startup...
   * Open a new terminal and type this from the root directory:
     ```

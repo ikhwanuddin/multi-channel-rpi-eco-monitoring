@@ -51,7 +51,7 @@ class Respeaker6Mic(SensorBase):
                  'prompt': 'Should the audio data be compressed from WAV to FLAC Lossless Compression?'},
                 {'name': 'capture_delay',
                  'type': int,
-                 'default': 0,
+                 'default': 300,
                  'prompt': 'How long should the system wait between audio samples?'}
                 ]
 

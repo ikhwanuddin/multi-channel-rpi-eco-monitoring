@@ -50,7 +50,7 @@ class Respeaker4Mic(SensorBase):
                  'prompt': 'Should the audio data be compressed using FLAC?'},
                 {'name': 'capture_delay',
                  'type': int,
-                 'default': 0,
+                 'default': 300,
                  'prompt': 'How long should the system wait between audio samples?'}
                 ]
 

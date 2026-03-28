@@ -49,7 +49,7 @@ class Respeaker_Custom(SensorBase):
                  'prompt': 'Should the audio data be compressed from WAV to VBR mp3? NOTE: only for 1 or 2 channel Audio!'},
                 {'name': 'capture_delay',
                  'type': int,
-                 'default': 0,
+                 'default': 300,
                  'prompt': 'How long should the system wait between audio samples?'},
                 {'name': 'microphone_number',
                  'type': int,

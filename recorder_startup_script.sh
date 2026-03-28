@@ -2,8 +2,22 @@
 
 printf '##############################################\n Start of ecosystem monitoring startup script\n##############################################\n'
 
-# Disable activity LED to save power
-sudo sh -c 'echo 0 > /sys/class/leds/led0/brightness'
+# Disable activity LED to save power (path differs across Raspberry Pi models/images)
+if [ -d /sys/class/leds/ACT ]; then
+    if sudo sh -c 'echo none > /sys/class/leds/ACT/trigger' && sudo sh -c 'echo 0 > /sys/class/leds/ACT/brightness'; then
+        echo "Activity LED disabled via /sys/class/leds/ACT"
+    else
+        echo "Failed to disable activity LED via /sys/class/leds/ACT"
+    fi
+elif [ -d /sys/class/leds/led0 ]; then
+    if sudo sh -c 'echo none > /sys/class/leds/led0/trigger' && sudo sh -c 'echo 0 > /sys/class/leds/led0/brightness'; then
+        echo "Activity LED disabled via /sys/class/leds/led0"
+    else
+        echo "Failed to disable activity LED via /sys/class/leds/led0"
+    fi
+else
+    echo "Activity LED sysfs path not found, skipping LED disable."
+fi
 
 # One off expanding of filesystem to fill SD card
 if [ ! -f fs_expanded ]; then

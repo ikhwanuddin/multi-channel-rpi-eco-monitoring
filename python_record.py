@@ -47,6 +47,68 @@ def safe_shutdown():
     subprocess.call(shutdown_cmd, shell=True)
 
 
+def parse_reboot_times(sys_config):
+    """
+    Parse configured daily reboot times from legacy and new config keys.
+
+    Supported formats:
+    - sys.reboot_time: "HH:MM"
+    - sys.reboot_time_2: "HH:MM"
+    - sys.reboot_times: ["HH:MM", "HH:MM"] or "HH:MM,HH:MM"
+    """
+    reboot_candidates = []
+
+    reboot_time = sys_config.get('reboot_time')
+    if reboot_time:
+        reboot_candidates.append(reboot_time)
+
+    reboot_time_2 = sys_config.get('reboot_time_2')
+    if reboot_time_2:
+        reboot_candidates.append(reboot_time_2)
+
+    reboot_times = sys_config.get('reboot_times', [])
+    if isinstance(reboot_times, str):
+        reboot_candidates.extend([value.strip() for value in reboot_times.split(',') if value.strip()])
+    elif isinstance(reboot_times, list):
+        reboot_candidates.extend(reboot_times)
+
+    validated_times = []
+    seen_times = set()
+    for candidate in reboot_candidates:
+        if not candidate:
+            continue
+        try:
+            normalized_time = datetime.strptime(str(candidate).strip(), '%H:%M').strftime('%H:%M')
+        except ValueError:
+            logging.warning('Ignoring invalid reboot time: {}'.format(candidate))
+            continue
+
+        if normalized_time not in seen_times:
+            seen_times.add(normalized_time)
+            validated_times.append(normalized_time)
+
+    return sorted(validated_times)
+
+
+def scheduled_reboot_monitor(reboot_times, die):
+    """
+    Monitor local time and trigger a reboot when a configured reboot time is reached.
+    """
+    last_trigger = None
+
+    while not die.is_set():
+        now = datetime.now()
+        current_time = now.strftime('%H:%M')
+        trigger_key = now.strftime('%Y-%m-%d %H:%M')
+
+        if current_time in reboot_times and trigger_key != last_trigger:
+            last_trigger = trigger_key
+            logging.warning('Scheduled reboot triggered for {}'.format(current_time))
+            subprocess.call('sudo reboot', shell=True)
+
+        die.wait(20)
+
+
 def configure_sensor(sensor_config):
 
     """
@@ -429,7 +491,7 @@ def record(config_file, logfile_name, log_dir='logs'):
         offline_mode = config['offline_mode']
         working_dir = sys_config['working_dir']
         upload_dir = sys_config['upload_dir']
-        reboot_time = sys_config['reboot_time']
+        reboot_times = parse_reboot_times(sys_config)
         wipe_data_on_boot = int(sys_config.get('wipe_data_on_boot', 0))
         logging.info('Config loaded')
     except KeyError:
@@ -448,10 +510,10 @@ def record(config_file, logfile_name, log_dir='logs'):
     # Note: Sipeed7Mic uses system-level GPIO shutdown via dtoverlay in /boot/config.txt
     # No Python GPIO setup needed for Sipeed7Mic button
 
-    # Schedule restart at reboot time, running in a separate process
-    logging.info('Scheduling restart for {}'.format(reboot_time))
-    cmd = '(sudo shutdown -c && shutdown -r {}) &'.format(reboot_time)
-    subprocess.call(cmd, shell=True)
+    if reboot_times:
+        logging.info('Configured daily reboot times: {}'.format(', '.join(reboot_times)))
+    else:
+        logging.warning('No valid daily reboot times configured; scheduled reboot disabled')
     
     # Schedule a shutdown after X hours, based on battery life...
     # Set the number a couple hours lower than expected (to be safe)
@@ -530,6 +592,10 @@ def record(config_file, logfile_name, log_dir='logs'):
     if not offline_mode:
         sync_thread = threading.Thread(target=upload_server_sync, args=(sensor.server_sync_interval,
                                                                      rclone_config, upload_dir_pi, die))
+
+    reboot_thread = None
+    if reboot_times:
+        reboot_thread = threading.Thread(target=scheduled_reboot_monitor, args=(reboot_times, die))
     
     record_thread = threading.Thread(target=continuous_recording, args=(sensor, working_dir,
                                                                     upload_dir_pi, sensor_config, die))
@@ -549,6 +615,8 @@ def record(config_file, logfile_name, log_dir='logs'):
         logging.info('Starting continuous recording at {}'.format(datetime.now()))
         record_thread.start()
         postprocess_thread.start()
+        if reboot_thread is not None:
+            reboot_thread.start()
         
         if offline_mode:
             logging.info('Running in offline mode - no upload synchronisation')
@@ -570,6 +638,8 @@ def record(config_file, logfile_name, log_dir='logs'):
         die.set()
         record_thread.join()
         postprocess_thread.join()
+        if reboot_thread is not None:
+            reboot_thread.join()
         if not offline_mode:
             sync_thread.join()
 

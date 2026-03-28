@@ -2,6 +2,9 @@
 
 printf '##############################################\n Start of ecosystem monitoring startup script\n##############################################\n'
 
+# Disable activity LED to save power
+sudo sh -c 'echo 0 > /sys/class/leds/led0/brightness'
+
 # One off expanding of filesystem to fill SD card
 if [ ! -f fs_expanded ]; then
   # Check if root filesystem is already using most of the disk space

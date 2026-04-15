@@ -542,6 +542,7 @@ def record(config_file, logfile_name, log_dir='logs'):
         upload_dir = sys_config['upload_dir']
         reboot_times = parse_reboot_times(sys_config)
         wipe_data_on_boot = int(sys_config.get('wipe_data_on_boot', 0))
+        use_system_shutdown_button = str(sys_config.get('use_system_shutdown_button', 0)).strip().lower() in ['1', 'true', 'yes', 'on']
         logging.info('Config loaded')
     except KeyError:
         logging.info('Failed to load config')
@@ -552,9 +553,12 @@ def record(config_file, logfile_name, log_dir='logs'):
 
     # Setup button for Respeaker series (GPIO 26)
     if sensor_config['sensor_type'] in ['Respeaker6Mic', 'Respeaker4Mic', 'Respeaker_Custom']:
-        GPIO.setup(array_mic_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.add_event_detect(array_mic_button, GPIO.FALLING,
-                              callback=interrupt_button_callback, bouncetime=100)
+        if use_system_shutdown_button:
+            logging.info('System-level shutdown button enabled; skipping Python GPIO button listener for Respeaker.')
+        else:
+            GPIO.setup(array_mic_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.add_event_detect(array_mic_button, GPIO.FALLING,
+                                  callback=interrupt_button_callback, bouncetime=100)
 
     # Note: Sipeed7Mic uses system-level GPIO shutdown via dtoverlay in /boot/config.txt
     # No Python GPIO setup needed for Sipeed7Mic button

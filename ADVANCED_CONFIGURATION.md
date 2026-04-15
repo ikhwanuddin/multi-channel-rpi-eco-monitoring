@@ -31,6 +31,41 @@ This configures GPIO pin 21 as a shutdown button. Connect a momentary push butto
 
 **Note**: This is a system-level configuration that works independently of the Python monitoring script.
 
+## Shutdown Button Setup for Respeaker 6-Mic (System-Wide)
+
+For Respeaker 6-Mic deployments, you can also use a system-level shutdown button so it still works even if the Python recorder is not running.
+
+* Edit `/boot/config.txt` (or `/boot/firmware/config.txt` on newer OS versions):
+  ```
+  sudo nano /boot/config.txt
+  ```
+
+* Add this line at the end of the file:
+  ```
+  dtoverlay=gpio-shutdown,gpio_pin=26,active_low=1,gpio_pull=up
+  ```
+
+* Save and exit (Ctrl+X, Y, Enter)
+
+* Reboot the Raspberry Pi:
+  ```
+  sudo reboot
+  ```
+
+This configures GPIO pin 26 as a shutdown button. Connect a momentary push button between GPIO 26 and GND.
+
+To avoid duplicate handling with the Python GPIO listener, set this in your `config.json`:
+
+```json
+{
+  "sys": {
+    "use_system_shutdown_button": 1
+  }
+}
+```
+
+With `use_system_shutdown_button` enabled, `python_record.py` will skip registering the Python-side button callback for Respeaker sensors.
+
 ## Power Saving Configuration
 
 For long-term battery-powered monitoring deployments, you can reduce power consumption with these configurations:

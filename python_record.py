@@ -375,6 +375,53 @@ def clean_dirs(working_dir, upload_dir, pre_upload_dir, clean_working_dir=True):
             shutil.rmtree(subdir, ignore_errors=True)
 
 
+def purge_oldest_recording(upload_dir, threshold_percent=95):
+    """
+    If disk usage is at or above threshold_percent, delete the oldest dated
+    subfolder (YYYY-MM-DD) inside upload_dir to free space.
+    Repeats until disk usage drops below the threshold or no dated folders remain.
+    """
+    while True:
+        usage = psutil.disk_usage('/')
+        if usage.percent < threshold_percent:
+            break
+
+        try:
+            entries = os.listdir(upload_dir)
+        except OSError as e:
+            logging.error('Could not list upload directory {}: {}'.format(upload_dir, e))
+            break
+
+        dated_dirs = []
+        for entry in entries:
+            full_path = os.path.join(upload_dir, entry)
+            if os.path.isdir(full_path):
+                try:
+                    datetime.strptime(entry, '%Y-%m-%d')
+                    dated_dirs.append((entry, full_path))
+                except ValueError:
+                    pass
+
+        if not dated_dirs:
+            logging.warning(
+                'Disk usage {}% >= {}% but no dated folders found in {} to purge.'.format(
+                    usage.percent, threshold_percent, upload_dir))
+            break
+
+        dated_dirs.sort(key=lambda x: x[0])
+        oldest_name, oldest_path = dated_dirs[0]
+
+        logging.warning(
+            'Disk usage {}% >= {}%. Deleting oldest recording folder: {}'.format(
+                usage.percent, threshold_percent, oldest_path))
+        try:
+            shutil.rmtree(oldest_path)
+            logging.info('Deleted oldest recording folder: {}'.format(oldest_path))
+        except OSError as e:
+            logging.error('Failed to delete {}: {}'.format(oldest_path, e))
+            break
+
+
 def storage_check_shutdown():
     """
     Checks if at least 1 GB storage space is free, before recording
@@ -407,7 +454,9 @@ def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die):
 
     # Start recording
     while not die.is_set():
-        # Before new 1200 s recording, check if sufficient storage available
+        # Before new recording, purge oldest dated folder if disk usage >= 80%
+        purge_oldest_recording(upload_dir)
+        # Then check if sufficient storage is still available (fallback shutdown)
         storage_check_shutdown()
         # Begin new recording
         record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True)

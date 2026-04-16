@@ -557,8 +557,15 @@ def record(config_file, logfile_name, log_dir='logs'):
             logging.info('System-level shutdown button enabled; skipping Python GPIO button listener for Respeaker.')
         else:
             GPIO.setup(array_mic_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.add_event_detect(array_mic_button, GPIO.FALLING,
-                                  callback=interrupt_button_callback, bouncetime=100)
+            try:
+                GPIO.add_event_detect(array_mic_button, GPIO.FALLING,
+                                      callback=interrupt_button_callback, bouncetime=100)
+            except RuntimeError as e:
+                logging.warning(
+                    'Failed to add GPIO edge detection on pin {} ({}). '
+                    'Continuing without Python button listener. '
+                    'If using dtoverlay gpio-shutdown, set sys.use_system_shutdown_button=1.'.format(
+                        array_mic_button, e))
 
     # Note: Sipeed7Mic uses system-level GPIO shutdown via dtoverlay in /boot/config.txt
     # No Python GPIO setup needed for Sipeed7Mic button

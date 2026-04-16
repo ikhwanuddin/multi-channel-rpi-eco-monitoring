@@ -217,6 +217,15 @@ def main():
                    'default': 0,
                    'valid': [0, 1]}]
 
+    system_shutdown_default = 1 if sensor_config['sensor_type'].startswith('Respeaker') else 0
+    sys_config_options.append(
+                  {'name': 'use_system_shutdown_button',
+                   'type': int,
+                   'prompt': ('Use system-wide shutdown button handling (dtoverlay gpio-shutdown) '
+                              'instead of Python GPIO listener? (1 for yes, 0 for no)'),
+                   'default': system_shutdown_default,
+                   'valid': [0, 1]})
+
     print("Now let's do the system details...")
     sys_config = {}
 

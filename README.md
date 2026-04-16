@@ -194,6 +194,7 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
     python setup_config.py
     ``` 
   * The setup now supports one or two daily reboot times. The primary reboot defaults to ``02:00`` and the second reboot time is optional.
+  * For Respeaker deployments, setup now includes ``sys.use_system_shutdown_button``. Keep this at ``1`` if you enabled ``dtoverlay=gpio-shutdown`` in boot config.
 * Make sure all the scripts in the repository are executable, and that ``recorder_startup_script.sh`` runs on startup...
   * Open a new terminal and type this from the root directory:
     ```
@@ -249,6 +250,15 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
 ### Additional Configuration
 
 For advanced configuration options including shutdown button setup, power saving configurations, troubleshooting, and additional notes, see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md).
+
+For Respeaker users who want a quick system-wide shutdown button setup, run:
+
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+chmod +x enable_system_shutdown_button.sh
+sudo ./enable_system_shutdown_button.sh 26 ./config.json
+sudo reboot
+```
 
 ## To Do
 - [x] Add configuration option to always delete recorded data clean or always keep the files in ```setup_config.py```.

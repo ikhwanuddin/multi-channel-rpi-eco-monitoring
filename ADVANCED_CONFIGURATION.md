@@ -66,6 +66,21 @@ To avoid duplicate handling with the Python GPIO listener, set this in your `con
 
 With `use_system_shutdown_button` enabled, `python_record.py` will skip registering the Python-side button callback for Respeaker sensors.
 
+### One-command helper (recommended)
+
+This repository provides `enable_system_shutdown_button.sh` to apply both changes automatically:
+
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+chmod +x enable_system_shutdown_button.sh
+sudo ./enable_system_shutdown_button.sh 26 ./config.json
+sudo reboot
+```
+
+What it does:
+* Adds (or replaces) `dtoverlay=gpio-shutdown,gpio_pin=26,active_low=1,gpio_pull=up` in boot config.
+* Sets `sys.use_system_shutdown_button=1` in `config.json`.
+
 ## Power Saving Configuration
 
 For long-term battery-powered monitoring deployments, you can reduce power consumption with these configurations:

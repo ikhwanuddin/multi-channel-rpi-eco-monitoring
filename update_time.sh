@@ -4,7 +4,7 @@
 # 1) Prefer internet (timedatectl + optional chrony)
 # 2) Fallback for offline deployment: accept epoch from SSH client
 #    Usage from client device:
-#    ssh pi@<raspberrypi> "cd ~/multi-channel-rpi-eco-monitoring && sudo bash ./update_time.sh --epoch $(date +%s)"
+#    ssh pi@raspberrypi.local "cd ~/multi-channel-rpi-eco-monitoring && sudo bash ./update_time.sh --epoch $(date +%s)"
 
 SSH_EPOCH=""
 
@@ -43,7 +43,7 @@ else
     else
         printf "No internet and no SSH epoch provided. Time not updated.\n"
         printf "Tip: run from client device with:\n"
-        printf "ssh pi@<raspberrypi> \"cd ~/multi-channel-rpi-eco-monitoring && sudo bash ./update_time.sh --epoch \$(date +%%s)\"\n"
+        printf "ssh pi@raspberrypi.local \"cd ~/multi-channel-rpi-eco-monitoring && sudo bash ./update_time.sh --epoch \$(date +%%s)\"\n"
         exit 1
     fi
 fi

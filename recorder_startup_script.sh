@@ -1,6 +1,25 @@
 #!/bin/bash
 
+set -u
+
+##############################################
+# Multi-Channel RPi Eco Monitoring
+# Startup script with mode detection
+# (Offline recording vs Online upload)
+##############################################
+
 printf '##############################################\n Start of ecosystem monitoring startup script\n##############################################\n'
+
+# Get script directory for sourcing helpers
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Source helper functions for upload mode
+if [ -f "$SCRIPT_DIR/upload_mode_helper.sh" ]; then
+    source "$SCRIPT_DIR/upload_mode_helper.sh"
+else
+    echo "ERROR: upload_mode_helper.sh not found!"
+    exit 1
+fi
 
 # Disable activity LED to save power (path differs across Raspberry Pi models/images)
 if [ -d /sys/class/leds/ACT ]; then
@@ -41,28 +60,6 @@ fi
 # Restart udev to simulate hotplugging of 3G dongle
 sudo service udev stop
 sudo service udev start
-
-# On boot up, remove all the prev data (that should have been retrieved)
-# so we don't run out of SD card storage space.
-# NOTE: This is now controlled by config.json 'wipe_data_on_boot' setting
-
-tries=0
-max_tries=10
-while true; do
-	timeout 2s wget -q --spider http://google.com
-	if [ $? -eq 0 ]; then
-		printf "Online\n"
-    break
-	else
-	    printf "Offline\n"
-	fi
-	printf 'Waiting for internet connection before continuing ('$max_tries' tries max)\n'
-	sleep 2
-	let tries=tries+1
-	if [[ $tries -eq $max_tries ]] ;then
-		break
-	fi
-done	
 
 # Change to correct folder
 cd /home/pi/multi-channel-rpi-eco-monitoring
@@ -119,6 +116,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Ensure logs directory exists
+logdir='logs'
 if [ ! -d "$logdir" ]; then
     echo "Creating logs directory..."
     mkdir -p "$logdir"
@@ -126,7 +124,7 @@ fi
 
 # Check if required files exist
 echo "Checking required files..."
-required_files="python_record.py discover_serial.py"
+required_files="python_record.py discover_serial.py upload_mode_helper.sh"
 for file in $required_files; do
     if [ ! -f "$file" ]; then
         echo "ERROR: Required file '$file' not found!"
@@ -146,6 +144,7 @@ if [ ! -f $config_file ]; then
             exit 1
         fi
 fi
+
 # export the raspberry pi serial number to an environment variable
 echo "Getting Raspberry Pi serial number..."
 if ! PI_ID=$(python3 discover_serial.py 2>&1); then
@@ -156,28 +155,134 @@ if ! PI_ID=$(python3 discover_serial.py 2>&1); then
 fi
 export PI_ID
 
-# the file in which to store to store the logging from this run
-logdir='logs'
-logfile_name="multi_rpi_eco_"$PI_ID"_"$currentDate".log"
+##############################################
+# MODE DETECTION - Online vs Offline
+##############################################
 
-# Start recording script with auto-restart on failure
-printf 'End of startup script\n'
-echo "Starting recording with auto-restart on failure"
-echo "Command: sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
-echo ""
+echo "Detecting operating mode based on internet connectivity..."
+echo "Checking for internet access (this may take a minute)..."
 
-restart_count=0
-while true; do
-    echo "Attempting to start recording script (attempt $((restart_count + 1)))..."
-    if sudo -E python3 -u python_record.py $config_file $logfile_name $logdir; then
-        echo "Recording script exited successfully."
-        break
-    else
-        echo ""
-        echo "ERROR: Recording script failed (attempt $((restart_count + 1)))!"
-        echo "Will retry in 10 seconds..."
-        echo "Check logs at $logdir/$logfile_name for details."
-        sleep 10
-        restart_count=$((restart_count + 1))
+# Check internet availability (waits up to 1 minute on each check)
+if check_internet; then
+    OPERATING_MODE="ONLINE"
+    echo "Internet is AVAILABLE - Switching to UPLOAD mode"
+else
+    OPERATING_MODE="OFFLINE"
+    echo "Internet NOT available - Switching to RECORDING mode"
+fi
+
+printf '\n##############################################\n'
+printf ' Operating Mode: %s\n' "$OPERATING_MODE"
+printf '##############################################\n\n'
+
+##############################################
+# RECORDING MODE - Offline Recording
+##############################################
+if [ "$OPERATING_MODE" = "OFFLINE" ]; then
+    
+    # the file in which to store the logging from this run
+    logfile_name="multi_rpi_eco_"$PI_ID"_"$currentDate".log"
+    
+    # Start recording script with auto-restart on failure
+    printf 'Starting RECORDING mode (offline)\n'
+    echo "Command: sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
+    echo ""
+    
+    restart_count=0
+    while true; do
+        echo "Attempting to start recording script (attempt $((restart_count + 1)))..."
+        if sudo -E python3 -u python_record.py $config_file $logfile_name $logdir; then
+            echo "Recording script exited successfully."
+            break
+        else
+            echo ""
+            echo "ERROR: Recording script failed (attempt $((restart_count + 1)))!"
+            echo "Will retry in 10 seconds..."
+            echo "Check logs at $logdir/$logfile_name for details."
+            sleep 10
+            restart_count=$((restart_count + 1))
+        fi
+    done
+
+##############################################
+# UPLOAD MODE - Online Data Upload
+##############################################
+else
+    
+    logfile_name="multi_rpi_eco_upload_"$PI_ID"_"$currentDate".log"
+    upload_logfile="$logdir/$logfile_name"
+    
+    # Ensure logs directory exists
+    if [ ! -d "$logdir" ]; then
+        mkdir -p "$logdir"
     fi
-done
+    
+    printf 'Starting UPLOAD mode (online)\n' | tee -a "$upload_logfile"
+    
+    # Get upload configuration from config.json
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Initializing upload mode..." | tee -a "$upload_logfile"
+    
+    # Extract rclone configuration from config.json (if available)
+    # User needs to have rclone configured already
+    RCLONE_CONFIG=$(python3 -c "import json; config=json.load(open('$config_file')); print(json.dumps(config.get('rclone', {})))" 2>/dev/null)
+    
+    if [ "$RCLONE_CONFIG" = "null" ] || [ -z "$RCLONE_CONFIG" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] No rclone config in config.json, using default rclone config" | tee -a "$upload_logfile"
+    fi
+    
+    # Data directory to upload
+    live_data_dir="/home/pi/multi_channel_monitoring_data/live_data"
+    state_file="$live_data_dir/.rclone_state.json"
+    
+    # Ensure live_data directory exists
+    if [ ! -d "$live_data_dir" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: live_data directory not found: $live_data_dir" | tee -a "$upload_logfile"
+        exit 1
+    fi
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Live data directory: $live_data_dir" | tee -a "$upload_logfile"
+    
+    # Initialize rclone state
+    init_rclone_state "$state_file" "$live_data_dir"
+    
+    # Scan and update state with files on disk
+    update_rclone_state_from_disk "$state_file" "$live_data_dir"
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting upload process..." | tee -a "$upload_logfile"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] For graceful shutdown, press Ctrl+C or press physical shutdown button" | tee -a "$upload_logfile"
+    
+    # Main upload loop - keep retrying upload with internet monitoring
+    upload_complete=0
+    retry_count=0
+    max_retries=999  # Essentially unlimited until user intervenes
+    
+    while [ $upload_complete -eq 0 ] && [ $retry_count -lt $max_retries ]; do
+        
+        # Check internet before attempting upload
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Checking internet connectivity before upload..." | tee -a "$upload_logfile"
+        
+        if ! check_internet_quick; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] No internet available, waiting to reconnect..." | tee -a "$upload_logfile"
+            sleep 30
+            continue
+        fi
+        
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Internet available, proceeding with upload..." | tee -a "$upload_logfile"
+        
+        # Run upload script
+        # Note: This will be replaced with the refactored rclone_upload.sh
+        if bash ./rclone_upload.sh "$live_data_dir" "" "$state_file" "$upload_logfile"; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Upload cycle completed successfully" | tee -a "$upload_logfile"
+            upload_complete=1
+        else
+            retry_count=$((retry_count + 1))
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Upload cycle failed, will retry... (attempt $retry_count)" | tee -a "$upload_logfile"
+            sleep 30
+        fi
+    done
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Upload mode finished" | tee -a "$upload_logfile"
+    
+fi
+
+printf 'End of startup script\n'

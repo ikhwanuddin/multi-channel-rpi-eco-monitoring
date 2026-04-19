@@ -251,7 +251,14 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
 
 For advanced configuration options including shutdown button setup, power saving configurations, troubleshooting, and additional notes, see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md).
 
-For Respeaker users who want a quick system-wide shutdown button setup, run:
+### System-Wide Shutdown Button (Recommended)
+
+Use system-wide shutdown handling so the button still works even if recorder Python process is not running.
+
+1. Choose GPIO pin by sensor:
+  - Respeaker: use GPIO 26 (default)
+  - Sipeed: use your wired shutdown pin (for example GPIO 21)
+2. Run helper script from repository root:
 
 ```bash
 cd ~/multi-channel-rpi-eco-monitoring
@@ -259,6 +266,25 @@ chmod +x enable_system_shutdown_button.sh
 sudo ./enable_system_shutdown_button.sh 26 ./config.json
 sudo reboot
 ```
+
+3. What this command does:
+  - Adds/replaces `dtoverlay=gpio-shutdown,...` in boot config (`/boot/config.txt` or `/boot/firmware/config.txt`)
+  - Sets `sys.use_system_shutdown_button=1` in `config.json`
+
+4. Verify after reboot:
+  - Check overlay line exists:
+
+```bash
+grep -n "dtoverlay=gpio-shutdown" /boot/config.txt /boot/firmware/config.txt 2>/dev/null
+```
+
+  - Check config flag:
+
+```bash
+python3 -c "import json; print(json.load(open('config.json'))['sys'].get('use_system_shutdown_button'))"
+```
+
+For detailed wiring examples and sensor-specific notes, see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md).
 
 ## To Do
 - [x] Add configuration option to always delete recorded data clean or always keep the files in ```setup_config.py```.

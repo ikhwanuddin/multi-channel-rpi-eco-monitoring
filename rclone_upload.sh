@@ -7,7 +7,7 @@
 ##############################################
 
 # Usage:
-#   ./rclone_upload.sh <data_dir> [remote_name] [state_file] [logfile]
+#   ./rclone_upload.sh <data_dir> [remote_name] [state_file] [logfile] [config_path]
 
 set -u
 
@@ -15,6 +15,7 @@ data_dir="$1"
 remote_name="${2:-mybox}"
 state_file="${3:-.rclone_state.json}"
 logfile="${4:-/dev/stdout}"
+config_path="${5:-}"
 
 # Function to log messages
 log_msg() {
@@ -26,6 +27,11 @@ log_msg "=== Starting rclone upload ==="
 log_msg "Data directory: $data_dir"
 log_msg "Remote: $remote_name"
 log_msg "State file: $state_file"
+if [ -n "$config_path" ]; then
+    log_msg "Rclone config path: $config_path"
+else
+    log_msg "Rclone config path: default lookup"
+fi
 
 if ! command -v rclone >/dev/null 2>&1; then
     log_msg "ERROR: rclone binary not found in PATH"
@@ -46,10 +52,10 @@ log_msg "Remote target: $remote_target"
 
 # Initialize state file if it doesn't exist
 if [ ! -f "$state_file" ]; then
-    python3 << 'PYTHON_INIT'
+    python3 << 'PYTHON_INIT' "$state_file"
 import json
-import os
-state_file = os.environ.get('STATE_FILE', '.rclone_state.json')
+import sys
+state_file = sys.argv[1]
 state = {
     "session_start": "",
     "last_sync": "",
@@ -144,11 +150,12 @@ log_msg "Starting rclone copy process..."
 rclone_logfile="/tmp/rclone_$(date +%s).log"
 
 # Use copy instead of move for safety
-if rclone copy "$data_dir" "$remote_target" \
-    --delete-empty-src-dirs \
-    --log-level INFO \
-    --log-file "$rclone_logfile" \
-    2>&1 | tee -a "$logfile"; then
+rclone_args=(copy "$data_dir" "$remote_target" --delete-empty-src-dirs --log-level INFO --log-file "$rclone_logfile")
+if [ -n "$config_path" ]; then
+    rclone_args+=(--config "$config_path")
+fi
+
+if rclone "${rclone_args[@]}" 2>&1 | tee -a "$logfile"; then
     
     rclone_exit_code=0
     log_msg "Rclone copy completed with exit code 0"
@@ -191,8 +198,13 @@ try:
         state = json.load(f)
     
     # List files on remote
+    rclone_list_cmd = ['rclone', 'lsf', remote_target, '--recursive']
+    config_path = sys.argv[5]
+    if config_path:
+        rclone_list_cmd.extend(['--config', config_path])
+
     remote_list = subprocess.check_output(
-        ['rclone', 'lsf', remote_target, '--recursive'],
+        rclone_list_cmd,
         universal_newlines=True,
         stderr=subprocess.DEVNULL
     ).strip().split('\n')
@@ -237,7 +249,7 @@ except Exception as e:
     sys.exit(1)
 
 PYTHON_VERIFY \
-        "$data_dir" "$remote_target" "$state_file" "$logfile"
+    "$data_dir" "$remote_target" "$state_file" "$logfile" "$config_path"
     
     if [ $? -eq 0 ]; then
         log_msg "Rclone upload cycle completed successfully"

@@ -85,20 +85,6 @@ fi
 printf 'Update time from internet\n'
 sudo bash ./update_time.sh
 
-# Check if data wipe is enabled in config
-if [ -f "$config_file" ]; then
-    wipe_enabled=$(python3 -c "import json; config=json.load(open('$config_file')); print(config.get('sys', {}).get('wipe_data_on_boot', 0))")
-    if [ "$wipe_enabled" = "1" ]; then
-        printf 'Wiping old data on boot as configured\n'
-        sudo rm -rf /home/pi/multi_channel_monitoring_data/live_data
-        printf 'Old data wiped\n'
-    else
-        printf 'Data wipe disabled in config, keeping existing data\n'
-    fi
-else
-    printf 'Config file not found, skipping data wipe\n'
-fi
-
 # Start ssh-agent so password not required
 eval $(ssh-agent -s)
 
@@ -191,7 +177,7 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
     restart_count=0
     while true; do
         echo "Attempting to start recording script (attempt $((restart_count + 1)))..."
-        if sudo -E python3 -u python_record.py $config_file $logfile_name $logdir; then
+        if sudo -E env FORCE_OFFLINE_MODE=1 python3 -u python_record.py $config_file $logfile_name $logdir; then
             echo "Recording script exited successfully."
             break
         else
@@ -222,16 +208,25 @@ else
     # Get upload configuration from config.json
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Initializing upload mode..." | tee -a "$upload_logfile"
     
-    # Extract rclone configuration from config.json (if available)
-    # User needs to have rclone configured already
-    RCLONE_CONFIG=$(python3 -c "import json; config=json.load(open('$config_file')); print(json.dumps(config.get('rclone', {})))" 2>/dev/null)
-    
-    if [ "$RCLONE_CONFIG" = "null" ] || [ -z "$RCLONE_CONFIG" ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] No rclone config in config.json, using default rclone config" | tee -a "$upload_logfile"
+    # Extract optional rclone settings from config.json
+    rclone_remote_name=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('remote_name', ''))" 2>/dev/null)
+    rclone_config_path=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('config_path', ''))" 2>/dev/null)
+
+    if [ -z "$rclone_remote_name" ]; then
+        rclone_remote_name="mybox"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] No rclone remote_name in config; using default: $rclone_remote_name" | tee -a "$upload_logfile"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Using rclone remote_name from config: $rclone_remote_name" | tee -a "$upload_logfile"
+    fi
+
+    if [ -n "$rclone_config_path" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Using explicit rclone config path: $rclone_config_path" | tee -a "$upload_logfile"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Using default rclone config lookup" | tee -a "$upload_logfile"
     fi
     
     # Data directory to upload
-    live_data_dir="/home/pi/multi_channel_monitoring_data/live_data"
+    live_data_dir="/home/pi/monitoring_data/live_data"
     state_file="$live_data_dir/.rclone_state.json"
     
     # Ensure live_data directory exists
@@ -271,7 +266,7 @@ else
         
         # Run upload script
         # Note: This will be replaced with the refactored rclone_upload.sh
-        if bash ./rclone_upload.sh "$live_data_dir" "" "$state_file" "$upload_logfile"; then
+        if bash ./rclone_upload.sh "$live_data_dir" "$rclone_remote_name" "$state_file" "$upload_logfile" "$rclone_config_path"; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Upload cycle completed successfully" | tee -a "$upload_logfile"
             upload_complete=1
         else

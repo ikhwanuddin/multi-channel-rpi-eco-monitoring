@@ -141,25 +141,17 @@ def main():
     for option in sensor_config_options:
         config_parse(option, sensor_config)
 
-    # test for offline mode
-    offline_options = [{'name': 'offline_mode',
-                        'type': int,
-                        'prompt': 'Should the recorder run in offline mode (1) or use rclone (0) to upload data to cloud storage?\n',
-                        'default': 0,
-                        'valid': [0, 1]}]
-
-    offline_config = {}
-
-    # populate the offline config dictionary
-    for option in offline_options:
-        config_parse(option, offline_config)
+    # Recording process is always configured as offline in python_record.py.
+    # Online upload is now handled at startup by internet detection logic.
+    offline_config = {'offline_mode': 1}
 
     # Ask about internet connectivity for deployment information
     deployment_info_options = [{'name': 'has_internet',
                                 'type': int,
-                                'prompt': ('Will this deployment have internet connectivity for long-term monitoring?\n'
-                                          '1 = Yes (data will be uploaded periodically to server. Reboot can clear live_data)\n'
-                                          '0 = No (data stays on micro SD card. Reboot only refreshes internal memory)'),
+                                'prompt': ('Deployment note: is internet sometimes available at this site?\n'
+                                          '1 = Sometimes available (startup can enter upload mode when internet is reachable)\n'
+                                          '0 = Typically no internet (startup will usually stay in recording mode)\n'
+                                          'This value is informational and does not force runtime mode.'),
                                 'default': 1,
                                 'valid': [0, 1]}]
 
@@ -169,27 +161,23 @@ def main():
     for option in deployment_info_options:
         config_parse(option, deployment_config)
 
-    # Populate the rclone config unless the user has chosen offline mode
-
+    # Populate optional rclone config.
+    # Upload mode can still run with system-default rclone config if left empty.
     rclone_config = {}
+    rclone_config_options = [
+                  {'name': 'remote_name',
+                   'type': str,
+                   'prompt': 'Optional: enter rclone remote name (e.g., mybox, gdrive). Leave blank to use script default.',
+                   'default': ''},
+                  {'name': 'config_path',
+                   'type': str,
+                   'prompt': 'Optional: enter full rclone config path. Leave blank to use default rclone config lookup.',
+                   'default': ''}]
 
-    if not offline_config['offline_mode']:
+    print("\nNow let's do the optional rclone cloud storage details...")
 
-        rclone_config_options = [
-                      {'name': 'remote_name',
-                       'type': str,
-                       'prompt': 'Enter the rclone remote name (e.g., mybox, gdrive)',
-                       'default': 'mybox'},
-                      {'name': 'config_path',
-                       'type': str,
-                       'prompt': 'Enter the path to rclone config file (leave empty for default ~/.config/rclone/rclone.conf)',
-                       'default': '/home/pi/.config/rclone/rclone.conf'}]
-
-        print("\nNow let's do the rclone cloud storage details...")
-
-        # populate the rclone config dictionary
-        for option in rclone_config_options:
-            config_parse(option, rclone_config)
+    for option in rclone_config_options:
+        config_parse(option, rclone_config)
 
     # Populate the system config options
 
@@ -202,7 +190,7 @@ def main():
                   {'name': 'upload_dir',
                    'type': str,
                    'prompt': 'Enter the upload directory path',
-                   'default': '/home/pi/multi_channel_monitoring_data'},
+                   'default': '/home/pi/monitoring_data'},
                   {'name': 'reboot_time',
                    'type': str,
                    'prompt': 'Enter the primary time for the daily reboot',
@@ -210,12 +198,7 @@ def main():
                   {'name': 'reboot_time_2',
                    'type': str,
                    'prompt': 'Enter an optional second daily reboot time (HH:MM), or leave blank to disable',
-                   'default': ''},
-                  {'name': 'wipe_data_on_boot',
-                   'type': int,
-                   'prompt': 'Should old data be wiped on boot to prevent storage overflow? (1 for yes, 0 for no)',
-                   'default': 0,
-                   'valid': [0, 1]}]
+                   'default': ''}]
 
     system_shutdown_default = 1 if sensor_config['sensor_type'].startswith('Respeaker') else 0
     sys_config_options.append(

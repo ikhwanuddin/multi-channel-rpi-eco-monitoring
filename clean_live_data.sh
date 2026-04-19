@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Clean all data under multi_channel_monitoring_data/live_data safely.
+# Clean all data under monitoring_data/live_data safely.
 # Default target is the path used by this project on Raspberry Pi.
 
 set -u
 
-DEFAULT_TARGET="/home/pi/multi_channel_monitoring_data/live_data"
+DEFAULT_TARGET="/home/pi/monitoring_data/live_data"
 TARGET_DIR="${1:-$DEFAULT_TARGET}"
 
 printf '##############################################\n'
@@ -20,7 +20,7 @@ fi
 
 # Refuse to run on clearly unsafe paths.
 case "$TARGET_DIR" in
-    "/"|"/home"|"/home/pi"|"/home/pi/multi_channel_monitoring_data")
+    "/"|"/home"|"/home/pi"|"/home/pi/monitoring_data")
         echo "ERROR: Refusing to clean unsafe target path: $TARGET_DIR"
         exit 1
         ;;
@@ -30,7 +30,7 @@ esac
 if [[ "$TARGET_DIR" != */live_data ]]; then
     echo "ERROR: Target path must end with /live_data"
     echo "Tip: pass explicit path, for example:"
-    echo "  ./clean_live_data.sh /home/pi/multi_channel_monitoring_data/live_data"
+    echo "  ./clean_live_data.sh /home/pi/monitoring_data/live_data"
     exit 1
 fi
 

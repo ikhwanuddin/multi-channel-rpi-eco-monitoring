@@ -313,7 +313,7 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
 
     remote_name = rclone_config.get('remote_name', 'mybox')
     config_path = rclone_config.get('config_path', '').strip()
-    remote_base_path = rclone_config.get('remote_base_path', 'multi_channel_monitoring_data/live_data')
+    remote_base_path = rclone_config.get('remote_base_path', 'monitoring_data/live_data')
 
     # keep running while the die is not set
     while not die.is_set():
@@ -538,11 +538,14 @@ def record(config_file, logfile_name, log_dir='logs'):
         rclone_config = config['rclone']
         sensor_config = config['sensor']
         offline_mode = config['offline_mode']
+        force_offline_mode = str(os.environ.get('FORCE_OFFLINE_MODE', '0')).strip().lower() in ['1', 'true', 'yes', 'on']
         working_dir = sys_config['working_dir']
         upload_dir = sys_config['upload_dir']
         reboot_times = parse_reboot_times(sys_config)
-        wipe_data_on_boot = int(sys_config.get('wipe_data_on_boot', 0))
         use_system_shutdown_button = str(sys_config.get('use_system_shutdown_button', 0)).strip().lower() in ['1', 'true', 'yes', 'on']
+        if force_offline_mode:
+            offline_mode = 1
+            logging.info('FORCE_OFFLINE_MODE detected: upload synchronisation disabled for this run')
         logging.info('Config loaded')
     except KeyError:
         logging.info('Failed to load config')
@@ -624,8 +627,8 @@ def record(config_file, logfile_name, log_dir='logs'):
             logging.critical('Could not create {} as upload directory'.format(upload_dir_pi))
             sys.exit()
 
-    # Clean directories, following wipe_data_on_boot policy.
-    clean_dirs(working_dir, upload_dir, pre_upload_dir, clean_working_dir=(wipe_data_on_boot == 1))
+    # Never wipe upload/live data at boot from recorder runtime.
+    clean_dirs(working_dir, upload_dir, pre_upload_dir, clean_working_dir=False)
 
     # move any existing logs into the upload folder for this pi
     try:

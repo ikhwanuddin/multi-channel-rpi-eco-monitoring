@@ -245,12 +245,22 @@ def main():
                    'prompt': 'Enter an optional second daily reboot time (HH:MM), or leave blank to disable',
                    'default': ''}]
 
-    system_shutdown_default = 1 if sensor_config['sensor_type'].startswith('Respeaker') else 0
+    sensor_type_name = sensor_config['sensor_type']
+    if sensor_type_name.startswith('Sipeed'):
+        shutdown_pin_hint = '21'
+    elif sensor_type_name.startswith('Respeaker'):
+        shutdown_pin_hint = '26'
+    else:
+        shutdown_pin_hint = 'see ADVANCED_CONFIGURATION.md'
+
+    system_shutdown_default = 1
     sys_config_options.append(
                   {'name': 'use_system_shutdown_button',
                    'type': int,
                    'prompt': ('Use system-wide shutdown button handling (dtoverlay gpio-shutdown) '
-                              'instead of Python GPIO listener? (1 for yes, 0 for no)'),
+                              'instead of Python GPIO listener? '
+                              'Recommended shutdown pin for {} is GPIO {}. '
+                              '(1 for yes, 0 for no)'.format(sensor_type_name, shutdown_pin_hint)),
                    'default': system_shutdown_default,
                    'valid': [0, 1]})
 

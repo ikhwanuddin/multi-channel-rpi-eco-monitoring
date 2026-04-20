@@ -7,7 +7,7 @@
 ##############################################
 
 # Usage:
-#   ./rclone_upload.sh <data_dir> [remote_name] [state_file] [logfile] [config_path]
+#   ./rclone_upload.sh <data_dir> [remote_name] [state_file] [logfile] [config_path] [target_path]
 
 set -u
 
@@ -16,6 +16,7 @@ remote_name="${2:-mybox}"
 state_file="${3:-.rclone_state.json}"
 logfile="${4:-/dev/stdout}"
 config_path="${5:-}"
+target_path="${6:-}"
 
 # Source rclone config sync helper (path relative to this script)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -53,12 +54,18 @@ fi
 data_top_folder_name=$(basename "$data_dir")
 
 # Determine remote target
-remote_target="${remote_name}:${data_top_folder_name}"
+if [ -n "$target_path" ]; then
+    remote_target="${remote_name}:${target_path}"
+    log_msg "Using explicit remote target path: $target_path"
+else
+    remote_target="${remote_name}:${data_top_folder_name}"
+    log_msg "Using default remote target path from data dir name: $data_top_folder_name"
+fi
 log_msg "Remote target: $remote_target"
 
 # Initialize state file if it doesn't exist
 if [ ! -f "$state_file" ]; then
-    python3 << 'PYTHON_INIT' "$state_file"
+    python3 - "$state_file" << 'PYTHON_INIT'
 import json
 import sys
 state_file = sys.argv[1]
@@ -74,7 +81,7 @@ PYTHON_INIT
 fi
 
 # Scan local files and mark as uploading before starting rclone
-python3 << 'PYTHON_SCAN'
+python3 - "$data_dir" "$state_file" << 'PYTHON_SCAN' > /tmp/upload_stats.json 2>/dev/null || true
 import json
 import os
 import sys
@@ -118,8 +125,7 @@ with open(state_file, 'w') as f:
     json.dump(state, f, indent=2)
 
 print(json.dumps(state['upload_stats']))
-PYTHON_SCAN \
-    "$data_dir" "$state_file" > /tmp/upload_stats.json 2>/dev/null || true
+PYTHON_SCAN
 
 # Read and log the stats
 if [ -f /tmp/upload_stats.json ]; then
@@ -128,7 +134,7 @@ if [ -f /tmp/upload_stats.json ]; then
 fi
 
 # Mark all pending/uploading files as 'uploading'
-python3 << 'PYTHON_MARK'
+python3 - "$state_file" << 'PYTHON_MARK'
 import json
 import sys
 
@@ -146,8 +152,7 @@ state['upload_stats']['pending'] = 0
 
 with open(state_file, 'w') as f:
     json.dump(state, f, indent=2)
-PYTHON_MARK \
-    "$state_file"
+PYTHON_MARK
 
 log_msg "Marked files as 'uploading' in state"
 
@@ -199,7 +204,7 @@ fi
 if [ $rclone_exit_code -eq 0 ]; then
     log_msg "Verifying uploaded files on remote..."
     
-    python3 << 'PYTHON_VERIFY'
+    python3 - "$data_dir" "$remote_target" "$state_file" "$logfile" "$config_path" << 'PYTHON_VERIFY'
 import json
 import os
 import subprocess
@@ -271,8 +276,7 @@ except Exception as e:
     log_msg(f"ERROR during verification: {e}")
     sys.exit(1)
 
-PYTHON_VERIFY \
-    "$data_dir" "$remote_target" "$state_file" "$logfile" "$config_path"
+PYTHON_VERIFY
     
     if [ $? -eq 0 ]; then
         log_msg "Rclone upload cycle completed successfully"

@@ -84,7 +84,7 @@ update_rclone_state_from_disk() {
     # Temporary file for updated state
     local temp_state=$(mktemp)
     
-    python3 << 'PYTHON_EOF'
+    python3 - "$state_file" "$live_data_dir" << 'PYTHON_EOF'
 import json
 import os
 import sys
@@ -159,7 +159,7 @@ update_file_status() {
     local filename="$2"
     local new_status="$3"
     
-    python3 << 'PYTHON_EOF'
+    python3 - "$state_file" "$filename" "$new_status" << 'PYTHON_EOF'
 import json
 import sys
 
@@ -192,7 +192,7 @@ get_pending_files() {
     local state_file="$1"
     local live_data_dir="$2"
     
-    python3 << 'PYTHON_EOF'
+    python3 - "$state_file" "$live_data_dir" << 'PYTHON_EOF'
 import json
 import sys
 import os

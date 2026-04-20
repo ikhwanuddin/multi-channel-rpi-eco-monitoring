@@ -172,7 +172,11 @@ def main():
                   {'name': 'config_path',
                    'type': str,
                    'prompt': 'Optional: enter full rclone config path. Leave blank to use default rclone config lookup.',
-                   'default': '/home/pi/.config/rclone/rclone.conf'}]
+                   'default': '/home/pi/.config/rclone/rclone.conf'},
+                  {'name': 'target_path',
+                   'type': str,
+                   'prompt': 'Optional: enter remote folder path for uploads (shared folder on Box).',
+                   'default': 'monitoring_data'}]
 
     print("\nNow let's do the optional rclone cloud storage details...")
 

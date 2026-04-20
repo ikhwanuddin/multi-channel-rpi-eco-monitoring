@@ -64,10 +64,6 @@ if [ ! -f fs_expanded ]; then
   fi
 fi
 
-# Restart udev to simulate hotplugging of 3G dongle
-sudo service udev stop
-sudo service udev start
-
 # Change to correct folder
 cd /home/pi/multi-channel-rpi-eco-monitoring
 

@@ -21,6 +21,13 @@ else
     exit 1
 fi
 
+# Source rclone config sync helper
+if [ -f "$SCRIPT_DIR/sync_rclone_config.sh" ]; then
+    source "$SCRIPT_DIR/sync_rclone_config.sh"
+else
+    echo "WARNING: sync_rclone_config.sh not found, rclone config sync will be skipped."
+fi
+
 # Disable activity LED to save power (path differs across Raspberry Pi models/images)
 if [ -d /sys/class/leds/ACT ]; then
     if sudo sh -c 'echo none > /sys/class/leds/ACT/trigger' && sudo sh -c 'echo 0 > /sys/class/leds/ACT/brightness'; then
@@ -207,7 +214,15 @@ else
     
     # Get upload configuration from config.json
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Initializing upload mode..." | tee -a "$upload_logfile"
-    
+
+    # Sync rclone.conf with Gist at startup — pull if Gist is newer, push if local is newer
+    if declare -f sync_rclone_config > /dev/null 2>&1; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Syncing rclone.conf with Gist (startup)..." | tee -a "$upload_logfile"
+        sync_rclone_config "$config_file" "$upload_logfile"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: sync_rclone_config not available, skipping." | tee -a "$upload_logfile"
+    fi
+
     # Extract optional rclone settings from config.json
     rclone_remote_name=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('remote_name', ''))" 2>/dev/null)
     rclone_config_path=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('config_path', ''))" 2>/dev/null)

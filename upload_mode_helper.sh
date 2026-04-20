@@ -148,7 +148,7 @@ state['upload_stats']['total_size_gb'] = round(total_size / (1024**3), 2)
 with open(state_file, 'w') as f:
     json.dump(state, f, indent=2)
 
-print(f"State updated: {len(found_files)} files, {state['upload_stats']['total_size_gb']}GB total")
+print(f"[upload-helper] State updated: {len(found_files)} files, {state['upload_stats']['total_size_gb']}GB total")
 
 PYTHON_EOF
 }

@@ -18,6 +18,7 @@ state_file="${3:-.rclone_state.json}"
 logfile="${4:-/dev/stdout}"
 config_path="${5:-}"
 target_path="${6:-}"
+UPLOAD_PHASE="init"
 
 # Source rclone config sync helper (path relative to this script)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -28,7 +29,23 @@ fi
 # Function to log messages
 log_msg() {
     local msg="$1"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg" | tee -a "$logfile"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [upload][phase=$UPLOAD_PHASE] $msg" | tee -a "$logfile"
+}
+
+set_upload_phase() {
+    UPLOAD_PHASE="${1:-unknown}"
+}
+
+# Stream stdin to log_msg with an optional message prefix.
+log_stream() {
+    local prefix="${1:-}"
+    while IFS= read -r line; do
+        if [ -n "$prefix" ]; then
+            log_msg "$prefix$line"
+        else
+            log_msg "$line"
+        fi
+    done
 }
 
 log_msg "=== Starting rclone upload ==="
@@ -82,6 +99,7 @@ PYTHON_INIT
 fi
 
 # Scan local files and mark as uploading before starting rclone
+set_upload_phase "scan-local"
 python3 - "$data_dir" "$state_file" << 'PYTHON_SCAN' > /tmp/upload_stats.json 2>/dev/null || true
 import json
 import os
@@ -140,6 +158,7 @@ if [ -f /tmp/upload_stats.json ]; then
 fi
 
 # Mark all pending/uploading files as 'uploading'
+set_upload_phase "mark-uploading"
 python3 - "$state_file" << 'PYTHON_MARK'
 import json
 import sys
@@ -163,6 +182,7 @@ PYTHON_MARK
 log_msg "Marked files as 'uploading' in state"
 
 # Run rclone copy (not move!) with error handling
+set_upload_phase "rclone-copy"
 log_msg "Starting rclone copy process..."
 rclone_logfile="/tmp/rclone_$(date +%s).log"
 
@@ -191,7 +211,7 @@ if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")
 fi
 
-if rclone "${rclone_args[@]}" 2>&1 | tee -a "$logfile"; then
+if rclone "${rclone_args[@]}" 2>&1 | log_stream "[component=rclone] "; then
     rclone_exit_code=0
     log_msg "Rclone copy completed with exit code 0"
 else
@@ -203,13 +223,16 @@ fi
 # Append rclone logs to main logfile
 if [ -f "$rclone_logfile" ]; then
     log_msg "--- Rclone detailed logs ---"
-    cat "$rclone_logfile" >> "$logfile"
+    while IFS= read -r line; do
+        log_msg "[component=rclone-detail] $line"
+    done < "$rclone_logfile"
     log_msg "--- End rclone logs ---"
     rm -f "$rclone_logfile"
 fi
 
 # If rclone succeeded, verify files on remote and mark as completed
 if [ $rclone_exit_code -eq 0 ]; then
+    set_upload_phase "verify"
     log_msg "Verifying uploaded files on remote..."
     
     python3 - "$data_dir" "$remote_target" "$state_file" "$logfile" "$config_path" << 'PYTHON_VERIFY'
@@ -225,9 +248,9 @@ state_file = sys.argv[3]
 logfile = sys.argv[4]
 
 def log_msg(msg):
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [upload][phase=verify][component=verify] {msg}")
     with open(logfile, 'a') as f:
-        f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+        f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [upload][phase=verify][component=verify] {msg}\n")
 
 try:
     with open(state_file, 'r') as f:
@@ -287,17 +310,20 @@ except Exception as e:
 PYTHON_VERIFY
     
     if [ $? -eq 0 ]; then
+        set_upload_phase "finalize"
         log_msg "Rclone upload cycle completed successfully"
         # Push rclone.conf to Gist — token was likely refreshed during this run
         _push_rclone_config_to_gist
         exit 0
     else
+        set_upload_phase "error"
         log_msg "Verification failed, files kept for retry"
         # Still push conf — token refresh happens before transfer, not only on success
         _push_rclone_config_to_gist
         exit 1
     fi
 else
+    set_upload_phase "error"
     log_msg "Rclone copy failed, files kept for retry"
     # Still push conf — rclone may have refreshed the token before the transfer failed
     _push_rclone_config_to_gist

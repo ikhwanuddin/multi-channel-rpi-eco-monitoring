@@ -151,6 +151,64 @@ pip install --only-binary=all pyaudio
 python3 -c "import pyaudio; print('PyAudio installed successfully')"
 ```
 
+## Log Filter Examples (Prefix Contract)
+
+The runtime logs use structured prefixes such as:
+
+* `[startup][mode=online][phase=upload-loop] ...`
+* `[upload][phase=verify][component=verify] ...`
+* `[time-sync][mode=ntp][phase=sync-ntp] ...`
+
+This makes targeted filtering easier during debugging.
+
+### Find all startup logs in offline mode
+
+```bash
+grep -h "\[startup\]\[mode=offline\]" logs/*.log
+```
+
+### Follow only upload verify events live
+
+```bash
+tail -F logs/*.log | grep --line-buffered "\[upload\]\[phase=verify\]"
+```
+
+### Show only terminal upload outcomes (success or error)
+
+```bash
+grep -hE "\[upload\]\[phase=(finalize|error)\]" logs/*.log
+```
+
+### Show only time synchronization flow
+
+```bash
+grep -h "\[time-sync\]" logs/*.log
+```
+
+### Show rclone engine lines only
+
+```bash
+grep -h "\[component=rclone\]" logs/*.log
+```
+
+### Show helper state-scan lines only
+
+```bash
+grep -h "\[component=upload-helper\]" logs/*.log
+```
+
+### Count upload errors per day
+
+```bash
+grep -h "\[upload\]\[phase=error\]" logs/*.log | cut -d']' -f1 | tr -d '[' | cut -d' ' -f1 | sort | uniq -c
+```
+
+### Quick health snapshot (last 200 lines)
+
+```bash
+tail -n 200 logs/*.log | grep -E "\[phase=(error|finalize|shutdown)\]"
+```
+
 ## Side Notes
 
 * Be careful not to pull the power cable from the Pi (or pull the plug out the socket) - this has been known to corrupt the SD card, and requires a fresh install.

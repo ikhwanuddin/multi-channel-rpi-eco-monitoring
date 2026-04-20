@@ -19,6 +19,15 @@ logfile="${4:-/dev/stdout}"
 config_path="${5:-}"
 target_path="${6:-}"
 UPLOAD_PHASE="init"
+upload_stats_tmp=$(mktemp "${TMPDIR:-/tmp}/upload_stats.XXXXXX") || upload_stats_tmp=""
+rclone_logfile=""
+
+cleanup_temp_files() {
+    [ -n "$upload_stats_tmp" ] && [ -e "$upload_stats_tmp" ] && rm -f "$upload_stats_tmp"
+    [ -n "$rclone_logfile" ] && [ -e "$rclone_logfile" ] && rm -f "$rclone_logfile"
+}
+
+trap cleanup_temp_files EXIT
 
 # Source rclone config sync helper (path relative to this script)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -100,7 +109,8 @@ fi
 
 # Scan local files and mark as uploading before starting rclone
 set_upload_phase "scan-local"
-python3 - "$data_dir" "$state_file" << 'PYTHON_SCAN' > /tmp/upload_stats.json 2>/dev/null || true
+if [ -n "$upload_stats_tmp" ]; then
+python3 - "$data_dir" "$state_file" << 'PYTHON_SCAN' > "$upload_stats_tmp" 2>/dev/null || true
 import json
 import os
 import sys
@@ -150,10 +160,11 @@ with open(state_file, 'w') as f:
 
 print(json.dumps(state['upload_stats']))
 PYTHON_SCAN
+fi
 
 # Read and log the stats
-if [ -f /tmp/upload_stats.json ]; then
-    stats=$(cat /tmp/upload_stats.json)
+if [ -n "$upload_stats_tmp" ] && [ -f "$upload_stats_tmp" ]; then
+    stats=$(cat "$upload_stats_tmp")
     log_msg "Upload stats: $stats"
 fi
 
@@ -184,7 +195,7 @@ log_msg "Marked files as 'uploading' in state"
 # Run rclone copy (not move!) with error handling
 set_upload_phase "rclone-copy"
 log_msg "Starting rclone copy process..."
-rclone_logfile="/tmp/rclone_$(date +%s).log"
+rclone_logfile=$(mktemp "${TMPDIR:-/tmp}/rclone.XXXXXX.log") || rclone_logfile="${TMPDIR:-/tmp}/rclone_$(date +%s).log"
 
 # Push rclone.conf to Gist after rclone run — token may have been refreshed
 # Called regardless of upload success/failure.

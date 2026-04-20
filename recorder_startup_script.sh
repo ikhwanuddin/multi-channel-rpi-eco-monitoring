@@ -9,20 +9,55 @@ set -u
 ##############################################
 
 LOGFILE_ACTIVE=""
+LOG_MODE="boot"
+LOG_PHASE="init"
 
 log_msg() {
     local msg="$1"
     local stamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
     if [ -n "$LOGFILE_ACTIVE" ]; then
-        echo "$stamp $msg" | tee -a "$LOGFILE_ACTIVE"
+        echo "$stamp [startup][mode=$LOG_MODE][phase=$LOG_PHASE] $msg" | tee -a "$LOGFILE_ACTIVE"
     else
-        echo "$stamp $msg"
+        echo "$stamp [startup][mode=$LOG_MODE][phase=$LOG_PHASE] $msg"
     fi
+}
+
+set_log_mode() {
+    LOG_MODE="${1:-unknown}"
+}
+
+set_log_phase() {
+    LOG_PHASE="${1:-unknown}"
+}
+
+# Execute a command and replay its stdout/stderr via log_msg to keep timestamps consistent.
+run_and_log() {
+    local line_prefix=""
+    if [ "${1:-}" = "--prefix" ]; then
+        line_prefix="${2:-}"
+        shift 2
+    fi
+
+    local cmd_output
+    cmd_output=$("$@" 2>&1)
+    local cmd_status=$?
+
+    if [ -n "$cmd_output" ]; then
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^\[[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}\][[:space:]]+(.*)$ ]]; then
+                line="${BASH_REMATCH[1]}"
+            fi
+            [ -n "$line" ] && log_msg "$line_prefix$line"
+        done <<< "$cmd_output"
+    fi
+
+    return $cmd_status
 }
 
 log_msg "##############################################"
 log_msg "Start of ecosystem monitoring startup script"
 log_msg "##############################################"
+set_log_phase "bootstrap"
 
 # Get script directory for sourcing helpers
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -144,10 +179,17 @@ fi
 
 # Update time from internet
 log_msg "Update time from internet"
-sudo bash ./update_time.sh
+if ! run_and_log --prefix "[time-sync] " sudo bash ./update_time.sh; then
+    log_msg "WARNING: Time update command returned non-zero status."
+fi
 
 # Start ssh-agent so password not required
-eval $(ssh-agent -s)
+if ssh_agent_env=$(ssh-agent -s 2>/dev/null); then
+    eval "$ssh_agent_env" >/dev/null
+    log_msg "ssh-agent started successfully"
+else
+    log_msg "WARNING: Failed to start ssh-agent"
+fi
 
 # Add in current date and time to log files
 currentDate=$(date +"%Y-%m-%d_%H.%M")
@@ -206,15 +248,18 @@ export PI_ID
 # MODE DETECTION - Online vs Offline
 ##############################################
 
+set_log_phase "detect-mode"
 log_msg "Detecting operating mode based on internet connectivity..."
 log_msg "Checking for internet access (this may take a minute)..."
 
 # Check internet availability (waits up to 1 minute on each check)
 if check_internet; then
     OPERATING_MODE="ONLINE"
+    set_log_mode "online"
     log_msg "Internet is AVAILABLE - Switching to UPLOAD mode"
 else
     OPERATING_MODE="OFFLINE"
+    set_log_mode "offline"
     log_msg "Internet NOT available - Switching to RECORDING mode"
 fi
 
@@ -226,6 +271,7 @@ log_msg "##############################################"
 # RECORDING MODE - Offline Recording
 ##############################################
 if [ "$OPERATING_MODE" = "OFFLINE" ]; then
+    set_log_phase "recording"
     
     # the file in which to store the logging from this run
     logfile_name="multi_rpi_eco_"$PI_ID"_"$currentDate".log"
@@ -236,6 +282,7 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
     log_msg "Command: sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
     
     restart_count=0
+    set_log_phase "recording-loop"
     while true; do
         log_msg "Attempting to start recording script (attempt $((restart_count + 1)))..."
         if sudo -E env FORCE_OFFLINE_MODE=1 python3 -u python_record.py $config_file $logfile_name $logdir; then
@@ -254,6 +301,7 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
 # UPLOAD MODE - Online Data Upload
 ##############################################
 else
+    set_log_phase "upload-init"
     
     logfile_name="multi_rpi_eco_upload_"$PI_ID"_"$currentDate".log"
     upload_logfile="$logdir/$logfile_name"
@@ -326,7 +374,9 @@ else
     init_rclone_state "$state_file" "$live_data_dir"
     
     # Scan and update state with files on disk
-    update_rclone_state_from_disk "$state_file" "$live_data_dir"
+    if ! run_and_log --prefix "[component=upload-helper] " update_rclone_state_from_disk "$state_file" "$live_data_dir"; then
+        log_msg "WARNING: Failed to refresh rclone state from disk."
+    fi
     
     log_msg "Starting upload process..."
     log_msg "For graceful shutdown, press Ctrl+C or press physical shutdown button"
@@ -335,6 +385,7 @@ else
     upload_complete=0
     retry_count=0
     max_retries=999  # Essentially unlimited until user intervenes
+    set_log_phase "upload-loop"
     
     while [ $upload_complete -eq 0 ] && [ $retry_count -lt $max_retries ]; do
         
@@ -365,4 +416,5 @@ else
     
 fi
 
+set_log_phase "shutdown"
 log_msg "End of startup script"

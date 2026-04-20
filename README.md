@@ -54,7 +54,7 @@ NOTE! SD card should have sufficiently fast read/write speed (Class 10, **minimu
 
 This code has been setup to run on a **Raspberry Pi Zero 2 W+**, **Raspberry Pi 3B+**, and **Raspberry Pi 4B+**
 
-📖 **For advanced configuration options** (shutdown buttons, power saving, troubleshooting): see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md)
+📖 **For advanced configuration options** (shutdown buttons, power saving, troubleshooting): see [advanced_configuration.md](advanced_configuration.md)
 
 ## Setup
 
@@ -249,7 +249,49 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
 
 ### Additional Configuration
 
-For advanced configuration options including shutdown button setup, power saving configurations, troubleshooting, and additional notes, see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md).
+For advanced configuration options including shutdown button setup, power saving configurations, troubleshooting, and additional notes, see [advanced_configuration.md](advanced_configuration.md).
+
+### Log Prefix Contract
+
+Runtime logs now follow a structured prefix contract so they are easy to filter by source, mode, and phase.
+
+Contract summary:
+
+| Source | Prefix format | Notes |
+|---|---|---|
+| Startup orchestration | `[startup][mode=<value>][phase=<value>]` | Main boot, mode detection, recording/upload loop control |
+| Upload pipeline | `[upload][phase=<value>]` | Upload flow state (scan, copy, verify, finalize, error) |
+| Time synchronization | `[time-sync][mode=<value>][phase=<value>]` | NTP or SSH-epoch time sync path |
+| Optional subcomponent tag | `[component=<value>]` | Added inside message for finer filtering (for example rclone, verify, upload-helper) |
+
+Current mode values in startup logs:
+
+* `boot`
+* `online`
+* `offline`
+
+Common startup phase values:
+
+* `init`
+* `bootstrap`
+* `detect-mode`
+* `recording`
+* `recording-loop`
+* `upload-init`
+* `upload-loop`
+* `shutdown`
+
+Common upload phase values:
+
+* `init`
+* `scan-local`
+* `mark-uploading`
+* `rclone-copy`
+* `verify`
+* `finalize`
+* `error`
+
+For ready-to-use grep filters based on this contract, see [advanced_configuration.md](advanced_configuration.md).
 
 ### System-Wide Shutdown Button (Recommended)
 
@@ -284,7 +326,7 @@ grep -n "dtoverlay=gpio-shutdown" /boot/config.txt /boot/firmware/config.txt 2>/
 python3 -c "import json; print(json.load(open('config.json'))['sys'].get('use_system_shutdown_button'))"
 ```
 
-For detailed wiring examples and sensor-specific notes, see [ADVANCED_CONFIGURATION.md](ADVANCED_CONFIGURATION.md).
+For detailed wiring examples and sensor-specific notes, see [advanced_configuration.md](advanced_configuration.md).
 
 ## To Do
 - [x] Add configuration option to always delete recorded data clean or always keep the files in ```setup_config.py```.

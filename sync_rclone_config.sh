@@ -188,9 +188,9 @@ except (KeyError, TypeError):
         "$raw_url" 2>/tmp/_gist_raw_curl.err)
 
     if [ "$dl_code" = "200" ]; then
-        # Try to set proper permissions (ignore if fails due to permission restrictions)
-        chmod 600 "$RCLONE_CONF_PATH" 2>/dev/null || \
-            _gist_log "WARNING: Could not set file permissions to 600 (may be owned by different user)" "$logfile"
+        # Fix ownership to current user and set proper permissions
+        sudo chown $(whoami):$(whoami) "$RCLONE_CONF_PATH" 2>/dev/null || true
+        sudo chmod 600 "$RCLONE_CONF_PATH" 2>/dev/null || true
         _gist_log "Pull successful - rclone.conf updated (HTTP $dl_code)" "$logfile"
         return 0
     else

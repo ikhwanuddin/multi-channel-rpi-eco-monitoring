@@ -168,16 +168,57 @@ def main():
                   {'name': 'remote_name',
                    'type': str,
                    'prompt': 'Optional: enter rclone remote name (e.g., mybox, gdrive). Leave blank to use script default.',
-                   'default': ''},
+                   'default': 'mybox'},
                   {'name': 'config_path',
                    'type': str,
                    'prompt': 'Optional: enter full rclone config path. Leave blank to use default rclone config lookup.',
-                   'default': ''}]
+                   'default': '/home/pi/.config/rclone/rclone.conf'}]
 
     print("\nNow let's do the optional rclone cloud storage details...")
 
     for option in rclone_config_options:
         config_parse(option, rclone_config)
+
+    # Populate optional GitHub Gist config for shared rclone.conf sync.
+    gist_config = {'enabled': 0, 'github_token': '', 'gist_id': '', 'filename': 'rclone.conf'}
+    gist_config_options = [
+                  {'name': 'enabled',
+                   'type': int,
+                   'prompt': ('Enable rclone.conf sync via private GitHub Gist?\n'
+                              '1 = Yes (recommended for multi-RPi token sharing)\n'
+                              '0 = No'),
+                   'default': 1,
+                   'valid': [0, 1]},
+                  {'name': 'github_token',
+                   'type': str,
+                   'prompt': 'GitHub token for Gist API access (required if enabled).',
+                   'default': ''},
+                  {'name': 'gist_id',
+                   'type': str,
+                   'prompt': 'Private Gist ID that stores rclone.conf (required if enabled).',
+                   'default': ''},
+                  {'name': 'filename',
+                   'type': str,
+                   'prompt': 'Filename inside the Gist for rclone config.',
+                   'default': 'rclone.conf'}]
+
+    print("\nNow let's do the optional GitHub Gist sync details...")
+
+    # Always ask enabled first.
+    config_parse(gist_config_options[0], gist_config)
+
+    # Only collect secrets when sync is enabled.
+    if gist_config['enabled'] == 1:
+        for option in gist_config_options[1:]:
+            config_parse(option, gist_config)
+
+        # Prevent an enabled config with missing required values.
+        while gist_config['github_token'].strip() == '':
+            print('github_token cannot be empty when gist sync is enabled.')
+            config_parse(gist_config_options[1], gist_config)
+        while gist_config['gist_id'].strip() == '':
+            print('gist_id cannot be empty when gist sync is enabled.')
+            config_parse(gist_config_options[2], gist_config)
 
     # Populate the system config options
 
@@ -216,7 +257,8 @@ def main():
     for option in sys_config_options:
         config_parse(option, sys_config)
 
-    config = {'rclone': rclone_config, 'offline_mode': offline_config['offline_mode'],
+    config = {'rclone': rclone_config, 'gist': gist_config,
+              'offline_mode': offline_config['offline_mode'],
               'has_internet': deployment_config['has_internet'],
               'sensor': sensor_config, 'sys': sys_config}
 

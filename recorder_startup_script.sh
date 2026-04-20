@@ -27,6 +27,45 @@ log_msg "##############################################"
 # Get script directory for sourcing helpers
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Optional: auto-update repository on startup before running the rest of the script.
+# Set AUTO_UPDATE_ON_STARTUP=0 to disable.
+if [ "${AUTO_UPDATE_ON_STARTUP:-1}" = "1" ]; then
+    if command -v git >/dev/null 2>&1 && [ -d "$SCRIPT_DIR/.git" ]; then
+        log_msg "Checking for repository updates from GitHub..."
+
+        current_branch=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        if [ -n "$current_branch" ]; then
+            if timeout 30 git -C "$SCRIPT_DIR" fetch origin "$current_branch" >/dev/null 2>&1; then
+                local_hash=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)
+                remote_hash=$(git -C "$SCRIPT_DIR" rev-parse "origin/$current_branch" 2>/dev/null || true)
+
+                if [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ]; then
+                    # Avoid discarding uncommitted local work.
+                    if git -C "$SCRIPT_DIR" diff --quiet && git -C "$SCRIPT_DIR" diff --cached --quiet; then
+                        log_msg "New changes found on origin/$current_branch, pulling with fast-forward..."
+                        if timeout 45 git -C "$SCRIPT_DIR" pull --ff-only origin "$current_branch" >/dev/null 2>&1; then
+                            log_msg "Repository updated successfully. Restarting startup script to use latest code."
+                            exec bash "$0" "$@"
+                        else
+                            log_msg "WARNING: Auto-update pull failed, continuing with current local version."
+                        fi
+                    else
+                        log_msg "WARNING: Local uncommitted changes detected, skipping auto-update pull."
+                    fi
+                else
+                    log_msg "Repository already up to date."
+                fi
+            else
+                log_msg "WARNING: Could not reach GitHub for fetch (offline/timeout). Continuing without auto-update."
+            fi
+        else
+            log_msg "WARNING: Could not determine current git branch, skipping auto-update."
+        fi
+    else
+        log_msg "Git or repository metadata not found, skipping auto-update."
+    fi
+fi
+
 # Source helper functions for upload mode
 if [ -f "$SCRIPT_DIR/upload_mode_helper.sh" ]; then
     source "$SCRIPT_DIR/upload_mode_helper.sh"

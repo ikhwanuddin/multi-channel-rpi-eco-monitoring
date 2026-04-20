@@ -29,6 +29,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Optional: auto-update repository on startup before running the rest of the script.
 # Set AUTO_UPDATE_ON_STARTUP=0 to disable.
+# Behavior is force-sync to remote branch: fetch + reset --hard + clean -fd.
 if [ "${AUTO_UPDATE_ON_STARTUP:-1}" = "1" ]; then
     if command -v git >/dev/null 2>&1 && [ -d "$SCRIPT_DIR/.git" ]; then
         log_msg "Checking for repository updates from GitHub..."
@@ -39,21 +40,22 @@ if [ "${AUTO_UPDATE_ON_STARTUP:-1}" = "1" ]; then
                 local_hash=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)
                 remote_hash=$(git -C "$SCRIPT_DIR" rev-parse "origin/$current_branch" 2>/dev/null || true)
 
-                if [ -n "$local_hash" ] && [ -n "$remote_hash" ] && [ "$local_hash" != "$remote_hash" ]; then
-                    # Avoid discarding uncommitted local work.
-                    if git -C "$SCRIPT_DIR" diff --quiet && git -C "$SCRIPT_DIR" diff --cached --quiet; then
-                        log_msg "New changes found on origin/$current_branch, pulling with fast-forward..."
-                        if timeout 45 git -C "$SCRIPT_DIR" pull --ff-only origin "$current_branch" >/dev/null 2>&1; then
+                if [ -n "$remote_hash" ]; then
+                    log_msg "Force-syncing local repository to origin/$current_branch (discarding local changes)..."
+                    if timeout 45 git -C "$SCRIPT_DIR" reset --hard "origin/$current_branch" >/dev/null 2>&1 \
+                       && timeout 30 git -C "$SCRIPT_DIR" clean -fd >/dev/null 2>&1; then
+                        new_hash=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)
+                        if [ -n "$local_hash" ] && [ -n "$new_hash" ] && [ "$local_hash" != "$new_hash" ]; then
                             log_msg "Repository updated successfully. Restarting startup script to use latest code."
                             exec bash "$0" "$@"
                         else
-                            log_msg "WARNING: Auto-update pull failed, continuing with current local version."
+                            log_msg "Repository already up to date."
                         fi
                     else
-                        log_msg "WARNING: Local uncommitted changes detected, skipping auto-update pull."
+                        log_msg "WARNING: Force-sync failed, continuing with current local version."
                     fi
                 else
-                    log_msg "Repository already up to date."
+                    log_msg "WARNING: Could not resolve origin/$current_branch, skipping auto-update."
                 fi
             else
                 log_msg "WARNING: Could not reach GitHub for fetch (offline/timeout). Continuing without auto-update."

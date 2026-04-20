@@ -26,6 +26,12 @@
 ##############################################
 
 RCLONE_CONF_PATH="${RCLONE_CONF_PATH:-$HOME/.config/rclone/rclone.conf}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
+CURL_MAX_TIME="${CURL_MAX_TIME:-30}"
+
+_curl_common_args() {
+    echo "-sS --connect-timeout $CURL_CONNECT_TIMEOUT --max-time $CURL_MAX_TIME"
+}
 
 # ── Internal: log helper ──────────────────────────────────────────────────────
 _gist_log() {
@@ -108,20 +114,25 @@ print(json.dumps(payload))
 ")
 
     local http_code
-    http_code=$(curl -s -o /tmp/_gist_push_response.json -w "%{http_code}" \
+    http_code=$(curl $(_curl_common_args) -o /tmp/_gist_push_response.json -w "%{http_code}" \
         -X PATCH \
         -H "Authorization: token $GIST_TOKEN" \
         -H "Accept: application/vnd.github.v3+json" \
         -H "Content-Type: application/json" \
         -d "$payload" \
-        "https://api.github.com/gists/$GIST_ID")
+        "https://api.github.com/gists/$GIST_ID" 2>/tmp/_gist_push_curl.err)
 
     if [ "$http_code" = "200" ]; then
         _gist_log "Push successful (HTTP $http_code)" "$logfile"
         return 0
     else
         local err
-        err=$(python3 -c "import json; d=json.load(open('/tmp/_gist_push_response.json')); print(d.get('message','unknown error'))" 2>/dev/null)
+        if [ "$http_code" = "000" ]; then
+            err=$(head -n 1 /tmp/_gist_push_curl.err 2>/dev/null)
+            err=${err:-"network error (timeout/DNS/TLS/connectivity)"}
+        else
+            err=$(python3 -c "import json; d=json.load(open('/tmp/_gist_push_response.json')); print(d.get('message','unknown error'))" 2>/dev/null)
+        fi
         _gist_log "ERROR: Push failed (HTTP $http_code): $err" "$logfile"
         return 1
     fi
@@ -134,14 +145,19 @@ _pull_from_gist() {
     _gist_log "Pulling rclone.conf from Gist..." "$logfile"
 
     local http_code
-    http_code=$(curl -s -o /tmp/_gist_pull_response.json -w "%{http_code}" \
+    http_code=$(curl $(_curl_common_args) -o /tmp/_gist_pull_response.json -w "%{http_code}" \
         -H "Authorization: token $GIST_TOKEN" \
         -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/gists/$GIST_ID")
+        "https://api.github.com/gists/$GIST_ID" 2>/tmp/_gist_pull_curl.err)
 
     if [ "$http_code" != "200" ]; then
         local err
-        err=$(python3 -c "import json; d=json.load(open('/tmp/_gist_pull_response.json')); print(d.get('message','unknown error'))" 2>/dev/null)
+        if [ "$http_code" = "000" ]; then
+            err=$(head -n 1 /tmp/_gist_pull_curl.err 2>/dev/null)
+            err=${err:-"network error (timeout/DNS/TLS/connectivity)"}
+        else
+            err=$(python3 -c "import json; d=json.load(open('/tmp/_gist_pull_response.json')); print(d.get('message','unknown error'))" 2>/dev/null)
+        fi
         _gist_log "ERROR: Pull failed (HTTP $http_code): $err" "$logfile"
         return 1
     fi
@@ -167,16 +183,23 @@ except (KeyError, TypeError):
 
     # Download raw content
     local dl_code
-    dl_code=$(curl -s -o "$RCLONE_CONF_PATH" -w "%{http_code}" \
+    dl_code=$(curl $(_curl_common_args) -o "$RCLONE_CONF_PATH" -w "%{http_code}" \
         -H "Authorization: token $GIST_TOKEN" \
-        "$raw_url")
+        "$raw_url" 2>/tmp/_gist_raw_curl.err)
 
     if [ "$dl_code" = "200" ]; then
         chmod 600 "$RCLONE_CONF_PATH"
         _gist_log "Pull successful - rclone.conf updated (HTTP $dl_code)" "$logfile"
         return 0
     else
-        _gist_log "ERROR: Failed to download raw Gist content (HTTP $dl_code)" "$logfile"
+        local err
+        if [ "$dl_code" = "000" ]; then
+            err=$(head -n 1 /tmp/_gist_raw_curl.err 2>/dev/null)
+            err=${err:-"network error (timeout/DNS/TLS/connectivity)"}
+            _gist_log "ERROR: Failed to download raw Gist content (HTTP $dl_code): $err" "$logfile"
+        else
+            _gist_log "ERROR: Failed to download raw Gist content (HTTP $dl_code)" "$logfile"
+        fi
         return 1
     fi
 }
@@ -196,14 +219,19 @@ sync_rclone_config() {
 
     # ── Get Gist updated_at timestamp ──────────────────────────────────────────
     local http_code
-    http_code=$(curl -s -o /tmp/_gist_meta.json -w "%{http_code}" \
+    http_code=$(curl $(_curl_common_args) -o /tmp/_gist_meta.json -w "%{http_code}" \
         -H "Authorization: token $GIST_TOKEN" \
         -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/gists/$GIST_ID")
+        "https://api.github.com/gists/$GIST_ID" 2>/tmp/_gist_meta_curl.err)
 
     if [ "$http_code" != "200" ]; then
         local err
-        err=$(python3 -c "import json; d=json.load(open('/tmp/_gist_meta.json')); print(d.get('message','unknown error'))" 2>/dev/null)
+        if [ "$http_code" = "000" ]; then
+            err=$(head -n 1 /tmp/_gist_meta_curl.err 2>/dev/null)
+            err=${err:-"network error (timeout/DNS/TLS/connectivity)"}
+        else
+            err=$(python3 -c "import json; d=json.load(open('/tmp/_gist_meta.json')); print(d.get('message','unknown error'))" 2>/dev/null)
+        fi
         _gist_log "ERROR: Cannot fetch Gist metadata (HTTP $http_code): $err" "$logfile"
         return 1
     fi

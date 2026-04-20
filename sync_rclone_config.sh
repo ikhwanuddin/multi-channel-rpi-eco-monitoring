@@ -40,6 +40,24 @@ _gist_log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [gist-sync] $msg" | tee -a "$logfile"
 }
 
+# Resolve the preferred owner for rclone.conf.
+# If path is under /home/<user>/..., use that user; otherwise use SUDO_USER/USER.
+_resolve_rclone_owner() {
+    local owner_user=""
+    local owner_group=""
+
+    if [[ "$RCLONE_CONF_PATH" =~ ^/home/([^/]+)/ ]]; then
+        owner_user="${BASH_REMATCH[1]}"
+    elif [ -n "${SUDO_USER:-}" ]; then
+        owner_user="$SUDO_USER"
+    else
+        owner_user="${USER:-$(whoami)}"
+    fi
+
+    owner_group=$(id -gn "$owner_user" 2>/dev/null || echo "$owner_user")
+    echo "$owner_user:$owner_group"
+}
+
 # ── Read gist credentials from config.json ────────────────────────────────────
 _read_gist_config() {
     local config_file="${1:-./config.json}"
@@ -188,9 +206,18 @@ except (KeyError, TypeError):
         "$raw_url" 2>/tmp/_gist_raw_curl.err)
 
     if [ "$dl_code" = "200" ]; then
-        # Fix ownership to current user and set proper permissions
-        sudo chown $(whoami):$(whoami) "$RCLONE_CONF_PATH" 2>/dev/null || true
-        sudo chmod 600 "$RCLONE_CONF_PATH" 2>/dev/null || true
+        # Keep ownership on the intended non-root user even when called via sudo.
+        local owner_spec
+        owner_spec=$(_resolve_rclone_owner)
+
+        if command -v sudo >/dev/null 2>&1; then
+            sudo chown "$owner_spec" "$RCLONE_CONF_PATH" 2>/dev/null || chown "$owner_spec" "$RCLONE_CONF_PATH" 2>/dev/null || true
+            sudo chmod 600 "$RCLONE_CONF_PATH" 2>/dev/null || chmod 600 "$RCLONE_CONF_PATH" 2>/dev/null || true
+        else
+            chown "$owner_spec" "$RCLONE_CONF_PATH" 2>/dev/null || true
+            chmod 600 "$RCLONE_CONF_PATH" 2>/dev/null || true
+        fi
+
         _gist_log "Pull successful - rclone.conf updated (HTTP $dl_code)" "$logfile"
         return 0
     else

@@ -8,6 +8,11 @@
 
 SSH_EPOCH=""
 
+log_msg() {
+    local msg="$1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg"
+}
+
 if [ "${1:-}" = "--epoch" ] && [ -n "${2:-}" ]; then
     SSH_EPOCH="$2"
 elif [ -n "${SSH_TIME_EPOCH:-}" ]; then
@@ -17,16 +22,16 @@ fi
 # Jika --epoch diberikan, langsung pakai epoch (mode offline) tanpa cek internet
 if [ -n "$SSH_EPOCH" ]; then
     if [[ "$SSH_EPOCH" =~ ^[0-9]+$ ]]; then
-        printf "Offline mode: syncing time from SSH-provided epoch %s\n" "$SSH_EPOCH"
+        log_msg "Offline mode: syncing time from SSH-provided epoch $SSH_EPOCH"
         if sudo date -s "@$SSH_EPOCH" >/dev/null; then
             sudo hwclock -w >/dev/null 2>&1 || true
-            printf "SSH-based time sync successful\n"
+            log_msg "SSH-based time sync successful"
         else
-            printf "Failed to set system time from SSH epoch\n"
+            log_msg "Failed to set system time from SSH epoch"
             exit 1
         fi
     else
-        printf "Invalid epoch value: %s\n" "$SSH_EPOCH"
+        log_msg "Invalid epoch value: $SSH_EPOCH"
         exit 1
     fi
 else
@@ -37,15 +42,15 @@ else
     fi
 
     if [ "$ONLINE" -eq 1 ]; then
-        printf "Internet detected, syncing time via NTP\n"
+        log_msg "Internet detected, syncing time via NTP"
         sudo timedatectl set-ntp true
         sleep 10
     else
-        printf "No internet and no SSH epoch provided. Time not updated.\n"
-        printf "Tip: run from client device with:\n"
-        printf "ssh pi@raspberrypi.local \"cd ~/multi-channel-rpi-eco-monitoring && sudo bash ./update_time.sh --epoch \$(date +%%s)\"\n"
+        log_msg "No internet and no SSH epoch provided. Time not updated."
+        log_msg "Tip: run from client device with:"
+        log_msg "ssh pi@raspberrypi.local \"cd ~/multi-channel-rpi-eco-monitoring && sudo bash ./update_time.sh --epoch \$(date +%s)\""
         exit 1
     fi
 fi
 
-printf "Current time after sync: %s\n" "$(date)"
+log_msg "Current time after sync: $(date)"

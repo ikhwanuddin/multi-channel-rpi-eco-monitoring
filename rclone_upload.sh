@@ -17,6 +17,12 @@ state_file="${3:-.rclone_state.json}"
 logfile="${4:-/dev/stdout}"
 config_path="${5:-}"
 
+# Source rclone config sync helper (path relative to this script)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+if [ -f "$SCRIPT_DIR/sync_rclone_config.sh" ]; then
+    source "$SCRIPT_DIR/sync_rclone_config.sh"
+fi
+
 # Function to log messages
 log_msg() {
     local msg="$1"
@@ -149,6 +155,23 @@ log_msg "Marked files as 'uploading' in state"
 log_msg "Starting rclone copy process..."
 rclone_logfile="/tmp/rclone_$(date +%s).log"
 
+# Push rclone.conf to Gist after rclone run — token may have been refreshed
+# Called regardless of upload success/failure.
+_push_rclone_config_to_gist() {
+    if declare -f _read_gist_config > /dev/null 2>&1; then
+        local cf="$SCRIPT_DIR/config.json"
+        [ -f "$cf" ] || cf="./config.json"
+        if [ -f "$cf" ]; then
+            log_msg "Pushing updated rclone.conf to Gist (token may have refreshed)..."
+            if _read_gist_config "$cf"; then
+                _push_to_gist "$logfile"
+            fi
+        fi
+    else
+        log_msg "WARNING: sync_rclone_config not sourced, skipping Gist push."
+    fi
+}
+
 # Use copy instead of move for safety
 rclone_args=(copy "$data_dir" "$remote_target" --delete-empty-src-dirs --log-level INFO --log-file "$rclone_logfile")
 if [ -n "$config_path" ]; then
@@ -253,12 +276,18 @@ PYTHON_VERIFY \
     
     if [ $? -eq 0 ]; then
         log_msg "Rclone upload cycle completed successfully"
+        # Push rclone.conf to Gist — token was likely refreshed during this run
+        _push_rclone_config_to_gist
         exit 0
     else
         log_msg "Verification failed, files kept for retry"
+        # Still push conf — token refresh happens before transfer, not only on success
+        _push_rclone_config_to_gist
         exit 1
     fi
 else
     log_msg "Rclone copy failed, files kept for retry"
+    # Still push conf — rclone may have refreshed the token before the transfer failed
+    _push_rclone_config_to_gist
     exit $rclone_exit_code
 fi

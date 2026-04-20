@@ -30,6 +30,45 @@ set_log_phase() {
     LOG_PHASE="${1:-unknown}"
 }
 
+resolve_log_owner() {
+    local owner_user="${SUDO_USER:-${USER:-$(whoami)}}"
+    local owner_group
+    owner_group=$(id -gn "$owner_user" 2>/dev/null || echo "$owner_user")
+    echo "$owner_user:$owner_group"
+}
+
+ensure_logfile_writable() {
+    local logfile_path="$1"
+    local owner_spec
+
+    [ -n "$logfile_path" ] || return 1
+    owner_spec=$(resolve_log_owner)
+
+    mkdir -p "$(dirname "$logfile_path")"
+
+    if [ ! -e "$logfile_path" ]; then
+        : > "$logfile_path" 2>/dev/null || {
+            if command -v sudo >/dev/null 2>&1; then
+                sudo touch "$logfile_path" 2>/dev/null || return 1
+            else
+                return 1
+            fi
+        }
+    fi
+
+    if ! chown "$owner_spec" "$logfile_path" 2>/dev/null; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo chown "$owner_spec" "$logfile_path" 2>/dev/null || true
+        fi
+    fi
+
+    if ! chmod 664 "$logfile_path" 2>/dev/null; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo chmod 664 "$logfile_path" 2>/dev/null || true
+        fi
+    fi
+}
+
 # Execute a command and replay its stdout/stderr via log_msg to keep timestamps consistent.
 run_and_log() {
     local line_prefix=""
@@ -276,6 +315,7 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
     # the file in which to store the logging from this run
     logfile_name="multi_rpi_eco_"$PI_ID"_"$currentDate".log"
     LOGFILE_ACTIVE="$logdir/$logfile_name"
+    ensure_logfile_writable "$LOGFILE_ACTIVE"
     
     # Start recording script with auto-restart on failure
     log_msg "Starting RECORDING mode (offline)"
@@ -286,9 +326,11 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
     while true; do
         log_msg "Attempting to start recording script (attempt $((restart_count + 1)))..."
         if sudo -E env FORCE_OFFLINE_MODE=1 python3 -u python_record.py $config_file $logfile_name $logdir; then
+            ensure_logfile_writable "$LOGFILE_ACTIVE"
             log_msg "Recording script exited successfully."
             break
         else
+            ensure_logfile_writable "$LOGFILE_ACTIVE"
             log_msg "ERROR: Recording script failed (attempt $((restart_count + 1)))!"
             log_msg "Will retry in 10 seconds..."
             log_msg "Check logs at $logdir/$logfile_name for details."
@@ -311,6 +353,7 @@ else
     if [ ! -d "$logdir" ]; then
         mkdir -p "$logdir"
     fi
+    ensure_logfile_writable "$upload_logfile"
     
     log_msg "Starting UPLOAD mode (online)"
     
@@ -403,9 +446,11 @@ else
         # Run upload script with sudo so verified files can be deleted even if
         # they are owned by root (recording flow often runs with elevated perms).
         if sudo -E bash ./rclone_upload.sh "$live_data_dir" "$rclone_remote_name" "$state_file" "$upload_logfile" "$rclone_config_path" "$rclone_target_path"; then
+            ensure_logfile_writable "$upload_logfile"
             log_msg "Upload cycle completed successfully"
             upload_complete=1
         else
+            ensure_logfile_writable "$upload_logfile"
             retry_count=$((retry_count + 1))
             log_msg "Upload cycle failed, will retry... (attempt $retry_count)"
             sleep 30

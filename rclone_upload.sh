@@ -10,6 +10,7 @@
 #   ./rclone_upload.sh <data_dir> [remote_name] [state_file] [logfile] [config_path] [target_path]
 
 set -u
+set -o pipefail
 
 data_dir="$1"
 remote_name="${2:-mybox}"
@@ -177,17 +178,19 @@ _push_rclone_config_to_gist() {
     fi
 }
 
-# Use copy instead of move for safety
-rclone_args=(copy "$data_dir" "$remote_target" --delete-empty-src-dirs --log-level INFO --log-file "$rclone_logfile")
+# Use copy instead of move for safety.
+# NOTE: Do not use --delete-empty-src-dirs here because some rclone versions
+# don't support it on copy and fail with "unknown flag".
+rclone_args=(copy "$data_dir" "$remote_target" --log-level INFO --log-file "$rclone_logfile")
 if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")
 fi
 
 if rclone "${rclone_args[@]}" 2>&1 | tee -a "$logfile"; then
-    
     rclone_exit_code=0
     log_msg "Rclone copy completed with exit code 0"
 else
+    # With pipefail enabled, this reflects rclone's non-zero exit status.
     rclone_exit_code=$?
     log_msg "Rclone copy failed with exit code $rclone_exit_code"
 fi

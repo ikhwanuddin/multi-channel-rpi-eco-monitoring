@@ -110,7 +110,12 @@ for root, dirs, files in os.walk(data_dir):
             rel_path = os.path.relpath(file_path, data_dir)
             
             if rel_path in state['files']:
-                found_files[rel_path] = state['files'][rel_path]
+                # If a file still exists locally, do not keep it as completed.
+                # Requeue it so verify step can delete local copy once remote is confirmed.
+                if state['files'][rel_path] == 'completed':
+                    found_files[rel_path] = 'pending'
+                else:
+                    found_files[rel_path] = state['files'][rel_path]
             else:
                 found_files[rel_path] = 'pending'
 

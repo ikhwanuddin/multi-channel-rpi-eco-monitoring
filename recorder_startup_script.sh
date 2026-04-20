@@ -295,9 +295,9 @@ else
         
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Internet available, proceeding with upload..." | tee -a "$upload_logfile"
         
-        # Run upload script
-        # Note: This will be replaced with the refactored rclone_upload.sh
-        if bash ./rclone_upload.sh "$live_data_dir" "$rclone_remote_name" "$state_file" "$upload_logfile" "$rclone_config_path" "$rclone_target_path"; then
+        # Run upload script with sudo so verified files can be deleted even if
+        # they are owned by root (recording flow often runs with elevated perms).
+        if sudo -E bash ./rclone_upload.sh "$live_data_dir" "$rclone_remote_name" "$state_file" "$upload_logfile" "$rclone_config_path" "$rclone_target_path"; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Upload cycle completed successfully" | tee -a "$upload_logfile"
             upload_complete=1
         else

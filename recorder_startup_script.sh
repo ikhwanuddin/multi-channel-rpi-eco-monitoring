@@ -226,6 +226,7 @@ else
     # Extract optional rclone settings from config.json
     rclone_remote_name=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('remote_name', ''))" 2>/dev/null)
     rclone_config_path=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('config_path', ''))" 2>/dev/null)
+    rclone_target_path=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('target_path', ''))" 2>/dev/null)
 
     if [ -z "$rclone_remote_name" ]; then
         rclone_remote_name="mybox"
@@ -239,6 +240,13 @@ else
     else
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] Using default rclone config lookup" | tee -a "$upload_logfile"
     fi
+
+    if [ -z "$rclone_target_path" ]; then
+        rclone_target_path="monitoring_data"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] No rclone target_path in config; using default shared folder: $rclone_target_path" | tee -a "$upload_logfile"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Using rclone target_path from config: $rclone_target_path" | tee -a "$upload_logfile"
+    fi
     
     # Data directory to upload
     live_data_dir="/home/pi/monitoring_data/live_data"
@@ -251,6 +259,14 @@ else
     fi
     
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Live data directory: $live_data_dir" | tee -a "$upload_logfile"
+
+    # Fallback state file path if live_data is not writable by current user
+    if [ ! -w "$live_data_dir" ] || { [ -e "$state_file" ] && [ ! -w "$state_file" ]; }; then
+        fallback_state_dir="/tmp/monitoring_upload_state"
+        mkdir -p "$fallback_state_dir"
+        state_file="$fallback_state_dir/.rclone_state_${PI_ID}.json"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: Cannot write state file in $live_data_dir, using fallback: $state_file" | tee -a "$upload_logfile"
+    fi
     
     # Initialize rclone state
     init_rclone_state "$state_file" "$live_data_dir"
@@ -281,7 +297,7 @@ else
         
         # Run upload script
         # Note: This will be replaced with the refactored rclone_upload.sh
-        if bash ./rclone_upload.sh "$live_data_dir" "$rclone_remote_name" "$state_file" "$upload_logfile" "$rclone_config_path"; then
+        if bash ./rclone_upload.sh "$live_data_dir" "$rclone_remote_name" "$state_file" "$upload_logfile" "$rclone_config_path" "$rclone_target_path"; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Upload cycle completed successfully" | tee -a "$upload_logfile"
             upload_complete=1
         else

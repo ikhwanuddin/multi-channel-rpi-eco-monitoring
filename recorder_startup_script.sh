@@ -30,6 +30,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Optional: auto-update repository on startup before running the rest of the script.
 # Set AUTO_UPDATE_ON_STARTUP=0 to disable.
 # Behavior is force-sync to remote branch: fetch + reset --hard + clean -fd.
+# Preserves local config.json and logs/ by excluding them from git clean.
 if [ "${AUTO_UPDATE_ON_STARTUP:-1}" = "1" ]; then
     if command -v git >/dev/null 2>&1 && [ -d "$SCRIPT_DIR/.git" ]; then
         log_msg "Checking for repository updates from GitHub..."
@@ -41,9 +42,9 @@ if [ "${AUTO_UPDATE_ON_STARTUP:-1}" = "1" ]; then
                 remote_hash=$(git -C "$SCRIPT_DIR" rev-parse "origin/$current_branch" 2>/dev/null || true)
 
                 if [ -n "$remote_hash" ]; then
-                    log_msg "Force-syncing local repository to origin/$current_branch (discarding local changes)..."
+                          log_msg "Force-syncing local repository to origin/$current_branch (discarding local changes, keeping config.json and logs/)..."
                     if timeout 45 git -C "$SCRIPT_DIR" reset --hard "origin/$current_branch" >/dev/null 2>&1 \
-                       && timeout 30 git -C "$SCRIPT_DIR" clean -fd >/dev/null 2>&1; then
+                              && timeout 30 git -C "$SCRIPT_DIR" clean -fd -e config.json -e logs/ >/dev/null 2>&1; then
                         new_hash=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)
                         if [ -n "$local_hash" ] && [ -n "$new_hash" ] && [ "$local_hash" != "$new_hash" ]; then
                             log_msg "Repository updated successfully. Restarting startup script to use latest code."
@@ -67,6 +68,8 @@ if [ "${AUTO_UPDATE_ON_STARTUP:-1}" = "1" ]; then
         log_msg "Git or repository metadata not found, skipping auto-update."
     fi
 fi
+
+log_msg "Note: /home/pi/.config/rclone is outside this git repo and is not affected by git clean."
 
 # Source helper functions for upload mode
 if [ -f "$SCRIPT_DIR/upload_mode_helper.sh" ]; then

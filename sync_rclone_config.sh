@@ -33,6 +33,10 @@ _curl_common_args() {
     echo "-sS --connect-timeout $CURL_CONNECT_TIMEOUT --max-time $CURL_MAX_TIME"
 }
 
+_make_temp_dir() {
+    mktemp -d "${TMPDIR:-/tmp}/gist_sync.XXXXXX"
+}
+
 # ── Internal: log helper ──────────────────────────────────────────────────────
 _gist_log() {
     local msg="$1"
@@ -106,8 +110,19 @@ except:
 # ── Push local rclone.conf to Gist ───────────────────────────────────────────
 _push_to_gist() {
     local logfile="${1:-/dev/stdout}"
+    local tmpdir=""
+    local response_file=""
+    local err_file=""
 
     _gist_log "Pushing local rclone.conf to Gist..." "$logfile"
+
+    tmpdir=$(_make_temp_dir)
+    if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then
+        _gist_log "ERROR: Failed to create temporary directory for Gist push" "$logfile"
+        return 1
+    fi
+    response_file="$tmpdir/push_response.json"
+    err_file="$tmpdir/push_curl.err"
 
     # Read file content and escape for JSON
     local content
@@ -120,6 +135,7 @@ print(json.dumps(content))
 
     if [ -z "$content" ]; then
         _gist_log "ERROR: Failed to read rclone.conf for upload" "$logfile"
+        rm -rf "$tmpdir"
         return 1
     fi
 
@@ -132,26 +148,29 @@ print(json.dumps(payload))
 ")
 
     local http_code
-    http_code=$(curl $(_curl_common_args) -o /tmp/_gist_push_response.json -w "%{http_code}" \
+    http_code=$(curl $(_curl_common_args) -o "$response_file" -w "%{http_code}" \
         -X PATCH \
         -H "Authorization: token $GIST_TOKEN" \
         -H "Accept: application/vnd.github.v3+json" \
         -H "Content-Type: application/json" \
         -d "$payload" \
-        "https://api.github.com/gists/$GIST_ID" 2>/tmp/_gist_push_curl.err)
+        "https://api.github.com/gists/$GIST_ID" 2>"$err_file")
 
     if [ "$http_code" = "200" ]; then
         _gist_log "Push successful (HTTP $http_code)" "$logfile"
+        rm -rf "$tmpdir"
         return 0
     else
         local err
         if [ "$http_code" = "000" ]; then
-            err=$(head -n 1 /tmp/_gist_push_curl.err 2>/dev/null)
+            err=$(head -n 1 "$err_file" 2>/dev/null)
             err=${err:-"network error (timeout/DNS/TLS/connectivity)"}
         else
-            err=$(python3 -c "import json; d=json.load(open('/tmp/_gist_push_response.json')); print(d.get('message','unknown error'))" 2>/dev/null)
+            err=$(python3 -c "import json; d=json.load(open('$response_file')); print(d.get('message','unknown error'))" 2>/dev/null)
+            err=${err:-"unknown error"}
         fi
         _gist_log "ERROR: Push failed (HTTP $http_code): $err" "$logfile"
+        rm -rf "$tmpdir"
         return 1
     fi
 }
@@ -159,24 +178,39 @@ print(json.dumps(payload))
 # ── Pull rclone.conf from Gist ────────────────────────────────────────────────
 _pull_from_gist() {
     local logfile="${1:-/dev/stdout}"
+    local tmpdir=""
+    local response_file=""
+    local err_file=""
+    local raw_err_file=""
 
     _gist_log "Pulling rclone.conf from Gist..." "$logfile"
 
+    tmpdir=$(_make_temp_dir)
+    if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then
+        _gist_log "ERROR: Failed to create temporary directory for Gist pull" "$logfile"
+        return 1
+    fi
+    response_file="$tmpdir/pull_response.json"
+    err_file="$tmpdir/pull_curl.err"
+    raw_err_file="$tmpdir/raw_curl.err"
+
     local http_code
-    http_code=$(curl $(_curl_common_args) -o /tmp/_gist_pull_response.json -w "%{http_code}" \
+    http_code=$(curl $(_curl_common_args) -o "$response_file" -w "%{http_code}" \
         -H "Authorization: token $GIST_TOKEN" \
         -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/gists/$GIST_ID" 2>/tmp/_gist_pull_curl.err)
+        "https://api.github.com/gists/$GIST_ID" 2>"$err_file")
 
     if [ "$http_code" != "200" ]; then
         local err
         if [ "$http_code" = "000" ]; then
-            err=$(head -n 1 /tmp/_gist_pull_curl.err 2>/dev/null)
+            err=$(head -n 1 "$err_file" 2>/dev/null)
             err=${err:-"network error (timeout/DNS/TLS/connectivity)"}
         else
-            err=$(python3 -c "import json; d=json.load(open('/tmp/_gist_pull_response.json')); print(d.get('message','unknown error'))" 2>/dev/null)
+            err=$(python3 -c "import json; d=json.load(open('$response_file')); print(d.get('message','unknown error'))" 2>/dev/null)
+            err=${err:-"unknown error"}
         fi
         _gist_log "ERROR: Pull failed (HTTP $http_code): $err" "$logfile"
+        rm -rf "$tmpdir"
         return 1
     fi
 
@@ -185,7 +219,7 @@ _pull_from_gist() {
     raw_url=$(python3 -c "
 import json, sys
 try:
-    d = json.load(open('/tmp/_gist_pull_response.json'))
+    d = json.load(open('$response_file'))
     print(d['files']['$GIST_FILENAME']['raw_url'])
 except (KeyError, TypeError):
     sys.exit(1)
@@ -193,6 +227,7 @@ except (KeyError, TypeError):
 
     if [ -z "$raw_url" ]; then
         _gist_log "ERROR: Could not find '$GIST_FILENAME' in Gist response" "$logfile"
+        rm -rf "$tmpdir"
         return 1
     fi
 
@@ -203,7 +238,7 @@ except (KeyError, TypeError):
     local dl_code
     dl_code=$(curl $(_curl_common_args) -o "$RCLONE_CONF_PATH" -w "%{http_code}" \
         -H "Authorization: token $GIST_TOKEN" \
-        "$raw_url" 2>/tmp/_gist_raw_curl.err)
+        "$raw_url" 2>"$raw_err_file")
 
     if [ "$dl_code" = "200" ]; then
         # Keep ownership on the intended non-root user even when called via sudo.
@@ -219,16 +254,18 @@ except (KeyError, TypeError):
         fi
 
         _gist_log "Pull successful - rclone.conf updated (HTTP $dl_code)" "$logfile"
+        rm -rf "$tmpdir"
         return 0
     else
         local err
         if [ "$dl_code" = "000" ]; then
-            err=$(head -n 1 /tmp/_gist_raw_curl.err 2>/dev/null)
+            err=$(head -n 1 "$raw_err_file" 2>/dev/null)
             err=${err:-"network error (timeout/DNS/TLS/connectivity)"}
             _gist_log "ERROR: Failed to download raw Gist content (HTTP $dl_code): $err" "$logfile"
         else
             _gist_log "ERROR: Failed to download raw Gist content (HTTP $dl_code)" "$logfile"
         fi
+        rm -rf "$tmpdir"
         return 1
     fi
 }
@@ -237,38 +274,52 @@ except (KeyError, TypeError):
 sync_rclone_config() {
     local config_file="${1:-./config.json}"
     local logfile="${2:-/dev/stdout}"
+    local tmpdir=""
+    local meta_file=""
+    local meta_err_file=""
 
     _gist_log "Starting rclone.conf sync..." "$logfile"
+
+    tmpdir=$(_make_temp_dir)
+    if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then
+        _gist_log "ERROR: Failed to create temporary directory for Gist metadata" "$logfile"
+        return 1
+    fi
+    meta_file="$tmpdir/meta.json"
+    meta_err_file="$tmpdir/meta_curl.err"
 
     # Load credentials
     if ! _read_gist_config "$config_file"; then
         _gist_log "Skipping sync: gist credentials not configured" "$logfile"
+        rm -rf "$tmpdir"
         return 1
     fi
 
     # ── Get Gist updated_at timestamp ──────────────────────────────────────────
     local http_code
-    http_code=$(curl $(_curl_common_args) -o /tmp/_gist_meta.json -w "%{http_code}" \
+    http_code=$(curl $(_curl_common_args) -o "$meta_file" -w "%{http_code}" \
         -H "Authorization: token $GIST_TOKEN" \
         -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/gists/$GIST_ID" 2>/tmp/_gist_meta_curl.err)
+        "https://api.github.com/gists/$GIST_ID" 2>"$meta_err_file")
 
     if [ "$http_code" != "200" ]; then
         local err
         if [ "$http_code" = "000" ]; then
-            err=$(head -n 1 /tmp/_gist_meta_curl.err 2>/dev/null)
+            err=$(head -n 1 "$meta_err_file" 2>/dev/null)
             err=${err:-"network error (timeout/DNS/TLS/connectivity)"}
         else
-            err=$(python3 -c "import json; d=json.load(open('/tmp/_gist_meta.json')); print(d.get('message','unknown error'))" 2>/dev/null)
+            err=$(python3 -c "import json; d=json.load(open('$meta_file')); print(d.get('message','unknown error'))" 2>/dev/null)
+            err=${err:-"unknown error"}
         fi
         _gist_log "ERROR: Cannot fetch Gist metadata (HTTP $http_code): $err" "$logfile"
+        rm -rf "$tmpdir"
         return 1
     fi
 
     local gist_updated_epoch
     gist_updated_epoch=$(python3 -c "
 import json, datetime, calendar
-d = json.load(open('/tmp/_gist_meta.json'))
+d = json.load(open('$meta_file'))
 updated_at = d['updated_at']  # ISO 8601 e.g. '2026-04-20T10:00:00Z'
 dt = datetime.datetime.strptime(updated_at, '%Y-%m-%dT%H:%M:%SZ')
 print(calendar.timegm(dt.timetuple()))
@@ -276,12 +327,14 @@ print(calendar.timegm(dt.timetuple()))
 
     if [ -z "$gist_updated_epoch" ]; then
         _gist_log "ERROR: Could not parse Gist updated_at timestamp" "$logfile"
+        rm -rf "$tmpdir"
         return 1
     fi
 
     # ── Get local rclone.conf modification time ────────────────────────────────
     if [ ! -f "$RCLONE_CONF_PATH" ]; then
         _gist_log "Local rclone.conf not found — pulling from Gist..." "$logfile"
+        rm -rf "$tmpdir"
         _pull_from_gist "$logfile"
         return $?
     fi
@@ -291,6 +344,7 @@ print(calendar.timegm(dt.timetuple()))
 
     if [ -z "$local_mtime_epoch" ]; then
         _gist_log "ERROR: Cannot read local rclone.conf modification time" "$logfile"
+        rm -rf "$tmpdir"
         return 1
     fi
 
@@ -304,14 +358,17 @@ print(calendar.timegm(dt.timetuple()))
 
     if [ "$diff" -gt 30 ]; then
         _gist_log "Local is newer by ${diff}s → pushing to Gist" "$logfile"
+        rm -rf "$tmpdir"
         _push_to_gist "$logfile"
         return $?
     elif [ "$diff" -lt -30 ]; then
         _gist_log "Gist is newer by $(( -diff ))s → pulling from Gist" "$logfile"
+        rm -rf "$tmpdir"
         _pull_from_gist "$logfile"
         return $?
     else
         _gist_log "Timestamps are in sync (diff=${diff}s), no action needed" "$logfile"
+        rm -rf "$tmpdir"
         return 0
     fi
 }

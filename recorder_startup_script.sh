@@ -411,6 +411,12 @@ else
     set_log_phase "pre-compress"
     pre_upload_dir_wav="/home/pi/pre_upload_dir"
     if [ -d "$pre_upload_dir_wav" ]; then
+        # Remove known bad leftovers before compression attempts.
+        while IFS= read -r -d '' error_file; do
+            sudo rm -f "$error_file" 2>/dev/null || true
+            log_msg "Removed error marker: $(basename "$error_file")"
+        done < <(find "$pre_upload_dir_wav" -iname "*ERROR*" -print0 2>/dev/null)
+
         wav_count=$(find "$pre_upload_dir_wav" -name "*.wav" 2>/dev/null | wc -l)
         if [ "$wav_count" -gt 0 ]; then
             log_msg "Found $wav_count pending WAV file(s) in $pre_upload_dir_wav, compressing before upload..."

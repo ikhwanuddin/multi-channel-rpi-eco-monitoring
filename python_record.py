@@ -252,7 +252,7 @@ def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
             os.makedirs(session_pre_upload_dir)
     except OSError:
         logging.critical('Could not create pre upload directory {}'.format(session_pre_upload_dir))
-        sys.exit()
+        return
 
     # Generate File list (including sub-directories)
     file_list = []

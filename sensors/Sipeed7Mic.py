@@ -172,10 +172,9 @@ class Sipeed7Mic(SensorBase):
         
         pre_upload_dir = '/home/pi/pre_upload_dir'
 
-        # Get File Location Infor for correct upload
-        file_path = wfile.split(os.sep)
-        filename = file_path[5]
-        start_date = file_path[4]
+        # Get file location info for correct upload
+        filename = os.path.basename(wfile)
+        start_date = os.path.basename(os.path.dirname(wfile))
         
         # Make sure relevant upload dir exists
         session_upload_dir = os.path.join(upload_dir, start_date)
@@ -205,7 +204,8 @@ class Sipeed7Mic(SensorBase):
             try:
                 logging.info('\nStarting compression of {}\nto {} at {}\n'.format(wfile, ofile, time_now))
                 cmd = ['ffmpeg', '-y', '-i', wfile, '-c:a', 'flac', ofile]
-                compress_result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                compress_result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                                 timeout=self.record_length * 3)
                 if compress_result.returncode != 0:
                     raise RuntimeError('ffmpeg exited with status {}'.format(compress_result.returncode))
                 if (not os.path.exists(ofile)) or (os.path.getsize(ofile) == 0):
@@ -213,8 +213,12 @@ class Sipeed7Mic(SensorBase):
                 os.remove(wfile)
                 time_now = time.strftime('%H-%M-%S')
                 logging.info('\nFinished compression of {}\nto {} at {}\n'.format(wfile, ofile, time_now))
+            except subprocess.TimeoutExpired:
+                logging.warning('ffmpeg timed out compressing {}, skipping'.format(wfile))
+                if os.path.exists(ofile):
+                    os.remove(ofile)
             except Exception as exc:
-                logging.info('Error compressing {}: {}'. format(wfile, exc))
+                logging.info('Error compressing {}: {}'.format(wfile, exc))
             
 
         else:

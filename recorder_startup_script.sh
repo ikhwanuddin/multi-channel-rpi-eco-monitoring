@@ -405,6 +405,42 @@ else
     
     log_msg "Live data directory: $live_data_dir"
 
+    # Compress any pending WAV files from pre_upload_dir before uploading.
+    # WAV files land in pre_upload_dir when the previous session was OFFLINE; they
+    # must be converted to FLAC and moved to live_data_dir so rclone can pick them up.
+    set_log_phase "pre-compress"
+    pre_upload_dir_wav="/home/pi/pre_upload_dir"
+    if [ -d "$pre_upload_dir_wav" ]; then
+        wav_count=$(find "$pre_upload_dir_wav" -name "*.wav" 2>/dev/null | wc -l)
+        if [ "$wav_count" -gt 0 ]; then
+            log_msg "Found $wav_count pending WAV file(s) in $pre_upload_dir_wav, compressing before upload..."
+            while IFS= read -r -d '' wav_file; do
+                date_subdir=$(basename "$(dirname "$wav_file")")
+                base_name=$(basename "${wav_file%.wav}")
+                dest_dir="$live_data_dir/$PI_ID/$date_subdir"
+                dest_flac="$dest_dir/${base_name}.flac"
+                sudo mkdir -p "$dest_dir"
+                log_msg "Compressing: $(basename "$wav_file") -> $dest_flac"
+                if sudo timeout 3600 ffmpeg -y -i "$wav_file" -c:a flac "$dest_flac" >/dev/null 2>&1; then
+                    if [ -s "$dest_flac" ]; then
+                        sudo rm -f "$wav_file"
+                        log_msg "Compressed OK: ${base_name}.flac"
+                    else
+                        sudo rm -f "$dest_flac"
+                        log_msg "WARNING: FLAC output empty for $(basename "$wav_file"), skipping"
+                    fi
+                else
+                    sudo rm -f "$dest_flac" 2>/dev/null || true
+                    log_msg "WARNING: ffmpeg failed or timed out for $(basename "$wav_file"), skipping"
+                fi
+            done < <(find "$pre_upload_dir_wav" -name "*.wav" -print0 2>/dev/null)
+            log_msg "Pre-upload compression phase complete."
+        else
+            log_msg "No pending WAV files found in $pre_upload_dir_wav."
+        fi
+    fi
+    set_log_phase "upload-init"
+
     # Fallback state file path if live_data is not writable by current user
     if [ ! -w "$live_data_dir" ] || { [ -e "$state_file" ] && [ ! -w "$state_file" ]; }; then
         fallback_state_dir="/tmp/monitoring_upload_state"

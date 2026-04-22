@@ -254,12 +254,26 @@ def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
         logging.critical('Could not create pre upload directory {}'.format(session_pre_upload_dir))
         return
 
-    # Generate File list (including sub-directories)
+    # Generate file list (including sub-directories), while dropping known
+    # invalid leftovers so they do not block future postprocessing attempts.
     file_list = []
     
     for root, directories, files in os.walk(pre_upload_dir, topdown = False):
         for name in files:
-            file_list.append(os.path.join('/home/pi/',root, name))
+            full_path = os.path.join(root, name)
+
+            if 'ERROR' in name.upper():
+                try:
+                    os.remove(full_path)
+                    logging.warning('Removed error marker from pre-upload queue: {}'.format(full_path))
+                except OSError as e:
+                    logging.warning('Failed to remove error marker {}: {}'.format(full_path, e))
+                continue
+
+            if not name.lower().endswith('.wav'):
+                continue
+
+            file_list.append(full_path)
 
 
     if len(file_list) == 0: 

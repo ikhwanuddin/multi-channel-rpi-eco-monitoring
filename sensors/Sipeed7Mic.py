@@ -184,13 +184,13 @@ class Sipeed7Mic(SensorBase):
                 os.makedirs(session_upload_dir)
         except OSError:
             logging.critical('Could not create upload directory for recording: \n{}'.format(session_upload_dir))
-            sys.exit()
+            return
 
         # Determine Path for Postprocessed Files: 
         ofile= wfile.replace(pre_upload_dir, upload_dir)
 
-        if (not os.path.exists(wfile)) or (os.path.getsize(wfile) < self.MIN_VALID_AUDIO_BYTES):
-            logging.warning('Skipping compression for invalid or missing WAV: {}'.format(wfile))
+        if not os.path.exists(wfile):
+            logging.warning('Skipping compression for missing WAV: {}'.format(wfile))
             return
 
         if self.compress_data:

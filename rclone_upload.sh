@@ -217,28 +217,19 @@ _push_rclone_config_to_gist() {
 # Use copy instead of move for safety.
 # NOTE: Do not use --delete-empty-src-dirs here because some rclone versions
 # don't support it on copy and fail with "unknown flag".
-rclone_args=(copy "$data_dir" "$remote_target" --log-level INFO --log-file "$rclone_logfile")
+rclone_args=(copy "$data_dir" "$remote_target" --log-level INFO --stats 10s --stats-one-line)
 if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")
 fi
 
-if rclone "${rclone_args[@]}" 2>&1 | log_stream "[component=rclone] "; then
+log_msg "Starting live rclone stream (will print current files/folders and transfer stats every 10s)..."
+if rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[component=rclone] "; then
     rclone_exit_code=0
     log_msg "Rclone copy completed with exit code 0"
 else
     # With pipefail enabled, this reflects rclone's non-zero exit status.
     rclone_exit_code=$?
     log_msg "Rclone copy failed with exit code $rclone_exit_code"
-fi
-
-# Append rclone logs to main logfile
-if [ -f "$rclone_logfile" ]; then
-    log_msg "--- Rclone detailed logs ---"
-    while IFS= read -r line; do
-        log_msg "[component=rclone-detail] $line"
-    done < "$rclone_logfile"
-    log_msg "--- End rclone logs ---"
-    rm -f "$rclone_logfile"
 fi
 
 # If rclone succeeded, verify files on remote and mark as completed

@@ -405,14 +405,13 @@ else
     
     log_msg "Live data directory: $live_data_dir"
 
-    # Compress any pending WAV files from pre_upload_dir before uploading.
-    # WAV files land in pre_upload_dir when the previous session was OFFLINE; they
-    # must be converted to FLAC and moved to live_data_dir so rclone can pick them up.
-    set_log_phase "pre-compress"
+    # Move pending WAV files from pre_upload_dir into live_data_dir for upload.
+    # WAV files are moved as-is (no conversion) into date-named folders suffixed with [wav].
+    set_log_phase "pre-stage-wav"
     pre_upload_dir_wav="/home/pi/pre_upload_dir"
 
       if [ -d "$pre_upload_dir_wav" ]; then
-          # Remove known bad leftovers before compression attempts.
+          # Remove known bad leftovers before staging.
           while IFS= read -r -d '' error_file; do
               sudo rm -f "$error_file" 2>/dev/null || true
               log_msg "Removed error marker: $(basename "$error_file")"
@@ -420,35 +419,23 @@ else
 
           wav_count=$(find "$pre_upload_dir_wav" -name "*.wav" 2>/dev/null | wc -l)
           if [ "$wav_count" -gt 0 ]; then
-              log_msg "Found $wav_count pending WAV file(s) in $pre_upload_dir_wav, compressing all..."
+              log_msg "Found $wav_count pending WAV file(s) in $pre_upload_dir_wav, staging for upload..."
               file_count=0
               while IFS= read -r -d '' wav_file; do
                   date_subdir=$(basename "$(dirname "$wav_file")")
-                  base_name=$(basename "${wav_file%.wav}")
-                  dest_dir="$live_data_dir/$PI_ID/$date_subdir"
-                  dest_flac="$dest_dir/${base_name}.flac"
+                  dest_dir="$live_data_dir/$PI_ID/${date_subdir}[wav]"
                   sudo mkdir -p "$dest_dir"
 
                   input_size=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
-                  log_msg "Compressing ($((file_count+1))/$wav_count): $(basename "$wav_file") [$input_size bytes] -> $dest_flac"
+                  log_msg "Staging ($((file_count+1))/$wav_count): $(basename "$wav_file") [$input_size bytes] -> $dest_dir/"
 
-                  # Use FLAC level 2 (fast) with adaptive timeout; capture ffmpeg output for debugging
-                  if sudo timeout 600 ffmpeg -y -i "$wav_file" -c:a flac -compression_level 2 "$dest_flac" >/dev/null 2>&1; then
-                      if [ -s "$dest_flac" ]; then
-                          output_size=$(stat -f%z "$dest_flac" 2>/dev/null || echo "?")
-                          sudo rm -f "$wav_file"
-                          log_msg "Compressed OK: ${base_name}.flac [$output_size bytes]"
-                          file_count=$((file_count+1))
-                      else
-                          sudo rm -f "$dest_flac"
-                          log_msg "WARNING: FLAC output empty for $(basename "$wav_file"), keeping WAV for retry"
-                      fi
+                  if sudo mv "$wav_file" "$dest_dir/"; then
+                      file_count=$((file_count+1))
                   else
-                      sudo rm -f "$dest_flac" 2>/dev/null || true
-                      log_msg "WARNING: ffmpeg timeout/fail for $(basename "$wav_file") (timeout 600s), keeping WAV for retry"
+                      log_msg "WARNING: Failed to move $(basename "$wav_file"), keeping in pre_upload_dir"
                   fi
               done < <(find "$pre_upload_dir_wav" -name "*.wav" -print0 2>/dev/null)
-              log_msg "Pre-upload compression complete: $file_count/$wav_count file(s) processed."
+              log_msg "WAV staging complete: $file_count/$wav_count file(s) moved to live_data_dir."
           else
               log_msg "No pending WAV files found in $pre_upload_dir_wav."
           fi

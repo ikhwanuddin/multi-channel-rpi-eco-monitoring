@@ -119,7 +119,8 @@ class Respeaker4Mic(SensorBase):
             # Removed:  >/dev/null 2>&1
             try: 
                 logging.info('\n Starting compression of {} to {} at {}\n'.format(wfile, ofile, time_now))
-                cmd = ('ffmpeg -i {} -c:a flac {} >/dev/null 2>&1') 
+                # Use FLAC level 2 (fast) instead of default 5 (medium) for RPi performance
+                cmd = ('ffmpeg -i {} -c:a flac -compression_level 2 {}') 
                 subprocess.call(cmd.format(s_wfile, ofile), shell=True)
                 os.remove(s_wfile)
                 time_now = time.strftime('%H-%M-%S')

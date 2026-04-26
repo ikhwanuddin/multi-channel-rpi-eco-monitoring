@@ -203,9 +203,10 @@ class Sipeed7Mic(SensorBase):
             # Audio is compressed using a FLAC Encoding            
             try:
                 logging.info('\nStarting compression of {}\nto {} at {}\n'.format(wfile, ofile, time_now))
-                cmd = ['ffmpeg', '-y', '-i', wfile, '-c:a', 'flac', ofile]
-                compress_result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                                 timeout=self.record_length * 3)
+                # Use FLAC level 2 (fast) instead of default 5 (medium) for RPi performance
+                cmd = ['ffmpeg', '-y', '-i', wfile, '-c:a', 'flac', '-compression_level', '2', ofile]
+                compress_result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                                 timeout=self.record_length * 5)
                 if compress_result.returncode != 0:
                     raise RuntimeError('ffmpeg exited with status {}'.format(compress_result.returncode))
                 if (not os.path.exists(ofile)) or (os.path.getsize(ofile) == 0):

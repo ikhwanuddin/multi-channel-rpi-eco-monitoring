@@ -410,42 +410,62 @@ else
     # must be converted to FLAC and moved to live_data_dir so rclone can pick them up.
     set_log_phase "pre-compress"
     pre_upload_dir_wav="/home/pi/pre_upload_dir"
-    if [ -d "$pre_upload_dir_wav" ]; then
-        # Remove known bad leftovers before compression attempts.
-        while IFS= read -r -d '' error_file; do
-            sudo rm -f "$error_file" 2>/dev/null || true
-            log_msg "Removed error marker: $(basename "$error_file")"
-        done < <(find "$pre_upload_dir_wav" -iname "*ERROR*" -print0 2>/dev/null)
+      pre_compress_skip_threshold=100  # Skip pre-compress if more than this many files (would block startup too long)
+      pre_compress_batch_limit=20     # If compressing, batch-process max this many files per startup
+      
+      if [ -d "$pre_upload_dir_wav" ]; then
+          # Remove known bad leftovers before compression attempts.
+          while IFS= read -r -d '' error_file; do
+              sudo rm -f "$error_file" 2>/dev/null || true
+              log_msg "Removed error marker: $(basename "$error_file")"
+          done < <(find "$pre_upload_dir_wav" -iname "*ERROR*" -print0 2>/dev/null)
 
-        wav_count=$(find "$pre_upload_dir_wav" -name "*.wav" 2>/dev/null | wc -l)
-        if [ "$wav_count" -gt 0 ]; then
-            log_msg "Found $wav_count pending WAV file(s) in $pre_upload_dir_wav, compressing before upload..."
-            while IFS= read -r -d '' wav_file; do
-                date_subdir=$(basename "$(dirname "$wav_file")")
-                base_name=$(basename "${wav_file%.wav}")
-                dest_dir="$live_data_dir/$PI_ID/$date_subdir"
-                dest_flac="$dest_dir/${base_name}.flac"
-                sudo mkdir -p "$dest_dir"
-                log_msg "Compressing: $(basename "$wav_file") -> $dest_flac"
-                if sudo timeout 3600 ffmpeg -y -i "$wav_file" -c:a flac "$dest_flac" >/dev/null 2>&1; then
-                    if [ -s "$dest_flac" ]; then
-                        sudo rm -f "$wav_file"
-                        log_msg "Compressed OK: ${base_name}.flac"
-                    else
-                        sudo rm -f "$dest_flac"
-                        log_msg "WARNING: FLAC output empty for $(basename "$wav_file"), skipping"
-                    fi
-                else
-                    sudo rm -f "$dest_flac" 2>/dev/null || true
-                    log_msg "WARNING: ffmpeg failed or timed out for $(basename "$wav_file"), skipping"
-                fi
-            done < <(find "$pre_upload_dir_wav" -name "*.wav" -print0 2>/dev/null)
-            log_msg "Pre-upload compression phase complete."
-        else
-            log_msg "No pending WAV files found in $pre_upload_dir_wav."
-        fi
-    fi
-    set_log_phase "upload-init"
+          wav_count=$(find "$pre_upload_dir_wav" -name "*.wav" 2>/dev/null | wc -l)
+          if [ "$wav_count" -gt 0 ]; then
+              if [ "$wav_count" -gt "$pre_compress_skip_threshold" ]; then
+                  log_msg "Found $wav_count pending WAV file(s) - exceeds threshold ($pre_compress_skip_threshold). Skipping pre-compress to avoid startup delay. Will upload WAV files and compress during idle time or next offline session."
+                  # Note: rclone will NOT pick up these WAV files yet, but they will be available for compression by background processes
+              else
+                  log_msg "Found $wav_count pending WAV file(s) in $pre_upload_dir_wav, compressing batch (max $pre_compress_batch_limit files)..."
+                  file_count=0
+                  while IFS= read -r -d '' wav_file; do
+                      if [ $file_count -ge $pre_compress_batch_limit ]; then
+                          log_msg "Reached batch limit ($pre_compress_batch_limit files). Deferring remaining files to background/next run."
+                          break
+                      fi
+                      
+                      date_subdir=$(basename "$(dirname "$wav_file")")
+                      base_name=$(basename "${wav_file%.wav}")
+                      dest_dir="$live_data_dir/$PI_ID/$date_subdir"
+                      dest_flac="$dest_dir/${base_name}.flac"
+                      sudo mkdir -p "$dest_dir"
+                      
+                      input_size=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
+                      log_msg "Compressing ($((file_count+1))/$pre_compress_batch_limit): $(basename "$wav_file") [$input_size bytes] -> $dest_flac"
+                      
+                      # Use FLAC level 2 (fast) with adaptive timeout; capture ffmpeg output for debugging
+                      if sudo timeout 600 ffmpeg -y -i "$wav_file" -c:a flac -compression_level 2 "$dest_flac" >/dev/null 2>&1; then
+                          if [ -s "$dest_flac" ]; then
+                              output_size=$(stat -f%z "$dest_flac" 2>/dev/null || echo "?")
+                              sudo rm -f "$wav_file"
+                              log_msg "Compressed OK: ${base_name}.flac [$output_size bytes]"
+                              file_count=$((file_count+1))
+                          else
+                              sudo rm -f "$dest_flac"
+                              log_msg "WARNING: FLAC output empty for $(basename "$wav_file"), keeping WAV for retry"
+                          fi
+                      else
+                          sudo rm -f "$dest_flac" 2>/dev/null || true
+                          log_msg "WARNING: ffmpeg timeout/fail for $(basename "$wav_file") (timeout 600s), keeping WAV for retry"
+                      fi
+                  done < <(find "$pre_upload_dir_wav" -name "*.wav" -print0 2>/dev/null)
+                  log_msg "Pre-upload compression batch complete: $file_count file(s) processed."
+              fi
+          else
+              log_msg "No pending WAV files found in $pre_upload_dir_wav."
+          fi
+      fi
+      set_log_phase "upload-init"
 
     # Fallback state file path if live_data is not writable by current user
     if [ ! -w "$live_data_dir" ] || { [ -e "$state_file" ] && [ ! -w "$state_file" ]; }; then

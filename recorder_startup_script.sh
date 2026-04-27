@@ -69,6 +69,27 @@ ensure_logfile_writable() {
     fi
 }
 
+log_ffmpeg_timeout_event() {
+    local wav_file="$1"
+    local timeout_secs="$2"
+    local context_label="$3"
+    local size_bytes="?"
+    local event_id
+    local feedback_log
+
+    size_bytes=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
+    event_id=$(date +"%Y%m%dT%H%M%S")
+
+    log_msg "FFMPEG_TIMEOUT_DETECTED event_id=$event_id context=$context_label timeout_secs=$timeout_secs file=$wav_file size_bytes=$size_bytes action=kept_for_retry"
+    log_msg "FEEDBACK_HINT event_id=$event_id share='Kirimkan baris FFMPEG_TIMEOUT_DETECTED + 30 baris sebelum/sesudahnya dari log upload.'"
+
+    if [ -n "${logdir:-}" ]; then
+        feedback_log="$logdir/ffmpeg_timeout_feedback.log"
+        ensure_logfile_writable "$feedback_log"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] event_id=$event_id context=$context_label timeout_secs=$timeout_secs file=$wav_file size_bytes=$size_bytes action=kept_for_retry" >> "$feedback_log"
+    fi
+}
+
 # Execute a command and replay its stdout/stderr via log_msg to keep timestamps consistent.
 run_and_log() {
     local line_prefix=""
@@ -451,7 +472,7 @@ else
                           ffmpeg_exit_code=$?
                           sudo rm -f "$flac_file" 2>/dev/null || true
                           if [ "$ffmpeg_exit_code" -eq 124 ]; then
-                              log_msg "WARNING: Conversion timed out after ${ffmpeg_timeout_secs}s for $(basename "$wav_file"); keeping WAV in pre_upload_dir for retry"
+                              log_ffmpeg_timeout_event "$wav_file" "$ffmpeg_timeout_secs" "pre_upload_dir"
                           else
                               log_msg "WARNING: Failed to convert $(basename "$wav_file") (exit=$ffmpeg_exit_code); keeping WAV in pre_upload_dir for retry"
                           fi
@@ -481,6 +502,46 @@ else
               log_msg "FLAC staging complete: $staged_flac_count/$flac_count file(s) moved to live_data_dir."
           fi
         fi
+
+        # Safety pass: convert any WAV that already exists in live_data for this device.
+        # This covers reruns where WAV files were staged previously.
+        set_log_phase "pre-convert-live-data-wav"
+        pi_live_data_dir="$live_data_dir/$PI_ID"
+        if [ -d "$pi_live_data_dir" ]; then
+            live_wav_count=$(find "$pi_live_data_dir" -name "*.wav" 2>/dev/null | wc -l)
+            if [ "$live_wav_count" -gt 0 ]; then
+                if ! command -v ffmpeg >/dev/null 2>&1; then
+                    log_msg "ERROR: ffmpeg not found. Cannot convert existing WAV files in live_data."
+                else
+                    ffmpeg_timeout_secs=600
+                    log_msg "Found $live_wav_count WAV file(s) already in live_data, converting in-place to FLAC (timeout=${ffmpeg_timeout_secs}s)..."
+                    converted_live_count=0
+                    failed_live_count=0
+                    while IFS= read -r -d '' live_wav_file; do
+                        live_flac_file="${live_wav_file%.wav}.flac"
+                        if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$live_wav_file" -c:a flac -compression_level 2 "$live_flac_file"; then
+                            if sudo rm -f "$live_wav_file"; then
+                                converted_live_count=$((converted_live_count+1))
+                            else
+                                log_msg "WARNING: FLAC created but failed to remove source WAV: $(basename "$live_wav_file")"
+                                converted_live_count=$((converted_live_count+1))
+                            fi
+                        else
+                            ffmpeg_exit_code=$?
+                            sudo rm -f "$live_flac_file" 2>/dev/null || true
+                            if [ "$ffmpeg_exit_code" -eq 124 ]; then
+                                log_ffmpeg_timeout_event "$live_wav_file" "$ffmpeg_timeout_secs" "live_data"
+                            else
+                                log_msg "WARNING: Failed to convert existing WAV $(basename "$live_wav_file") (exit=$ffmpeg_exit_code)"
+                            fi
+                            failed_live_count=$((failed_live_count+1))
+                        fi
+                    done < <(find "$pi_live_data_dir" -name "*.wav" -print0 2>/dev/null)
+                    log_msg "Live-data WAV->FLAC conversion complete: success=$converted_live_count, failed=$failed_live_count, total=$live_wav_count"
+                fi
+            fi
+        fi
+
         set_log_phase "upload-init"
 
     # Fallback state file path if live_data is not writable by current user

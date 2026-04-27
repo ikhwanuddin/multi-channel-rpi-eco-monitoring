@@ -559,17 +559,21 @@ else
                 if ! command -v ffmpeg >/dev/null 2>&1; then
                     log_msg "ERROR: ffmpeg not found. Cannot convert existing WAV files in live_data."
                 else
-                    ffmpeg_timeout_secs=600
+                    ffmpeg_timeout_secs=300
                     log_msg "Found $live_wav_count WAV file(s) already in live_data (including legacy folders), converting in-place to FLAC (timeout=${ffmpeg_timeout_secs}s)..."
                     log_msg "Using ffmpeg timeout per file: ${ffmpeg_timeout_secs}s"
                     converted_live_count=0
                     failed_live_count=0
+                    live_index=0
                     while IFS= read -r -d '' live_wav_file; do
+                        live_index=$((live_index+1))
                         live_wav_file=$(normalize_path_for_conversion "$live_wav_file")
                         if [ ! -f "$live_wav_file" ]; then
+                            log_msg "WARNING: Source WAV missing before conversion (live_data) [$live_index/$live_wav_count]: $(printf '%q' "$live_wav_file")"
                             failed_live_count=$((failed_live_count+1))
                             continue
                         fi
+                        log_msg "Converting live_data [$live_index/$live_wav_count]: $(basename "$live_wav_file")"
                         ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_live_data_err.XXXXXX")
                         live_flac_file="${live_wav_file%.wav}.flac"
                         ffmpeg_input="file:$live_wav_file"
@@ -580,6 +584,9 @@ else
                             else
                                 log_msg "WARNING: FLAC created but failed to remove source WAV: $(basename "$live_wav_file")"
                                 converted_live_count=$((converted_live_count+1))
+                            fi
+                            if [ $((live_index % 10)) -eq 0 ]; then
+                                log_msg "Progress live-data conversion: processed=$live_index/$live_wav_count success=$converted_live_count failed=$failed_live_count"
                             fi
                         else
                             ffmpeg_exit_code=$?

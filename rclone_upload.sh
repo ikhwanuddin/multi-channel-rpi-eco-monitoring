@@ -128,10 +128,10 @@ except:
 found_files = {}
 total_size = 0
 
-# Scan for .flac and .wav files
+# Scan for .flac files only
 for root, dirs, files in os.walk(data_dir):
     for file in files:
-        if file.endswith('.flac') or file.endswith('.wav'):
+        if file.endswith('.flac'):
             file_path = os.path.join(root, file)
             file_size = os.path.getsize(file_path)
             total_size += file_size

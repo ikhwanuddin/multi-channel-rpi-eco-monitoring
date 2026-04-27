@@ -90,6 +90,32 @@ log_ffmpeg_timeout_event() {
     fi
 }
 
+log_ffmpeg_failure_event() {
+    local wav_file="$1"
+    local context_label="$2"
+    local exit_code="$3"
+    local stderr_preview="$4"
+    local size_bytes="?"
+    local event_id
+    local feedback_log
+
+    size_bytes=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
+    event_id=$(date +"%Y%m%dT%H%M%S")
+
+    if [ -z "$stderr_preview" ]; then
+        stderr_preview="no-stderr-captured"
+    fi
+
+    log_msg "FFMPEG_CONVERSION_FAILED event_id=$event_id context=$context_label exit_code=$exit_code file=$wav_file size_bytes=$size_bytes stderr='$stderr_preview' action=kept_for_retry"
+    log_msg "FEEDBACK_HINT event_id=$event_id share='Kirimkan baris FFMPEG_CONVERSION_FAILED + 30 baris sebelum/sesudahnya dari log upload.'"
+
+    if [ -n "${logdir:-}" ]; then
+        feedback_log="$logdir/ffmpeg_timeout_feedback.log"
+        ensure_logfile_writable "$feedback_log"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] event_id=$event_id context=$context_label exit_code=$exit_code file=$wav_file size_bytes=$size_bytes stderr='$stderr_preview' action=kept_for_retry" >> "$feedback_log"
+    fi
+}
+
 # Execute a command and replay its stdout/stderr via log_msg to keep timestamps consistent.
 run_and_log() {
     local line_prefix=""
@@ -450,6 +476,7 @@ else
                   converted_count=0
                   failed_count=0
                   while IFS= read -r -d '' wav_file; do
+                      ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_pre_upload_err.XXXXXX")
                       date_subdir=$(basename "$(dirname "$wav_file")")
                       dest_dir="$live_data_dir/$PI_ID/${date_subdir}"
                       sudo mkdir -p "$dest_dir"
@@ -459,7 +486,7 @@ else
                       input_size=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
                       log_msg "Converting ($((converted_count+failed_count+1))/$wav_count): $(basename "$wav_file") [$input_size bytes] -> $(basename "$flac_file")"
 
-                      if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$wav_file" -c:a flac -compression_level 2 "$flac_file"; then
+                      if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$wav_file" -c:a flac -compression_level 2 "$flac_file" 2>"$ffmpeg_err_file"; then
                           if sudo rm -f "$wav_file"; then
                               output_size=$(stat -f%z "$flac_file" 2>/dev/null || echo "?")
                               log_msg "Converted successfully: $(basename "$wav_file") -> $(basename "$flac_file") [$output_size bytes]"
@@ -470,14 +497,16 @@ else
                           fi
                       else
                           ffmpeg_exit_code=$?
+                          ffmpeg_error_preview=$(head -n 2 "$ffmpeg_err_file" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')
                           sudo rm -f "$flac_file" 2>/dev/null || true
                           if [ "$ffmpeg_exit_code" -eq 124 ]; then
                               log_ffmpeg_timeout_event "$wav_file" "$ffmpeg_timeout_secs" "pre_upload_dir"
                           else
-                              log_msg "WARNING: Failed to convert $(basename "$wav_file") (exit=$ffmpeg_exit_code); keeping WAV in pre_upload_dir for retry"
+                              log_ffmpeg_failure_event "$wav_file" "pre_upload_dir" "$ffmpeg_exit_code" "$ffmpeg_error_preview"
                           fi
                           failed_count=$((failed_count+1))
                       fi
+                      rm -f "$ffmpeg_err_file" 2>/dev/null || true
                   done < <(find "$pre_upload_dir_wav" -name "*.wav" -print0 2>/dev/null)
                   log_msg "WAV->FLAC conversion complete: success=$converted_count, failed=$failed_count, total=$wav_count"
               fi
@@ -518,8 +547,9 @@ else
                     converted_live_count=0
                     failed_live_count=0
                     while IFS= read -r -d '' live_wav_file; do
+                        ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_live_data_err.XXXXXX")
                         live_flac_file="${live_wav_file%.wav}.flac"
-                        if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$live_wav_file" -c:a flac -compression_level 2 "$live_flac_file"; then
+                        if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$live_wav_file" -c:a flac -compression_level 2 "$live_flac_file" 2>"$ffmpeg_err_file"; then
                             if sudo rm -f "$live_wav_file"; then
                                 converted_live_count=$((converted_live_count+1))
                             else
@@ -528,14 +558,16 @@ else
                             fi
                         else
                             ffmpeg_exit_code=$?
+                            ffmpeg_error_preview=$(head -n 2 "$ffmpeg_err_file" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')
                             sudo rm -f "$live_flac_file" 2>/dev/null || true
                             if [ "$ffmpeg_exit_code" -eq 124 ]; then
                                 log_ffmpeg_timeout_event "$live_wav_file" "$ffmpeg_timeout_secs" "live_data"
                             else
-                                log_msg "WARNING: Failed to convert existing WAV $(basename "$live_wav_file") (exit=$ffmpeg_exit_code)"
+                                log_ffmpeg_failure_event "$live_wav_file" "live_data" "$ffmpeg_exit_code" "$ffmpeg_error_preview"
                             fi
                             failed_live_count=$((failed_live_count+1))
                         fi
+                        rm -f "$ffmpeg_err_file" 2>/dev/null || true
                     done < <(find "$pi_live_data_dir" -name "*.wav" -print0 2>/dev/null)
                     log_msg "Live-data WAV->FLAC conversion complete: success=$converted_live_count, failed=$failed_live_count, total=$live_wav_count"
                 fi

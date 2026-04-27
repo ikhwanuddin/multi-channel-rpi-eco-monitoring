@@ -553,19 +553,20 @@ else
         set_log_phase "pre-convert-live-data-wav"
         pi_live_data_dir="$live_data_dir/$PI_ID"
         if [ -d "$pi_live_data_dir" ]; then
+            # Count all WAV files including those in legacy [wav]/[flac] folders
             live_wav_count=$(find "$pi_live_data_dir" -name "*.wav" 2>/dev/null | wc -l)
             if [ "$live_wav_count" -gt 0 ]; then
                 if ! command -v ffmpeg >/dev/null 2>&1; then
                     log_msg "ERROR: ffmpeg not found. Cannot convert existing WAV files in live_data."
                 else
                     ffmpeg_timeout_secs=600
-                    log_msg "Found $live_wav_count WAV file(s) already in live_data, converting in-place to FLAC (timeout=${ffmpeg_timeout_secs}s)..."
+                    log_msg "Found $live_wav_count WAV file(s) already in live_data (including legacy folders), converting in-place to FLAC (timeout=${ffmpeg_timeout_secs}s)..."
+                    log_msg "Using ffmpeg timeout per file: ${ffmpeg_timeout_secs}s"
                     converted_live_count=0
                     failed_live_count=0
                     while IFS= read -r -d '' live_wav_file; do
                         live_wav_file=$(normalize_path_for_conversion "$live_wav_file")
                         if [ ! -f "$live_wav_file" ]; then
-                            log_msg "WARNING: Source WAV missing before conversion (live_data): $(printf '%q' "$live_wav_file")"
                             failed_live_count=$((failed_live_count+1))
                             continue
                         fi
@@ -595,6 +596,8 @@ else
                     done < <(find "$pi_live_data_dir" -name "*.wav" -print0 2>/dev/null)
                     log_msg "Live-data WAV->FLAC conversion complete: success=$converted_live_count, failed=$failed_live_count, total=$live_wav_count"
                 fi
+            else
+                log_msg "No WAV files found in live_data, nothing to convert."
             fi
         fi
 

@@ -502,10 +502,10 @@ else
 
                       ffmpeg_input="file:$wav_file"
                       ffmpeg_output="file:$flac_file"
-                      if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
+                      if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -nostdin -y -loglevel error -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
                           if sudo rm -f "$wav_file"; then
                               output_size=$(stat -f%z "$flac_file" 2>/dev/null || echo "?")
-                              log_msg "Converted successfully: $(basename "$wav_file") -> $(basename "$flac_file") [$output_size bytes]"
+                              log_msg "CONVERSION_OK context=pre_upload_dir wav=$(basename "$wav_file") flac_path=$flac_file flac_size_bytes=$output_size"
                               converted_count=$((converted_count+1))
                           else
                               log_msg "WARNING: FLAC created but failed to remove source WAV: $(basename "$wav_file")"
@@ -578,8 +578,10 @@ else
                         live_flac_file="${live_wav_file%.wav}.flac"
                         ffmpeg_input="file:$live_wav_file"
                         ffmpeg_output="file:$live_flac_file"
-                        if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
+                        if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -nostdin -y -loglevel error -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
                             if sudo rm -f "$live_wav_file"; then
+                                output_size=$(stat -f%z "$live_flac_file" 2>/dev/null || echo "?")
+                                log_msg "CONVERSION_OK context=live_data wav=$(basename "$live_wav_file") flac_path=$live_flac_file flac_size_bytes=$output_size"
                                 converted_live_count=$((converted_live_count+1))
                             else
                                 log_msg "WARNING: FLAC created but failed to remove source WAV: $(basename "$live_wav_file")"

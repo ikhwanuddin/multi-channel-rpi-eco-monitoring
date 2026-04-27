@@ -217,11 +217,19 @@ _push_rclone_config_to_gist() {
 # Use copy instead of move for safety.
 # NOTE: Do not use --delete-empty-src-dirs here because some rclone versions
 # don't support it on copy and fail with "unknown flag".
-rclone_args=(copy "$data_dir" "$remote_target" --log-level INFO --stats 10s --stats-one-line)
+rclone_args=(
+    copy "$data_dir" "$remote_target"
+    --log-level INFO
+    --stats 10s
+    --stats-one-line
+    --filter "+ **.flac"
+    --filter "- **"
+)
 if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")
 fi
 
+log_msg "Applying FLAC-only filter for upload (non-FLAC files are excluded)."
 log_msg "Starting live rclone stream (will print current files/folders and transfer stats every 10s)..."
 if rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[component=rclone] "; then
     rclone_exit_code=0

@@ -405,42 +405,83 @@ else
     
     log_msg "Live data directory: $live_data_dir"
 
-    # Move pending WAV files from pre_upload_dir into live_data_dir for upload.
-    # WAV files are moved as-is (no conversion) into date-named folders suffixed with [wav].
-    set_log_phase "pre-stage-wav"
+    # Convert pending WAV files from pre_upload_dir to FLAC before upload.
+    # Only FLAC files are staged into live_data_dir.
+    set_log_phase "pre-convert-flac"
     pre_upload_dir_wav="/home/pi/pre_upload_dir"
 
-      if [ -d "$pre_upload_dir_wav" ]; then
-          # Remove known bad leftovers before staging.
-          while IFS= read -r -d '' error_file; do
-              sudo rm -f "$error_file" 2>/dev/null || true
-              log_msg "Removed error marker: $(basename "$error_file")"
-          done < <(find "$pre_upload_dir_wav" -iname "*ERROR*" -print0 2>/dev/null)
+    if [ -d "$pre_upload_dir_wav" ]; then
+        # Remove known bad leftovers before staging.
+        while IFS= read -r -d '' error_file; do
+            sudo rm -f "$error_file" 2>/dev/null || true
+            log_msg "Removed error marker: $(basename "$error_file")"
+        done < <(find "$pre_upload_dir_wav" -iname "*ERROR*" -print0 2>/dev/null)
 
           wav_count=$(find "$pre_upload_dir_wav" -name "*.wav" 2>/dev/null | wc -l)
           if [ "$wav_count" -gt 0 ]; then
-              log_msg "Found $wav_count pending WAV file(s) in $pre_upload_dir_wav, staging for upload..."
-              file_count=0
-              while IFS= read -r -d '' wav_file; do
-                  date_subdir=$(basename "$(dirname "$wav_file")")
-                  dest_dir="$live_data_dir/$PI_ID/${date_subdir}[wav]"
-                  sudo mkdir -p "$dest_dir"
+              if ! command -v ffmpeg >/dev/null 2>&1; then
+                  log_msg "ERROR: ffmpeg not found. Cannot convert WAV to FLAC, skipping upload staging for WAV files."
+              else
+                  log_msg "Found $wav_count pending WAV file(s) in $pre_upload_dir_wav, converting to FLAC..."
+                  # Keep conversion timeout bounded to avoid long hangs per file.
+                  ffmpeg_timeout_secs=600
+                  log_msg "Using ffmpeg timeout per file: ${ffmpeg_timeout_secs}s"
+                  converted_count=0
+                  failed_count=0
+                  while IFS= read -r -d '' wav_file; do
+                      date_subdir=$(basename "$(dirname "$wav_file")")
+                      dest_dir="$live_data_dir/$PI_ID/${date_subdir}"
+                      sudo mkdir -p "$dest_dir"
 
-                  input_size=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
-                  log_msg "Staging ($((file_count+1))/$wav_count): $(basename "$wav_file") [$input_size bytes] -> $dest_dir/"
+                      base_name=$(basename "$wav_file" .wav)
+                      flac_file="$dest_dir/${base_name}.flac"
+                      input_size=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
+                      log_msg "Converting ($((converted_count+failed_count+1))/$wav_count): $(basename "$wav_file") [$input_size bytes] -> $(basename "$flac_file")"
 
-                  if sudo mv "$wav_file" "$dest_dir/"; then
-                      file_count=$((file_count+1))
-                  else
-                      log_msg "WARNING: Failed to move $(basename "$wav_file"), keeping in pre_upload_dir"
-                  fi
-              done < <(find "$pre_upload_dir_wav" -name "*.wav" -print0 2>/dev/null)
-              log_msg "WAV staging complete: $file_count/$wav_count file(s) moved to live_data_dir."
+                      if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$wav_file" -c:a flac -compression_level 2 "$flac_file"; then
+                          if sudo rm -f "$wav_file"; then
+                              output_size=$(stat -f%z "$flac_file" 2>/dev/null || echo "?")
+                              log_msg "Converted successfully: $(basename "$wav_file") -> $(basename "$flac_file") [$output_size bytes]"
+                              converted_count=$((converted_count+1))
+                          else
+                              log_msg "WARNING: FLAC created but failed to remove source WAV: $(basename "$wav_file")"
+                              converted_count=$((converted_count+1))
+                          fi
+                      else
+                          ffmpeg_exit_code=$?
+                          sudo rm -f "$flac_file" 2>/dev/null || true
+                          if [ "$ffmpeg_exit_code" -eq 124 ]; then
+                              log_msg "WARNING: Conversion timed out after ${ffmpeg_timeout_secs}s for $(basename "$wav_file"); keeping WAV in pre_upload_dir for retry"
+                          else
+                              log_msg "WARNING: Failed to convert $(basename "$wav_file") (exit=$ffmpeg_exit_code); keeping WAV in pre_upload_dir for retry"
+                          fi
+                          failed_count=$((failed_count+1))
+                      fi
+                  done < <(find "$pre_upload_dir_wav" -name "*.wav" -print0 2>/dev/null)
+                  log_msg "WAV->FLAC conversion complete: success=$converted_count, failed=$failed_count, total=$wav_count"
+              fi
           else
               log_msg "No pending WAV files found in $pre_upload_dir_wav."
           fi
-      fi
-      set_log_phase "upload-init"
+
+          # Stage any pre-existing FLAC files from pre_upload_dir into live_data_dir.
+          flac_count=$(find "$pre_upload_dir_wav" -name "*.flac" 2>/dev/null | wc -l)
+          if [ "$flac_count" -gt 0 ]; then
+              staged_flac_count=0
+              while IFS= read -r -d '' flac_src; do
+                  date_subdir=$(basename "$(dirname "$flac_src")")
+                  dest_dir="$live_data_dir/$PI_ID/${date_subdir}"
+                  sudo mkdir -p "$dest_dir"
+                  if sudo mv "$flac_src" "$dest_dir/"; then
+                      staged_flac_count=$((staged_flac_count+1))
+                  else
+                      log_msg "WARNING: Failed to stage FLAC $(basename "$flac_src"), keeping in pre_upload_dir"
+                  fi
+              done < <(find "$pre_upload_dir_wav" -name "*.flac" -print0 2>/dev/null)
+              log_msg "FLAC staging complete: $staged_flac_count/$flac_count file(s) moved to live_data_dir."
+          fi
+        fi
+        set_log_phase "upload-init"
 
     # Fallback state file path if live_data is not writable by current user
     if [ ! -w "$live_data_dir" ] || { [ -e "$state_file" ] && [ ! -w "$state_file" ]; }; then

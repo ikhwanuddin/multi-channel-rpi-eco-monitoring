@@ -90,6 +90,14 @@ log_ffmpeg_timeout_event() {
     fi
 }
 
+normalize_path_for_conversion() {
+    local raw_path="$1"
+    # Strip accidental CR/LF so ffmpeg receives a clean single path argument.
+    raw_path="${raw_path//$'\r'/}"
+    raw_path="${raw_path//$'\n'/}"
+    printf '%s' "$raw_path"
+}
+
 log_ffmpeg_failure_event() {
     local wav_file="$1"
     local context_label="$2"
@@ -476,6 +484,12 @@ else
                   converted_count=0
                   failed_count=0
                   while IFS= read -r -d '' wav_file; do
+                      wav_file=$(normalize_path_for_conversion "$wav_file")
+                      if [ ! -f "$wav_file" ]; then
+                          log_msg "WARNING: Source WAV missing before conversion (pre_upload_dir): $(printf '%q' "$wav_file")"
+                          failed_count=$((failed_count+1))
+                          continue
+                      fi
                       ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_pre_upload_err.XXXXXX")
                       date_subdir=$(basename "$(dirname "$wav_file")")
                       dest_dir="$live_data_dir/$PI_ID/${date_subdir}"
@@ -486,7 +500,9 @@ else
                       input_size=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
                       log_msg "Converting ($((converted_count+failed_count+1))/$wav_count): $(basename "$wav_file") [$input_size bytes] -> $(basename "$flac_file")"
 
-                      if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$wav_file" -c:a flac -compression_level 2 "$flac_file" 2>"$ffmpeg_err_file"; then
+                      ffmpeg_input="file:$wav_file"
+                      ffmpeg_output="file:$flac_file"
+                      if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
                           if sudo rm -f "$wav_file"; then
                               output_size=$(stat -f%z "$flac_file" 2>/dev/null || echo "?")
                               log_msg "Converted successfully: $(basename "$wav_file") -> $(basename "$flac_file") [$output_size bytes]"
@@ -547,9 +563,17 @@ else
                     converted_live_count=0
                     failed_live_count=0
                     while IFS= read -r -d '' live_wav_file; do
+                        live_wav_file=$(normalize_path_for_conversion "$live_wav_file")
+                        if [ ! -f "$live_wav_file" ]; then
+                            log_msg "WARNING: Source WAV missing before conversion (live_data): $(printf '%q' "$live_wav_file")"
+                            failed_live_count=$((failed_live_count+1))
+                            continue
+                        fi
                         ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_live_data_err.XXXXXX")
                         live_flac_file="${live_wav_file%.wav}.flac"
-                        if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$live_wav_file" -c:a flac -compression_level 2 "$live_flac_file" 2>"$ffmpeg_err_file"; then
+                        ffmpeg_input="file:$live_wav_file"
+                        ffmpeg_output="file:$live_flac_file"
+                        if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -y -loglevel error -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
                             if sudo rm -f "$live_wav_file"; then
                                 converted_live_count=$((converted_live_count+1))
                             else

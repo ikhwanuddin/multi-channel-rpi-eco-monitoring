@@ -548,6 +548,73 @@ else
           fi
         fi
 
+        # -------------------------
+        # Convert candidate files from working/tmp dir (no extension) to FLAC
+        # -------------------------
+        set_log_phase "pre-convert-tmp-dir"
+
+        tmp_dir=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('sys', {}) or {}).get('working_dir', '/home/pi/tmp_dir'))" 2>/dev/null)
+        if [ -z "$tmp_dir" ]; then
+            tmp_dir="/home/pi/tmp_dir"
+        fi
+
+        if [ -d "$tmp_dir" ]; then
+            if ! command -v ffmpeg >/dev/null 2>&1; then
+                log_msg "ERROR: ffmpeg not found. Cannot convert candidate files in $tmp_dir."
+            else
+                log_msg "Scanning $tmp_dir for candidate audio files (no extension) to convert..."
+                ffmpeg_timeout_secs=300
+                tmp_converted=0
+                tmp_failed=0
+                tmp_index=0
+                while IFS= read -r -d '' candidate; do
+                    tmp_index=$((tmp_index+1))
+                    candidate=$(normalize_path_for_conversion "$candidate")
+                    if [ ! -f "$candidate" ]; then
+                        tmp_failed=$((tmp_failed+1))
+                        continue
+                    fi
+
+                    # Heuristic: try to treat file as WAV input and convert to FLAC
+                    date_subdir=$(date +%Y-%m-%d)
+                    dest_dir="$live_data_dir/$PI_ID/$date_subdir"
+                    sudo mkdir -p "$dest_dir"
+                    base_name=$(basename "$candidate")
+                    flac_file="$dest_dir/${base_name}.flac"
+                    ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_tmp_dir_err.XXXXXX")
+
+                    log_msg "Converting tmp candidate [$tmp_index] $(basename "$candidate") -> $(basename "$flac_file")"
+                    ffmpeg_input="file:$candidate"
+                    ffmpeg_output="file:$flac_file"
+                    if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -nostdin -y -loglevel error -f wav -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
+                        if sudo rm -f "$candidate"; then
+                            output_size=$(stat -f%z "$flac_file" 2>/dev/null || echo "?")
+                            log_msg "CONVERSION_OK context=tmp_dir src=$(basename "$candidate") flac_path=$flac_file flac_size_bytes=$output_size"
+                            tmp_converted=$((tmp_converted+1))
+                        else
+                            log_msg "WARNING: FLAC created but failed to remove source tmp file: $(basename "$candidate")"
+                            tmp_converted=$((tmp_converted+1))
+                        fi
+                    else
+                        ffmpeg_exit_code=$?
+                        ffmpeg_error_preview=$(head -n 2 "$ffmpeg_err_file" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')
+                        sudo rm -f "$flac_file" 2>/dev/null || true
+                        if [ "$ffmpeg_exit_code" -eq 124 ]; then
+                            log_ffmpeg_timeout_event "$candidate" "$ffmpeg_timeout_secs" "tmp_dir"
+                        else
+                            log_ffmpeg_failure_event "$candidate" "tmp_dir" "$ffmpeg_exit_code" "$ffmpeg_error_preview"
+                        fi
+                        tmp_failed=$((tmp_failed+1))
+                    fi
+                    rm -f "$ffmpeg_err_file" 2>/dev/null || true
+                done < <(find "$tmp_dir" -type f ! -name "*.*" -print0 2>/dev/null)
+
+                log_msg "tmp_dir conversion complete: success=$tmp_converted, failed=$tmp_failed, scanned=$tmp_index"
+            fi
+        else
+            log_msg "tmp_dir not present: $tmp_dir, skipping tmp conversions."
+        fi
+
         # Safety pass: convert any WAV that already exists in live_data for this device.
         # This covers reruns where WAV files were staged previously.
         set_log_phase "pre-convert-live-data-wav"

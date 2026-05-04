@@ -575,15 +575,21 @@ else
                         continue
                     fi
 
-                    # Heuristic: try to treat file as WAV input and convert to FLAC
-                    date_subdir=$(date +%Y-%m-%d)
-                    dest_dir="$live_data_dir/$PI_ID/$date_subdir"
+                    # Preserve source subfolder under tmp_dir (typically date-based folders).
+                    candidate_rel_path="${candidate#${tmp_dir%/}/}"
+                    candidate_rel_dir=$(dirname "$candidate_rel_path")
+                    if [ "$candidate_rel_dir" = "." ] || [ -z "$candidate_rel_dir" ]; then
+                        candidate_rel_dir="(root)"
+                        dest_dir="$live_data_dir/$PI_ID"
+                    else
+                        dest_dir="$live_data_dir/$PI_ID/$candidate_rel_dir"
+                    fi
                     sudo mkdir -p "$dest_dir"
                     base_name=$(basename "$candidate")
                     flac_file="$dest_dir/${base_name}.flac"
                     ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_tmp_dir_err.XXXXXX")
 
-                    log_msg "Converting tmp candidate [$tmp_index] $(basename "$candidate") -> $(basename "$flac_file")"
+                    log_msg "Converting tmp candidate [$tmp_index] src_rel_dir=$candidate_rel_dir src_file=$(basename "$candidate") dest_dir=$dest_dir dest_file=$(basename "$flac_file")"
                     ffmpeg_input="file:$candidate"
                     ffmpeg_output="file:$flac_file"
                     if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -nostdin -y -loglevel error -f wav -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then

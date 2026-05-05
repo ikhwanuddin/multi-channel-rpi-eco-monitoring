@@ -30,6 +30,42 @@ set_log_phase() {
     LOG_PHASE="${1:-unknown}"
 }
 
+resolve_requested_mode() {
+    local cli_mode=""
+    local arg
+    local prev=""
+
+    # Support: bash recorder_startup_script.sh mode=record
+    # Support: bash recorder_startup_script.sh --mode record
+    # Support: bash recorder_startup_script.sh --mode=record
+    for arg in "$@"; do
+        if [ "$prev" = "--mode" ]; then
+            cli_mode="$arg"
+            prev=""
+            continue
+        fi
+
+        case "$arg" in
+            mode=*|MODE=*) cli_mode="${arg#*=}" ;;
+            --mode=*) cli_mode="${arg#--mode=}" ;;
+            --mode) prev="--mode" ;;
+        esac
+    done
+
+    # Precedence: CLI arg > env mode > env MODE > env STARTUP_MODE
+    if [ -n "$cli_mode" ]; then
+        printf '%s' "$cli_mode"
+    elif [ -n "${mode:-}" ]; then
+        printf '%s' "$mode"
+    elif [ -n "${MODE:-}" ]; then
+        printf '%s' "$MODE"
+    elif [ -n "${STARTUP_MODE:-}" ]; then
+        printf '%s' "$STARTUP_MODE"
+    else
+        printf ''
+    fi
+}
+
 resolve_log_owner() {
     local owner_user="${SUDO_USER:-${USER:-$(whoami)}}"
     local owner_group
@@ -346,16 +382,45 @@ set_log_phase "detect-mode"
 log_msg "Detecting operating mode based on internet connectivity..."
 log_msg "Checking for internet access (this may take a minute)..."
 
+requested_mode=$(resolve_requested_mode "$@")
+requested_mode=$(printf '%s' "$requested_mode" | tr '[:upper:]' '[:lower:]')
+
 # Check internet availability (waits up to 1 minute on each check)
-if check_internet; then
-    OPERATING_MODE="ONLINE"
-    set_log_mode "online"
-    log_msg "Internet is AVAILABLE - Switching to UPLOAD mode"
-else
-    OPERATING_MODE="OFFLINE"
-    set_log_mode "offline"
-    log_msg "Internet NOT available - Switching to RECORDING mode"
-fi
+case "$requested_mode" in
+    record|recording|offline)
+        OPERATING_MODE="OFFLINE"
+        set_log_mode "offline"
+        log_msg "Mode override requested ($requested_mode) - forcing RECORDING mode"
+        ;;
+    upload|online)
+        OPERATING_MODE="ONLINE"
+        set_log_mode "online"
+        log_msg "Mode override requested ($requested_mode) - forcing UPLOAD mode"
+        ;;
+    "")
+        if check_internet; then
+            OPERATING_MODE="ONLINE"
+            set_log_mode "online"
+            log_msg "Internet is AVAILABLE - Switching to UPLOAD mode"
+        else
+            OPERATING_MODE="OFFLINE"
+            set_log_mode "offline"
+            log_msg "Internet NOT available - Switching to RECORDING mode"
+        fi
+        ;;
+    *)
+        log_msg "WARNING: Unknown mode override '$requested_mode'. Using automatic internet-based detection."
+        if check_internet; then
+            OPERATING_MODE="ONLINE"
+            set_log_mode "online"
+            log_msg "Internet is AVAILABLE - Switching to UPLOAD mode"
+        else
+            OPERATING_MODE="OFFLINE"
+            set_log_mode "offline"
+            log_msg "Internet NOT available - Switching to RECORDING mode"
+        fi
+        ;;
+esac
 
 log_msg "##############################################"
 log_msg "Operating Mode: $OPERATING_MODE"

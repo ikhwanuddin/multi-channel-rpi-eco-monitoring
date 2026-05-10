@@ -526,7 +526,7 @@ else
     log_msg "Live data directory: $live_data_dir"
 
     # Convert pending WAV files from pre_upload_dir to FLAC before upload.
-    # Only FLAC files are staged into live_data_dir.
+    # FLAC files are staged into live_data_dir; logs are staged before each upload attempt.
     set_log_phase "pre-convert-flac"
     pre_upload_dir_wav="/home/pi/pre_upload_dir"
 
@@ -787,6 +787,19 @@ else
         fi
         
         log_msg "Internet available, proceeding with upload..."
+
+        # Stage runtime logs into live_data so they are included in rclone source path.
+        staged_logs_dir="$live_data_dir/$PI_ID/logs"
+        sudo mkdir -p "$staged_logs_dir"
+        staged_logs_count=0
+        while IFS= read -r -d '' log_src; do
+            if sudo cp -f "$log_src" "$staged_logs_dir/"; then
+                staged_logs_count=$((staged_logs_count + 1))
+            else
+                log_msg "WARNING: Failed to stage log file for upload: $(basename "$log_src")"
+            fi
+        done < <(find "$logdir" -maxdepth 1 -type f -name "*.log" -print0 2>/dev/null)
+        log_msg "Staged $staged_logs_count log file(s) into $staged_logs_dir"
         
         # Run upload script with sudo so verified files can be deleted even if
         # they are owned by root (recording flow often runs with elevated perms).

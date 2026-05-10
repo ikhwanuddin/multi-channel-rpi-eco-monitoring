@@ -223,13 +223,14 @@ rclone_args=(
     --stats 10s
     --stats-one-line
     --filter "+ **.flac"
+    --filter "+ **.log"
     --filter "- **"
 )
 if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")
 fi
 
-log_msg "Applying FLAC-only filter for upload (non-FLAC files are excluded)."
+log_msg "Applying upload filter for .flac and .log files (other file types are excluded)."
 log_msg "Starting live rclone stream (will print current files/folders and transfer stats every 10s)..."
 if rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[component=rclone] "; then
     rclone_exit_code=0

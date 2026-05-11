@@ -610,9 +610,9 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
     log_msg "Starting RECORDING mode (offline)"
     log_msg "Command: sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
 
-    if [ "$sensor_type" = "Sipeed7Mic" ] && is_sipeed_maintenance_window_now "$sipeed_reboot_times"; then
+    if [ "$sensor_type" = "Sipeed7Mic" ]; then
         set_log_phase "sipeed-pre-record-maintenance"
-        log_msg "Sipeed maintenance window detected from config reboot times: prioritizing WAV->FLAC conversion before recording."
+        log_msg "Sipeed7Mic detected in OFFLINE mode: prioritizing WAV->FLAC conversion before recording to reduce real-time CPU load."
         process_pre_upload_queue_for_sipeed "/home/pi/monitoring_data/live_data"
         set_log_phase "recording"
     fi

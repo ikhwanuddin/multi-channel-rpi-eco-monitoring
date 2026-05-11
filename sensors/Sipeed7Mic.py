@@ -176,63 +176,8 @@ class Sipeed7Mic(SensorBase):
 
     def postprocess(self, wfile, upload_dir):
         """
-        Method to optionally compress raw audio data to FLAC and stage data to
-        upload folder
+        On RPi Zero 2W the CPU is too slow for real-time FLAC compression.
+        WAV files are already staged in pre_upload_dir by capture_data(); compression
+        will be handled later by the upload pipeline's pre_upload_dir mechanism.
         """
-        
-        pre_upload_dir = '/home/pi/pre_upload_dir'
-
-        # Get file location info for correct upload
-        filename = os.path.basename(wfile)
-        start_date = os.path.basename(os.path.dirname(wfile))
-        
-        # Make sure relevant upload dir exists
-        session_upload_dir = os.path.join(upload_dir, start_date)
-
-        try:
-            if not os.path.exists(session_upload_dir):
-                os.makedirs(session_upload_dir)
-        except OSError:
-            logging.critical('Could not create upload directory for recording: \n{}'.format(session_upload_dir))
-            return
-
-        # Determine Path for Postprocessed Files: 
-        ofile= wfile.replace(pre_upload_dir, upload_dir)
-
-        if not os.path.exists(wfile):
-            logging.warning('Skipping compression for missing WAV: {}'.format(wfile))
-            return
-
-        if self.compress_data:
-
-            # Get Filename Ready for Compression
-            ofile = ofile.replace(".wav",".flac")
-            
-            time_now = time.strftime('%H-%M-%S')
-            
-            # Audio is compressed using a FLAC Encoding            
-            try:
-                logging.info('\nStarting compression of {}\nto {} at {}\n'.format(wfile, ofile, time_now))
-                # Use FLAC level 2 (fast) instead of default 5 (medium) for RPi performance
-                cmd = ['ffmpeg', '-y', '-i', wfile, '-c:a', 'flac', '-compression_level', '2', ofile]
-                compress_result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                                 timeout=self.record_length * 5)
-                if compress_result.returncode != 0:
-                    raise RuntimeError('ffmpeg exited with status {}'.format(compress_result.returncode))
-                if (not os.path.exists(ofile)) or (os.path.getsize(ofile) == 0):
-                    raise RuntimeError('FLAC output missing or empty: {}'.format(ofile))
-                os.remove(wfile)
-                time_now = time.strftime('%H-%M-%S')
-                logging.info('\nFinished compression of {}\nto {} at {}\n'.format(wfile, ofile, time_now))
-            except subprocess.TimeoutExpired:
-                logging.warning('ffmpeg timed out compressing {}, skipping'.format(wfile))
-                if os.path.exists(ofile):
-                    os.remove(ofile)
-            except Exception as exc:
-                logging.info('Error compressing {}: {}'.format(wfile, exc))
-            
-
-        else:
-            # Don't compress, store as wav
-            logging.info('\n{} - No postprocessing of audio data'.format(wfile))
-            os.rename(wfile, ofile)
+        logging.info('\n{} - Skipping compression on Sipeed (RPi Zero 2W); will be handled during upload'.format(wfile))

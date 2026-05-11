@@ -160,6 +160,167 @@ log_ffmpeg_failure_event() {
     fi
 }
 
+get_configured_reboot_times() {
+    local cfg_file="$1"
+    if [ ! -f "$cfg_file" ]; then
+        return 0
+    fi
+
+    python3 - "$cfg_file" << 'PYTHON_EOF' 2>/dev/null
+import json
+import sys
+from datetime import datetime
+
+cfg_file = sys.argv[1]
+try:
+    config = json.load(open(cfg_file))
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+sys_cfg = config.get('sys', {}) or {}
+candidates = []
+
+rt1 = sys_cfg.get('reboot_time')
+if rt1:
+    candidates.append(rt1)
+
+rt2 = sys_cfg.get('reboot_time_2')
+if rt2:
+    candidates.append(rt2)
+
+rt_list = sys_cfg.get('reboot_times', [])
+if isinstance(rt_list, str):
+    candidates.extend([x.strip() for x in rt_list.split(',') if x.strip()])
+elif isinstance(rt_list, list):
+    candidates.extend(rt_list)
+
+seen = set()
+valid = []
+for item in candidates:
+    if not item:
+        continue
+    try:
+        hhmm = datetime.strptime(str(item).strip(), '%H:%M').strftime('%H:%M')
+    except ValueError:
+        continue
+    if hhmm not in seen:
+        seen.add(hhmm)
+        valid.append(hhmm)
+
+print(','.join(sorted(valid)))
+PYTHON_EOF
+}
+
+is_sipeed_maintenance_window_now() {
+    local configured_times="$1"
+    local now_hm
+    local now_hour
+    local t
+    local t_hour
+
+    [ -n "$configured_times" ] || return 1
+
+    now_hm=$(date +"%H:%M")
+    now_hour="${now_hm%%:*}"
+
+    IFS=',' read -r -a reboot_times_array <<< "$configured_times"
+    for t in "${reboot_times_array[@]}"; do
+        t="${t// /}"
+        [ -n "$t" ] || continue
+        t_hour="${t%%:*}"
+        # Hour-based window keeps behavior tolerant when reboot is deferred
+        # until recording finishes and startup happens a few minutes later.
+        if [ "$now_hour" = "$t_hour" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+process_pre_upload_queue_for_sipeed() {
+    local live_data_root="$1"
+    local pre_upload_dir_wav="/home/pi/pre_upload_dir"
+    local ffmpeg_timeout_secs=900
+    local converted_count=0
+    local failed_count=0
+    local staged_flac_count=0
+
+    if [ ! -d "$pre_upload_dir_wav" ]; then
+        log_msg "Sipeed maintenance: pre_upload_dir not found ($pre_upload_dir_wav), skipping."
+        return 0
+    fi
+
+    if [ ! -d "$live_data_root" ]; then
+        log_msg "Sipeed maintenance: live_data_dir not found ($live_data_root), skipping conversion."
+        return 1
+    fi
+
+    while IFS= read -r -d '' error_file; do
+        sudo rm -f "$error_file" 2>/dev/null || true
+        log_msg "Sipeed maintenance: removed error marker $(basename "$error_file")"
+    done < <(find "$pre_upload_dir_wav" -iname "*ERROR*" -print0 2>/dev/null)
+
+    wav_count=$(find "$pre_upload_dir_wav" -name "*.wav" 2>/dev/null | wc -l)
+    if [ "$wav_count" -gt 0 ]; then
+        if ! command -v ffmpeg >/dev/null 2>&1; then
+            log_msg "Sipeed maintenance: ffmpeg not found, cannot convert pending WAV files."
+        else
+            log_msg "Sipeed maintenance: converting $wav_count WAV file(s) from pre_upload_dir before recording."
+            while IFS= read -r -d '' wav_file; do
+                wav_file=$(normalize_path_for_conversion "$wav_file")
+                [ -f "$wav_file" ] || continue
+
+                date_subdir=$(basename "$(dirname "$wav_file")")
+                dest_dir="$live_data_root/$PI_ID/${date_subdir}"
+                sudo mkdir -p "$dest_dir"
+
+                base_name=$(basename "$wav_file" .wav)
+                flac_file="$dest_dir/${base_name}.flac"
+                ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_sipeed_maint_err.XXXXXX")
+
+                ffmpeg_input="file:$wav_file"
+                ffmpeg_output="file:$flac_file"
+                if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -nostdin -y -loglevel error -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
+                    if sudo rm -f "$wav_file"; then
+                        converted_count=$((converted_count+1))
+                    else
+                        log_msg "Sipeed maintenance: FLAC created but failed removing WAV $(basename "$wav_file")"
+                        converted_count=$((converted_count+1))
+                    fi
+                else
+                    ffmpeg_exit_code=$?
+                    ffmpeg_error_preview=$(head -n 2 "$ffmpeg_err_file" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')
+                    sudo rm -f "$flac_file" 2>/dev/null || true
+                    if [ "$ffmpeg_exit_code" -eq 124 ]; then
+                        log_ffmpeg_timeout_event "$wav_file" "$ffmpeg_timeout_secs" "sipeed_pre_record"
+                    else
+                        log_ffmpeg_failure_event "$wav_file" "sipeed_pre_record" "$ffmpeg_exit_code" "$ffmpeg_error_preview"
+                    fi
+                    failed_count=$((failed_count+1))
+                fi
+                rm -f "$ffmpeg_err_file" 2>/dev/null || true
+            done < <(find "$pre_upload_dir_wav" -name "*.wav" -print0 2>/dev/null)
+        fi
+    fi
+
+    flac_count=$(find "$pre_upload_dir_wav" -name "*.flac" 2>/dev/null | wc -l)
+    if [ "$flac_count" -gt 0 ]; then
+        while IFS= read -r -d '' flac_src; do
+            date_subdir=$(basename "$(dirname "$flac_src")")
+            dest_dir="$live_data_root/$PI_ID/${date_subdir}"
+            sudo mkdir -p "$dest_dir"
+            if sudo mv "$flac_src" "$dest_dir/"; then
+                staged_flac_count=$((staged_flac_count+1))
+            fi
+        done < <(find "$pre_upload_dir_wav" -name "*.flac" -print0 2>/dev/null)
+    fi
+
+    log_msg "Sipeed maintenance summary: wav_converted=$converted_count wav_failed=$failed_count flac_staged=$staged_flac_count"
+    return 0
+}
+
 # Execute a command and replay its stdout/stderr via log_msg to keep timestamps consistent.
 run_and_log() {
     local line_prefix=""
@@ -292,8 +453,16 @@ cd /home/pi/multi-channel-rpi-eco-monitoring
 
 config_file="./config.json"
 sensor_type=""
+sipeed_reboot_times=""
 if [ -f "$config_file" ]; then
     sensor_type=$(python3 -c "import json; config=json.load(open('$config_file')); print(config.get('sensor', {}).get('sensor_type', ''))" 2>/dev/null)
+    sipeed_reboot_times=$(get_configured_reboot_times "$config_file")
+fi
+
+if [ -n "$sipeed_reboot_times" ]; then
+    log_msg "Configured reboot/maintenance times from config: $sipeed_reboot_times"
+else
+    log_msg "No valid reboot/maintenance times found in config."
 fi
 
 if [ "$sensor_type" = "Sipeed7Mic" ]; then
@@ -440,6 +609,13 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
     # Start recording script with auto-restart on failure
     log_msg "Starting RECORDING mode (offline)"
     log_msg "Command: sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
+
+    if [ "$sensor_type" = "Sipeed7Mic" ] && is_sipeed_maintenance_window_now "$sipeed_reboot_times"; then
+        set_log_phase "sipeed-pre-record-maintenance"
+        log_msg "Sipeed maintenance window detected from config reboot times: prioritizing WAV->FLAC conversion before recording."
+        process_pre_upload_queue_for_sipeed "/home/pi/monitoring_data/live_data"
+        set_log_phase "recording"
+    fi
     
     restart_count=0
     set_log_phase "recording-loop"

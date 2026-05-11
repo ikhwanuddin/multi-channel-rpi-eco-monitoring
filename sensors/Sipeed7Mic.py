@@ -1,5 +1,6 @@
 import time
 import subprocess
+import tempfile
 import os
 import sensors
 import logging
@@ -115,6 +116,7 @@ class Sipeed7Mic(SensorBase):
         ofile = os.path.join(self.pre_upload_dir, self.current_file)
         logging.info('\n{} - Started recording at {}'.format(self.current_file, start_time))
         record_result = None
+        arecord_stderr = ''
         try:
             cmd = ['sudo', 'arecord', '-D', 'plughw:{},0'.format(self.card), '-f', 'S16_LE', '-r', '16000', '-c', '8', '--duration', str(self.record_length), wfile]
             
@@ -122,9 +124,13 @@ class Sipeed7Mic(SensorBase):
 
             kill_time = self.record_length * 1.5
             try:
-                record_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                stderr_file = tempfile.TemporaryFile()
+                record_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=stderr_file)
                 record_process.wait(timeout=kill_time)
                 record_result = subprocess.CompletedProcess(cmd, record_process.returncode)
+                stderr_file.seek(0)
+                arecord_stderr = stderr_file.read().decode('utf-8', errors='replace').strip()
+                stderr_file.close()
             except subprocess.TimeoutExpired:
                 logging.info('\n{} - Timed Out \n'.format(self.current_file))
                 # Graceful stop first so WAV headers/data can be finalized.
@@ -135,14 +141,17 @@ class Sipeed7Mic(SensorBase):
                     logging.info('{} - arecord did not terminate gracefully, forcing kill'.format(self.current_file))
                     record_process.kill()
                     record_process.wait(timeout=2)
-
+                stderr_file.seek(0)
+                arecord_stderr = stderr_file.read().decode('utf-8', errors='replace').strip()
+                stderr_file.close()
                 record_result = subprocess.CompletedProcess(cmd, record_process.returncode or 124)
 
             end_time = time.strftime('%H-%M-%S')
             logging.info('\n{} - Finished recording at {}'.format(self.current_file, end_time))
 
             if record_result is not None and record_result.returncode != 0:
-                raise RuntimeError('arecord exited with status {}'.format(record_result.returncode))
+                stderr_preview = ' | '.join(arecord_stderr.splitlines()[-3:]) if arecord_stderr else 'no stderr'
+                raise RuntimeError('arecord exited with status {} | stderr: {}'.format(record_result.returncode, stderr_preview))
 
             if (not os.path.exists(wfile)) or (os.path.getsize(wfile) < self.MIN_VALID_AUDIO_BYTES):
                 if os.path.exists(wfile):
@@ -150,7 +159,8 @@ class Sipeed7Mic(SensorBase):
                     os.remove(wfile)
                 else:
                     file_size = 0
-                raise RuntimeError('Recorded file too small ({} bytes), marking as invalid'.format(file_size))
+                stderr_preview = ' | '.join(arecord_stderr.splitlines()[-3:]) if arecord_stderr else 'no stderr'
+                raise RuntimeError('Recorded file too small ({} bytes) | stderr: {}'.format(file_size, stderr_preview))
 
             self.uncomp_file_name = ofile + '.wav'
             os.rename(wfile, self.uncomp_file_name)

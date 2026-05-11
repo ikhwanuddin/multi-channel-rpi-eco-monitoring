@@ -5,6 +5,7 @@ import subprocess
 import shutil
 import signal
 import threading
+import traceback
 from datetime import datetime
 import json
 import logging
@@ -90,11 +91,12 @@ def parse_reboot_times(sys_config):
     return sorted(validated_times)
 
 
-def scheduled_reboot_monitor(reboot_times, die):
+def scheduled_reboot_monitor(reboot_times, die, recording_in_progress=None):
     """
     Monitor local time and trigger a reboot when a configured reboot time is reached.
     """
     last_trigger = None
+    pending_reboot = None
 
     while not die.is_set():
         now = datetime.now()
@@ -103,8 +105,15 @@ def scheduled_reboot_monitor(reboot_times, die):
 
         if current_time in reboot_times and trigger_key != last_trigger:
             last_trigger = trigger_key
-            logging.warning('Scheduled reboot triggered for {}'.format(current_time))
-            subprocess.call('sudo reboot', shell=True)
+            pending_reboot = current_time
+            logging.warning('Scheduled reboot requested for {}'.format(current_time))
+
+        if pending_reboot is not None:
+            if recording_in_progress is not None and recording_in_progress.is_set():
+                logging.info('Deferring scheduled reboot {} until current recording completes'.format(pending_reboot))
+            else:
+                logging.warning('Scheduled reboot triggered for {}'.format(pending_reboot))
+                subprocess.call('sudo reboot', shell=True)
 
         die.wait(20)
 
@@ -149,8 +158,8 @@ def configure_sensor(sensor_config):
 
 def check_last_recording_size(upload_dir_pi):
     """
-    Check if the last recording file in upload_dir_pi is smaller than 1 MB.
-    If so, restart the system to prevent corrupted recordings.
+    Check if the latest recording file in upload_dir_pi is smaller than 1 MB.
+    Returns True when the file appears invalid/suspiciously small.
     """
     try:
         # Find all recording files (assuming .wav or .flac extensions)
@@ -162,19 +171,21 @@ def check_last_recording_size(upload_dir_pi):
         
         if not recording_files:
             logging.info('No recording files found for size check.')
-            return
+            return False
         
         # Get the latest file by modification time
         latest_file = max(recording_files, key=os.path.getmtime)
         file_size = os.path.getsize(latest_file)
         
         if file_size < 1048576:  # 1 MB in bytes
-            logging.warning('Last recording file {} is too small ({} bytes < 1 MB). Restarting system to prevent corrupted recordings.'.format(latest_file, file_size))
-            subprocess.call('sudo reboot', shell=True)
+            logging.warning('Last recording file {} is too small ({} bytes < 1 MB).'.format(latest_file, file_size))
+            return True
         else:
             logging.info('Last recording file {} size is {} bytes, OK.'.format(latest_file, file_size))
+            return False
     except Exception as e:
         logging.error('Error checking recording file size: {}'.format(e))
+        return False
 
 
 def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
@@ -454,7 +465,7 @@ def storage_check_shutdown():
         safe_shutdown()
         
 
-def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die):
+def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die, recording_in_progress=None):
 
     """
     Runs a loop over the sensor sampling process
@@ -466,16 +477,45 @@ def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die):
         die: A threading event to terminate the upload server sync
     """
 
+    # Require multiple consecutive tiny files before rebooting to avoid
+    # reboot loops caused by one-off capture glitches on low-spec hardware.
+    tiny_file_streak = 0
+    tiny_file_reboot_threshold = 3
+
     # Start recording
     while not die.is_set():
-        # Before new recording, purge oldest dated folder if disk usage >= 80%
-        purge_oldest_recording(upload_dir)
-        # Then check if sufficient storage is still available (fallback shutdown)
-        storage_check_shutdown()
-        # Begin new recording
-        record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True)
-        # Check if last recording file is too small, restart if necessary
-        check_last_recording_size(upload_dir)
+        try:
+            # Before new recording, purge oldest dated folder if disk usage >= 80%
+            purge_oldest_recording(upload_dir)
+            # Then check if sufficient storage is still available (fallback shutdown)
+            storage_check_shutdown()
+            # Begin new recording
+            if recording_in_progress is not None:
+                recording_in_progress.set()
+            record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True)
+            if recording_in_progress is not None:
+                recording_in_progress.clear()
+
+            # Check if last recording file is too small and only reboot when
+            # this happens repeatedly.
+            if check_last_recording_size(upload_dir):
+                tiny_file_streak += 1
+                logging.warning('Tiny recording streak detected: {}/{}'.format(
+                    tiny_file_streak, tiny_file_reboot_threshold))
+                if tiny_file_streak >= tiny_file_reboot_threshold:
+                    logging.warning(
+                        'Repeated tiny recordings detected ({} consecutive). Rebooting system.'.format(
+                            tiny_file_streak))
+                    subprocess.call('sudo reboot', shell=True)
+            else:
+                tiny_file_streak = 0
+
+        except Exception as e:
+            if recording_in_progress is not None:
+                recording_in_progress.clear()
+            logging.error('Unhandled exception in continuous_recording loop: {}'.format(e))
+            logging.error(traceback.format_exc())
+            time.sleep(5)
 
 
 def continuous_postprocess(sensor, sync_interval, upload_dir, die):
@@ -490,7 +530,12 @@ def continuous_postprocess(sensor, sync_interval, upload_dir, die):
 
     # Start recording
     while not die.is_set():
-        run_postprocess(sensor, sync_interval, upload_dir, sleep=True)
+        try:
+            run_postprocess(sensor, sync_interval, upload_dir, sleep=True)
+        except Exception as e:
+            logging.error('Unhandled exception in continuous_postprocess loop: {}'.format(e))
+            logging.error(traceback.format_exc())
+            time.sleep(5)
         
 
 
@@ -671,11 +716,12 @@ def record(config_file, logfile_name, log_dir='logs'):
                                                                      rclone_config, upload_dir_pi, die))
 
     reboot_thread = None
+    recording_in_progress = threading.Event()
     if reboot_times:
-        reboot_thread = threading.Thread(target=scheduled_reboot_monitor, args=(reboot_times, die))
+        reboot_thread = threading.Thread(target=scheduled_reboot_monitor, args=(reboot_times, die, recording_in_progress))
     
     record_thread = threading.Thread(target=continuous_recording, args=(sensor, working_dir,
-                                                                    upload_dir_pi, sensor_config, die))
+                                                                    upload_dir_pi, sensor_config, die, recording_in_progress))
 
     
     # Postprocess the raw data in a separate thread

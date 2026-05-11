@@ -489,10 +489,13 @@ def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die, re
             purge_oldest_recording(upload_dir)
             # Then check if sufficient storage is still available (fallback shutdown)
             storage_check_shutdown()
-            # Begin new recording
+            # Begin new recording. Sleep is handled separately below so that
+            # recording_in_progress can be cleared before the capture_delay
+            # window, giving the scheduled reboot monitor a chance to fire
+            # between recordings rather than being blocked indefinitely.
             if recording_in_progress is not None:
                 recording_in_progress.set()
-            record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True)
+            record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=False)
             if recording_in_progress is not None:
                 recording_in_progress.clear()
 
@@ -509,6 +512,10 @@ def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die, re
                     subprocess.call('sudo reboot', shell=True)
             else:
                 tiny_file_streak = 0
+
+            # Sleep between recordings with recording_in_progress cleared so
+            # scheduled_reboot_monitor can trigger during the capture_delay.
+            sensor.sleep()
 
         except Exception as e:
             if recording_in_progress is not None:

@@ -11,14 +11,27 @@ set -u
 LOGFILE_ACTIVE=""
 LOG_MODE="boot"
 LOG_PHASE="init"
+LOG_LAST_MINUTE=""
+LOG_TS_PREFIX=""
+
+update_log_minute_prefix() {
+    local current_minute
+    current_minute="$(date '+%Y-%m-%d %H:%M')"
+    if [ "$current_minute" != "$LOG_LAST_MINUTE" ]; then
+        LOG_LAST_MINUTE="$current_minute"
+        LOG_TS_PREFIX="[$current_minute] "
+    else
+        LOG_TS_PREFIX=""
+    fi
+}
 
 log_msg() {
     local msg="$1"
-    local stamp="[$(date '+%Y-%m-%d %H:%M:%S')]"
+    update_log_minute_prefix
     if [ -n "$LOGFILE_ACTIVE" ]; then
-        echo "$stamp [startup][mode=$LOG_MODE][phase=$LOG_PHASE] $msg" | tee -a "$LOGFILE_ACTIVE"
+        echo "${LOG_TS_PREFIX}[startup][mode=$LOG_MODE][phase=$LOG_PHASE] $msg" | tee -a "$LOGFILE_ACTIVE"
     else
-        echo "$stamp [startup][mode=$LOG_MODE][phase=$LOG_PHASE] $msg"
+        echo "${LOG_TS_PREFIX}[startup][mode=$LOG_MODE][phase=$LOG_PHASE] $msg"
     fi
 }
 
@@ -122,7 +135,8 @@ log_ffmpeg_timeout_event() {
     if [ -n "${logdir:-}" ]; then
         feedback_log="$logdir/ffmpeg_timeout_feedback.log"
         ensure_logfile_writable "$feedback_log"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] event_id=$event_id context=$context_label timeout_secs=$timeout_secs file=$wav_file size_bytes=$size_bytes action=kept_for_retry" >> "$feedback_log"
+        update_log_minute_prefix
+        echo "${LOG_TS_PREFIX}event_id=$event_id context=$context_label timeout_secs=$timeout_secs file=$wav_file size_bytes=$size_bytes action=kept_for_retry" >> "$feedback_log"
     fi
 }
 
@@ -156,7 +170,8 @@ log_ffmpeg_failure_event() {
     if [ -n "${logdir:-}" ]; then
         feedback_log="$logdir/ffmpeg_timeout_feedback.log"
         ensure_logfile_writable "$feedback_log"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] event_id=$event_id context=$context_label exit_code=$exit_code file=$wav_file size_bytes=$size_bytes stderr='$stderr_preview' action=kept_for_retry" >> "$feedback_log"
+        update_log_minute_prefix
+        echo "${LOG_TS_PREFIX}event_id=$event_id context=$context_label exit_code=$exit_code file=$wav_file size_bytes=$size_bytes stderr='$stderr_preview' action=kept_for_retry" >> "$feedback_log"
     fi
 }
 
@@ -335,8 +350,8 @@ run_and_log() {
 
     if [ -n "$cmd_output" ]; then
         while IFS= read -r line; do
-            if [[ "$line" =~ ^\[[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}\][[:space:]]+(.*)$ ]]; then
-                line="${BASH_REMATCH[1]}"
+            if [[ "$line" =~ ^\[[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}(:[0-9]{2})?\][[:space:]]+(.*)$ ]]; then
+                line="${BASH_REMATCH[2]}"
             fi
             [ -n "$line" ] && log_msg "$line_prefix$line"
         done <<< "$cmd_output"

@@ -28,6 +28,8 @@
 RCLONE_CONF_PATH="${RCLONE_CONF_PATH:-$HOME/.config/rclone/rclone.conf}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-30}"
+GIST_LOG_LAST_MINUTE=""
+GIST_LOG_TS_PREFIX=""
 
 _curl_common_args() {
     echo "-sS --connect-timeout $CURL_CONNECT_TIMEOUT --max-time $CURL_MAX_TIME"
@@ -38,10 +40,22 @@ _make_temp_dir() {
 }
 
 # ── Internal: log helper ──────────────────────────────────────────────────────
+_update_gist_log_minute_prefix() {
+    local current_minute
+    current_minute="$(date '+%Y-%m-%d %H:%M')"
+    if [ "$current_minute" != "$GIST_LOG_LAST_MINUTE" ]; then
+        GIST_LOG_LAST_MINUTE="$current_minute"
+        GIST_LOG_TS_PREFIX="[$current_minute] "
+    else
+        GIST_LOG_TS_PREFIX=""
+    fi
+}
+
 _gist_log() {
     local msg="$1"
     local logfile="${2:-/dev/stdout}"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [gist-sync] $msg" | tee -a "$logfile"
+    _update_gist_log_minute_prefix
+    echo "${GIST_LOG_TS_PREFIX}[gist-sync] $msg" | tee -a "$logfile"
 }
 
 # Resolve the preferred owner for rclone.conf.
@@ -348,8 +362,8 @@ print(calendar.timegm(dt.timetuple()))
         return 1
     fi
 
-    _gist_log "Local  mtime : $(date -d @$local_mtime_epoch '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r $local_mtime_epoch '+%Y-%m-%d %H:%M:%S')" "$logfile"
-    _gist_log "Gist updated : $(date -d @$gist_updated_epoch '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r $gist_updated_epoch '+%Y-%m-%d %H:%M:%S')" "$logfile"
+    _gist_log "Local  mtime : $(date -d @$local_mtime_epoch '+%Y-%m-%d %H:%M' 2>/dev/null || date -r $local_mtime_epoch '+%Y-%m-%d %H:%M')" "$logfile"
+    _gist_log "Gist updated : $(date -d @$gist_updated_epoch '+%Y-%m-%d %H:%M' 2>/dev/null || date -r $gist_updated_epoch '+%Y-%m-%d %H:%M')" "$logfile"
 
     # ── Compare and decide ─────────────────────────────────────────────────────
     # Allow a small tolerance (30 seconds) to avoid unnecessary pushes

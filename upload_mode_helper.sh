@@ -6,6 +6,27 @@
 # and upload mode coordination
 ##############################################
 
+UPLOAD_HELPER_LAST_MINUTE=""
+UPLOAD_HELPER_TS_PREFIX=""
+
+update_upload_helper_minute_prefix() {
+    local current_minute
+    current_minute="$(date '+%Y-%m-%d %H:%M')"
+    if [ "$current_minute" != "$UPLOAD_HELPER_LAST_MINUTE" ]; then
+        UPLOAD_HELPER_LAST_MINUTE="$current_minute"
+        UPLOAD_HELPER_TS_PREFIX="[$current_minute] "
+    else
+        UPLOAD_HELPER_TS_PREFIX=""
+    fi
+}
+
+append_upload_helper_log() {
+    local logfile="$1"
+    local msg="$2"
+    update_upload_helper_minute_prefix
+    echo "${UPLOAD_HELPER_TS_PREFIX}${msg}" >> "$logfile"
+}
+
 # Helper function to check internet connectivity
 # Pings Google and Cloudflare, retries every 60 seconds indefinitely
 check_internet() {
@@ -231,12 +252,12 @@ monitor_internet_during_upload() {
         
         if check_internet_quick; then
             if [ $last_online -eq 0 ]; then
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Internet connection restored" >> "$logfile"
+                append_upload_helper_log "$logfile" "Internet connection restored"
                 last_online=1
             fi
         else
             if [ $last_online -eq 1 ]; then
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Internet connection lost! Sending SIGTERM to rclone (PID: $rclone_pid)" >> "$logfile"
+                append_upload_helper_log "$logfile" "Internet connection lost! Sending SIGTERM to rclone (PID: $rclone_pid)"
                 kill -TERM "$rclone_pid" 2>/dev/null || true
                 last_online=0
             fi
@@ -261,8 +282,8 @@ handle_upload_shutdown() {
     local upload_pid="$1"
     local logfile="$2"
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Shutdown signal received during upload mode" >> "$logfile"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Terminating upload gracefully..." >> "$logfile"
+    append_upload_helper_log "$logfile" "Shutdown signal received during upload mode"
+    append_upload_helper_log "$logfile" "Terminating upload gracefully..."
     
     # Send SIGTERM to upload process to let it cleanup
     if kill -0 "$upload_pid" 2>/dev/null; then
@@ -276,12 +297,12 @@ handle_upload_shutdown() {
         
         # Force kill if still running
         if kill -0 "$upload_pid" 2>/dev/null; then
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Force killing upload process" >> "$logfile"
+            append_upload_helper_log "$logfile" "Force killing upload process"
             kill -9 "$upload_pid" 2>/dev/null || true
         fi
     fi
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Upload mode ended, system can now shutdown or switch mode" >> "$logfile"
+    append_upload_helper_log "$logfile" "Upload mode ended, system can now shutdown or switch mode"
 }
 
 export -f check_internet

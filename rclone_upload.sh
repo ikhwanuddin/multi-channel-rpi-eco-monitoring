@@ -19,6 +19,8 @@ logfile="${4:-/dev/stdout}"
 config_path="${5:-}"
 target_path="${6:-}"
 UPLOAD_PHASE="init"
+UPLOAD_LOG_LAST_MINUTE=""
+UPLOAD_LOG_TS_PREFIX=""
 upload_stats_tmp=$(mktemp "${TMPDIR:-/tmp}/upload_stats.XXXXXX") || upload_stats_tmp=""
 rclone_logfile=""
 
@@ -36,9 +38,21 @@ if [ -f "$SCRIPT_DIR/sync_rclone_config.sh" ]; then
 fi
 
 # Function to log messages
+update_upload_log_minute_prefix() {
+    local current_minute
+    current_minute="$(date '+%Y-%m-%d %H:%M')"
+    if [ "$current_minute" != "$UPLOAD_LOG_LAST_MINUTE" ]; then
+        UPLOAD_LOG_LAST_MINUTE="$current_minute"
+        UPLOAD_LOG_TS_PREFIX="[$current_minute] "
+    else
+        UPLOAD_LOG_TS_PREFIX=""
+    fi
+}
+
 log_msg() {
     local msg="$1"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [upload][phase=$UPLOAD_PHASE] $msg" | tee -a "$logfile"
+    update_upload_log_minute_prefix
+    echo "${UPLOAD_LOG_TS_PREFIX}[upload][phase=$UPLOAD_PHASE] $msg" | tee -a "$logfile"
 }
 
 set_upload_phase() {
@@ -257,11 +271,21 @@ data_dir = sys.argv[1]
 remote_target = sys.argv[2]
 state_file = sys.argv[3]
 logfile = sys.argv[4]
+last_minute = None
 
 def log_msg(msg):
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [upload][phase=verify][component=verify] {msg}")
+    global last_minute
+    now = datetime.now()
+    minute_stamp = now.strftime('%Y-%m-%d %H:%M')
+    if minute_stamp != last_minute:
+        prefix = f"[{minute_stamp}] "
+        last_minute = minute_stamp
+    else:
+        prefix = ""
+    line = f"{prefix}[upload][phase=verify][component=verify] {msg}"
+    print(line)
     with open(logfile, 'a') as f:
-        f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [upload][phase=verify][component=verify] {msg}\n")
+        f.write(f"{line}\n")
 
 try:
     with open(state_file, 'r') as f:

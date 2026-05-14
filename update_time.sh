@@ -10,6 +10,8 @@ SSH_EPOCH=""
 TIME_SYNC_MODE="auto"
 TIME_SYNC_PHASE="init"
 DEVICE_HOSTNAME="$(hostname 2>/dev/null || echo raspberrypi)"
+TIME_SYNC_LAST_MINUTE=""
+TIME_SYNC_TS_PREFIX=""
 
 case "$DEVICE_HOSTNAME" in
     *.local)
@@ -20,9 +22,21 @@ case "$DEVICE_HOSTNAME" in
         ;;
 esac
 
+update_time_sync_minute_prefix() {
+    local current_minute
+    current_minute="$(date '+%Y-%m-%d %H:%M')"
+    if [ "$current_minute" != "$TIME_SYNC_LAST_MINUTE" ]; then
+        TIME_SYNC_LAST_MINUTE="$current_minute"
+        TIME_SYNC_TS_PREFIX="[$current_minute] "
+    else
+        TIME_SYNC_TS_PREFIX=""
+    fi
+}
+
 log_msg() {
     local msg="$1"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [time-sync][mode=$TIME_SYNC_MODE][phase=$TIME_SYNC_PHASE] $msg"
+    update_time_sync_minute_prefix
+    echo "${TIME_SYNC_TS_PREFIX}[time-sync][mode=$TIME_SYNC_MODE][phase=$TIME_SYNC_PHASE] $msg"
 }
 
 if [ "${1:-}" = "--epoch" ] && [ -n "${2:-}" ]; then

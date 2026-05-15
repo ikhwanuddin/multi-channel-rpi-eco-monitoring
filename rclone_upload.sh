@@ -307,7 +307,7 @@ try:
         '--missing-on-dst', missing_tmp,
         '--log-level', 'INFO',
         '--stats', '10s',
-        '--stats-one-line',
+        # Avoid one-line carriage-return stats so piped logging does not look frozen.
         '--filter', '+ **.flac',
         '--filter', '+ **.log',
         '--filter', '- **',

@@ -265,12 +265,14 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 
 data_dir = sys.argv[1]
 remote_target = sys.argv[2]
 state_file = sys.argv[3]
 logfile = sys.argv[4]
+config_path = sys.argv[5]
 last_minute = None
 
 def log_msg(msg):
@@ -283,47 +285,72 @@ def log_msg(msg):
     else:
         prefix = ""
     line = f"{prefix}[upload][phase=verify][component=verify] {msg}"
-    print(line)
+    print(line, flush=True)
     with open(logfile, 'a') as f:
         f.write(f"{line}\n")
 
 try:
     with open(state_file, 'r') as f:
         state = json.load(f)
-    
-    # List files on remote (stream output line-by-line to show live progress)
-    rclone_list_cmd = ['rclone', 'lsf', remote_target, '--recursive']
-    config_path = sys.argv[5]
-    if config_path:
-        rclone_list_cmd.extend(['--config', config_path])
 
-    log_msg("Fetching remote file list (this may take a while for large remotes)...")
-    remote_set = set()
+    uploading_files = {k for k, v in state['files'].items() if v == 'uploading'}
+    if not uploading_files:
+        log_msg("No files to verify.")
+        sys.exit(0)
+
+    # Use rclone check --one-way --missing-on-dst to find files not yet on remote.
+    # rclone streams live progress stats every 10s natively — no silent waiting.
+    missing_tmp = tempfile.mktemp(suffix='_missing.txt')
+    check_cmd = [
+        'rclone', 'check', data_dir, remote_target,
+        '--one-way',
+        '--missing-on-dst', missing_tmp,
+        '--log-level', 'INFO',
+        '--stats', '10s',
+        '--stats-one-line',
+        '--filter', '+ **.flac',
+        '--filter', '+ **.log',
+        '--filter', '- **',
+    ]
+    if config_path:
+        check_cmd.extend(['--config', config_path])
+
+    log_msg(f"Running rclone check for {len(uploading_files)} files (live stats every 10s)...")
+    # Merge stderr into stdout so stats lines are captured and forwarded to log
     proc = subprocess.Popen(
-        rclone_list_cmd,
+        check_cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
         universal_newlines=True
     )
     for line in proc.stdout:
-        line = line.strip()
+        line = line.rstrip()
         if line:
-            remote_set.add(line)
-            count = len(remote_set)
-            if count % 200 == 0:
-                log_msg(f"  Remote listing in progress... {count} files found so far")
+            log_msg(f"  [rclone check] {line}")
     proc.wait()
-    log_msg(f"Found {len(remote_set)} files on remote")
-    
-    # Mark local files as completed if they exist on remote
+    check_exit = proc.returncode
+    # Exit code 1 = some files missing/different (normal if any failed); >1 = rclone error
+    if check_exit > 1:
+        log_msg(f"WARNING: rclone check exited with code {check_exit}, results may be incomplete")
+
+    # Read list of files confirmed missing on remote
+    missing_on_remote = set()
+    if os.path.exists(missing_tmp):
+        with open(missing_tmp) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    missing_on_remote.add(line)
+        os.remove(missing_tmp)
+
+    log_msg(f"rclone check done: {len(missing_on_remote)} files still missing on remote")
+
+    # Files not in missing_on_remote are confirmed present on remote — safe to delete locally
     deleted_count = 0
     for filename in list(state['files'].keys()):
         if state['files'][filename] == 'uploading':
-            # Check if file exists on remote (exact match)
-            if filename in remote_set:
+            if filename not in missing_on_remote:
                 state['files'][filename] = 'completed'
-                
-                # Delete local file after verification
                 local_path = os.path.join(data_dir, filename)
                 if os.path.exists(local_path):
                     try:
@@ -334,19 +361,19 @@ try:
                         log_msg(f"ERROR deleting {filename}: {e}")
             else:
                 log_msg(f"File not found on remote (yet): {filename} - keeping local copy")
-    
+
     # Update stats
     state['upload_stats']['completed'] = sum(1 for s in state['files'].values() if s == 'completed')
     state['upload_stats']['uploading'] = sum(1 for s in state['files'].values() if s == 'uploading')
     state['upload_stats']['pending'] = sum(1 for s in state['files'].values() if s == 'pending')
     state['last_sync'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
     with open(state_file, 'w') as f:
         json.dump(state, f, indent=2)
-    
+
     log_msg(f"Upload verification complete: {deleted_count} files deleted after verification")
     log_msg(f"Upload stats after verify: completed={state['upload_stats']['completed']}, pending={state['upload_stats']['pending']}, uploading={state['upload_stats']['uploading']}")
-    
+
 except Exception as e:
     log_msg(f"ERROR during verification: {e}")
     sys.exit(1)

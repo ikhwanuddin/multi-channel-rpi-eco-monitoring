@@ -310,7 +310,7 @@ try:
         if line:
             remote_set.add(line)
             count = len(remote_set)
-            if count % 500 == 0:
+            if count % 200 == 0:
                 log_msg(f"  Remote listing in progress... {count} files found so far")
     proc.wait()
     log_msg(f"Found {len(remote_set)} files on remote")

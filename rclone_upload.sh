@@ -291,19 +291,28 @@ try:
     with open(state_file, 'r') as f:
         state = json.load(f)
     
-    # List files on remote
+    # List files on remote (stream output line-by-line to show live progress)
     rclone_list_cmd = ['rclone', 'lsf', remote_target, '--recursive']
     config_path = sys.argv[5]
     if config_path:
         rclone_list_cmd.extend(['--config', config_path])
 
-    remote_list = subprocess.check_output(
+    log_msg("Fetching remote file list (this may take a while for large remotes)...")
+    remote_set = set()
+    proc = subprocess.Popen(
         rclone_list_cmd,
-        universal_newlines=True,
-        stderr=subprocess.DEVNULL
-    ).strip().split('\n')
-    
-    remote_set = set(remote_list) if remote_list else set()
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        universal_newlines=True
+    )
+    for line in proc.stdout:
+        line = line.strip()
+        if line:
+            remote_set.add(line)
+            count = len(remote_set)
+            if count % 500 == 0:
+                log_msg(f"  Remote listing in progress... {count} files found so far")
+    proc.wait()
     log_msg(f"Found {len(remote_set)} files on remote")
     
     # Mark local files as completed if they exist on remote

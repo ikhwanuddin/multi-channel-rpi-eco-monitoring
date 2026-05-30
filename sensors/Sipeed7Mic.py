@@ -117,12 +117,15 @@ class Sipeed7Mic(SensorBase):
         logging.info('\n{} - Started recording at {}'.format(self.current_file, start_time))
         record_result = None
         arecord_stderr = ''
+        timeout_happened = False
+        stderr_file = None
         try:
             cmd = ['sudo', 'arecord', '-D', 'plughw:{},0'.format(self.card), '-f', 'S16_LE', '-r', '16000', '-c', '8', '--duration', str(self.record_length), wfile]
             
             # To remedy unexpected recording faults
 
-            kill_time = self.record_length * 1.5
+            # Allow additional grace on low-power Pi Zero 2W before declaring timeout.
+            kill_time = max(int(self.record_length * 1.75), self.record_length + 180)
             try:
                 stderr_file = tempfile.TemporaryFile()
                 record_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=stderr_file)
@@ -133,6 +136,7 @@ class Sipeed7Mic(SensorBase):
                 stderr_file.close()
             except subprocess.TimeoutExpired:
                 logging.info('\n{} - Timed Out \n'.format(self.current_file))
+                timeout_happened = True
                 # Graceful stop first so WAV headers/data can be finalized.
                 record_process.terminate()
                 try:
@@ -149,26 +153,52 @@ class Sipeed7Mic(SensorBase):
             end_time = time.strftime('%H-%M-%S')
             logging.info('\n{} - Finished recording at {}'.format(self.current_file, end_time))
 
-            if record_result is not None and record_result.returncode != 0:
-                stderr_preview = ' | '.join(arecord_stderr.splitlines()[-3:]) if arecord_stderr else 'no stderr'
-                raise RuntimeError('arecord exited with status {} | stderr: {}'.format(record_result.returncode, stderr_preview))
+            file_exists = os.path.exists(wfile)
+            file_size = os.path.getsize(wfile) if file_exists else 0
 
-            if (not os.path.exists(wfile)) or (os.path.getsize(wfile) < self.MIN_VALID_AUDIO_BYTES):
-                if os.path.exists(wfile):
-                    file_size = os.path.getsize(wfile)
-                    os.remove(wfile)
-                else:
-                    file_size = 0
-                stderr_preview = ' | '.join(arecord_stderr.splitlines()[-3:]) if arecord_stderr else 'no stderr'
-                raise RuntimeError('Recorded file too small ({} bytes) | stderr: {}'.format(file_size, stderr_preview))
+            if file_exists and file_size < self.MIN_VALID_AUDIO_BYTES:
+                os.remove(wfile)
+                file_exists = False
+
+            stderr_preview = ' | '.join(arecord_stderr.splitlines()[-3:]) if arecord_stderr else 'no stderr'
+
+            if record_result is not None and record_result.returncode != 0:
+                timeout_tag = ' timeout=true' if timeout_happened else ''
+                raise RuntimeError('arecord exited with status {} | file_size={} bytes{} | stderr: {}'.format(
+                    record_result.returncode,
+                    file_size,
+                    timeout_tag,
+                    stderr_preview))
+
+            if not file_exists:
+                timeout_tag = ' timeout=true' if timeout_happened else ''
+                raise RuntimeError('Recorded file missing/too small ({} bytes){} | stderr: {}'.format(
+                    file_size,
+                    timeout_tag,
+                    stderr_preview))
 
             self.uncomp_file_name = ofile + '.wav'
             os.rename(wfile, self.uncomp_file_name)
             logging.info('\n{} transferred to {}'.format(self.current_file, wfile))
         except Exception as exc:
+            if os.path.exists(wfile):
+                try:
+                    os.remove(wfile)
+                except OSError:
+                    pass
             logging.info('Error recording from audio card: {}. Creating dummy file'.format(exc))
-            open(ofile + '_ERROR_audio-record-failed', 'a').close()
+            marker_file = ofile + '_ERROR_audio-record-failed'
+            with open(marker_file, 'w') as f:
+                f.write('time={}\n'.format(time.strftime('%Y-%m-%d %H:%M:%S')))
+                f.write('sensor=Sipeed7Mic\n')
+                f.write('error={}\n'.format(str(exc)))
             time.sleep(1)
+        finally:
+            if stderr_file is not None:
+                try:
+                    stderr_file.close()
+                except Exception:
+                    pass
 
         end_time = time.strftime('%H-%M-%S')
         logging.info('\n{} recording and transfer complete at {}\n'.format(self.current_file, end_time))

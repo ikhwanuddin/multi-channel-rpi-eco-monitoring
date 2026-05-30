@@ -186,27 +186,52 @@ def configure_sensor(sensor_config):
     return sensor
 
 
-def check_last_recording_size(upload_dir_pi):
+def check_last_recording_size(upload_dir_pi, pre_upload_dir_pi=None):
     """
-    Check if the latest recording file in upload_dir_pi is smaller than 1 MB.
-    Returns True when the file appears invalid/suspiciously small.
+    Check the latest recording artefact across upload/pre-upload directories.
+    Returns True when the latest artefact indicates a failed or suspiciously small
+    recording.
     """
     try:
-        # Find all recording files (assuming .wav or .flac extensions)
-        recording_files = []
-        for root, dirs, files in os.walk(upload_dir_pi):
-            for file in files:
-                if file.endswith(('.wav', '.flac', '.mp3')):  # Add more extensions if needed
-                    recording_files.append(os.path.join(root, file))
-        
-        if not recording_files:
-            logging.info('No recording files found for size check.')
+        scan_roots = [upload_dir_pi]
+        if pre_upload_dir_pi:
+            scan_roots.append(pre_upload_dir_pi)
+
+        candidates = []
+        for scan_root in scan_roots:
+            if not scan_root or (not os.path.isdir(scan_root)):
+                continue
+            for root, dirs, files in os.walk(scan_root):
+                for file in files:
+                    full_path = os.path.join(root, file)
+                    file_lower = file.lower()
+                    if file_lower.endswith(('.wav', '.flac', '.mp3')):
+                        candidates.append({
+                            'path': full_path,
+                            'mtime': os.path.getmtime(full_path),
+                            'kind': 'audio',
+                            'size': os.path.getsize(full_path),
+                        })
+                    elif '_error_audio-record-failed' in file_lower:
+                        candidates.append({
+                            'path': full_path,
+                            'mtime': os.path.getmtime(full_path),
+                            'kind': 'error',
+                            'size': 0,
+                        })
+
+        if not candidates:
+            logging.info('No recording artefacts found for size check.')
             return False
-        
-        # Get the latest file by modification time
-        latest_file = max(recording_files, key=os.path.getmtime)
-        file_size = os.path.getsize(latest_file)
-        
+
+        latest = max(candidates, key=lambda c: c['mtime'])
+        latest_file = latest['path']
+
+        if latest['kind'] == 'error':
+            logging.warning('Latest recording artefact is an error marker: {}'.format(latest_file))
+            return True
+
+        file_size = latest['size']
         if file_size < 1048576:  # 1 MB in bytes
             logging.warning('Last recording file {} is too small ({} bytes < 1 MB).'.format(latest_file, file_size))
             return True
@@ -304,11 +329,7 @@ def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
             full_path = os.path.join(root, name)
 
             if 'ERROR' in name.upper():
-                try:
-                    os.remove(full_path)
-                    logging.warning('Removed error marker from pre-upload queue: {}'.format(full_path))
-                except OSError as e:
-                    logging.warning('Failed to remove error marker {}: {}'.format(full_path, e))
+                # Preserve markers for diagnosis and tiny-file streak detection.
                 continue
 
             if not name.lower().endswith('.wav'):
@@ -502,7 +523,7 @@ def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die,
 
             # Check if last recording file is too small and only reboot when
             # this happens repeatedly.
-            if check_last_recording_size(upload_dir):
+            if check_last_recording_size(upload_dir, '/home/pi/pre_upload_dir'):
                 tiny_file_streak += 1
                 logging.warning('Tiny recording streak detected: {}/{}'.format(
                     tiny_file_streak, tiny_file_reboot_threshold))

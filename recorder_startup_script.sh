@@ -13,6 +13,7 @@ LOG_MODE="boot"
 LOG_PHASE="init"
 LOG_LAST_MINUTE=""
 LOG_TS_PREFIX=""
+MIN_VALID_AUDIO_BYTES=1048576
 
 update_log_minute_prefix() {
     local current_minute
@@ -286,6 +287,14 @@ process_pre_upload_queue_for_sipeed() {
             while IFS= read -r -d '' wav_file; do
                 wav_file=$(normalize_path_for_conversion "$wav_file")
                 [ -f "$wav_file" ] || continue
+
+                wav_size=$(stat -f%z "$wav_file" 2>/dev/null || echo 0)
+                if [ "$wav_size" -lt "$MIN_VALID_AUDIO_BYTES" ]; then
+                    log_msg "Sipeed maintenance: dropping tiny WAV $(basename "$wav_file") size_bytes=$wav_size (<$MIN_VALID_AUDIO_BYTES)"
+                    sudo rm -f "$wav_file" 2>/dev/null || true
+                    failed_count=$((failed_count+1))
+                    continue
+                fi
 
                 date_subdir=$(basename "$(dirname "$wav_file")")
                 dest_dir="$live_data_root/$PI_ID/${date_subdir}"
@@ -746,6 +755,14 @@ else
                           failed_count=$((failed_count+1))
                           continue
                       fi
+
+                      wav_size=$(stat -f%z "$wav_file" 2>/dev/null || echo 0)
+                      if [ "$wav_size" -lt "$MIN_VALID_AUDIO_BYTES" ]; then
+                          log_msg "Dropping tiny WAV in pre_upload_dir: $(basename "$wav_file") size_bytes=$wav_size (<$MIN_VALID_AUDIO_BYTES)"
+                          sudo rm -f "$wav_file" 2>/dev/null || true
+                          failed_count=$((failed_count+1))
+                          continue
+                      fi
                       ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_pre_upload_err.XXXXXX")
                       date_subdir=$(basename "$(dirname "$wav_file")")
                       dest_dir="$live_data_dir/$PI_ID/${date_subdir}"
@@ -899,6 +916,14 @@ else
                         live_wav_file=$(normalize_path_for_conversion "$live_wav_file")
                         if [ ! -f "$live_wav_file" ]; then
                             log_msg "WARNING: Source WAV missing before conversion (live_data) [$live_index/$live_wav_count]: $(printf '%q' "$live_wav_file")"
+                            failed_live_count=$((failed_live_count+1))
+                            continue
+                        fi
+
+                        live_wav_size=$(stat -f%z "$live_wav_file" 2>/dev/null || echo 0)
+                        if [ "$live_wav_size" -lt "$MIN_VALID_AUDIO_BYTES" ]; then
+                            log_msg "Dropping tiny WAV in live_data: $(basename "$live_wav_file") size_bytes=$live_wav_size (<$MIN_VALID_AUDIO_BYTES)"
+                            sudo rm -f "$live_wav_file" 2>/dev/null || true
                             failed_live_count=$((failed_live_count+1))
                             continue
                         fi

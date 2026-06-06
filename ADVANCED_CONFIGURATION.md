@@ -186,11 +186,13 @@ grep -hE "\[upload\]\[phase=(finalize|error)\]" logs/*.log
 grep -h "\[time-sync\]" logs/*.log
 ```
 
-### Show rclone engine lines only
+### Show rclone copy-phase lines only
 
 ```bash
-grep -h "\[component=rclone\]" logs/*.log
+grep -h "\[upload\]\[phase=rclone-copy\]" logs/*.log
 ```
+
+`rclone` one-line stats are emitted every `30s` during this phase (`--stats 30s --stats-one-line`).
 
 ### Show helper state-scan lines only
 

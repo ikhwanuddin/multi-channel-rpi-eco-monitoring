@@ -105,21 +105,21 @@ set_upload_phase() {
 }
 
 # Stream stdin to log_msg with an optional message prefix.
+# Pass mode="rclone" to apply compact rclone formatting without adding extra prefix text.
 log_stream() {
     local prefix="${1:-}"
+    local mode="${2:-}"
     local line
     while IFS= read -r line; do
-        if [[ "$prefix" == *"[rclone]"* ]]; then
+        if [ "$mode" = "rclone" ]; then
             line="$(format_rclone_line "$line")"
         fi
         [ -z "$line" ] && continue
 
-        if [ -n "$prefix" ]; then
-            if [[ "$prefix" == *"[rclone]"* ]] && [[ "$line" == stats\ * ]]; then
-                log_msg "$line" 1
-            else
-                log_msg "$prefix$line"
-            fi
+        if [ "$mode" = "rclone" ] && [[ "$line" == stats\ * ]]; then
+            log_msg "$line" 1
+        elif [ -n "$prefix" ]; then
+            log_msg "$prefix$line"
         else
             log_msg "$line"
         fi
@@ -186,7 +186,7 @@ rclone_logfile=$(mktemp "${TMPDIR:-/tmp}/rclone.XXXXXX.log") || rclone_logfile="
 rclone_args=(
     copy "$data_dir" "$remote_target"
     --log-level INFO
-    --stats 10s
+    --stats 30s
     --stats-one-line
     --files-from -  # Read from stdin
 )
@@ -218,7 +218,7 @@ rclone_copy_with_retry() {
     local delay=10
 
     while [ $attempt -le $max_attempts ]; do
-        if printf '%s\n' "$files_to_upload" | rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[rclone] "; then
+        if printf '%s\n' "$files_to_upload" | rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "" "rclone"; then
             return 0
         fi
 

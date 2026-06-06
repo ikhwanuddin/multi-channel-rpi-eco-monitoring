@@ -133,14 +133,38 @@ if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")
 fi
 
+# Helper for rclone copy with retry logic
+rclone_copy_with_retry() {
+    local max_attempts=3
+    local attempt=1
+    local delay=10
+
+    while [ $attempt -le $max_attempts ]; do
+        if printf '%s\n' "$files_to_upload" | rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[component=rclone] "; then
+            return 0
+        fi
+
+        local exit_code=$?
+        # Retry on transient network/rclone errors (codes 3-9)
+        if [[ "$exit_code" =~ ^[3-9]$ ]] && [ $attempt -lt $max_attempts ]; then
+            log_msg "Rclone copy failed (exit $exit_code), retrying in ${delay}s (attempt $attempt/$max_attempts)..."
+            sleep $delay
+            ((attempt++))
+            delay=$((delay * 2)) # Exponential backoff
+        else
+            return $exit_code
+        fi
+    done
+    return 1
+}
+
 log_msg "Starting live rclone stream..."
-# Feed the file list to rclone
-if printf '%s\n' "$files_to_upload" | rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[component=rclone] "; then
+if rclone_copy_with_retry; then
     rclone_exit_code=0
     log_msg "Rclone copy completed with exit code 0"
 else
     rclone_exit_code=$?
-    log_msg "Rclone copy failed with exit code $rclone_exit_code"
+    log_msg "Rclone copy failed after retries with exit code $rclone_exit_code"
 fi
 
 # If rclone succeeded, verify files on remote and mark as completed
@@ -148,139 +172,18 @@ if [ $rclone_exit_code -eq 0 ]; then
     set_upload_phase "verify"
     log_msg "Verifying uploaded files on remote..."
 
-    python3 - "$data_dir" "$remote_target" "$state_file" "$logfile" "$config_path" << 'PYTHON_VERIFY'
-import json
-import os
-import subprocess
-import sys
-import tempfile
-from datetime import datetime
+    verify_output=$(python3 "$SCRIPT_DIR/state_manager.py" verify-finalize "$data_dir" "$state_file" --remote-target "$remote_target" --config-path "$config_path")
+    deleted_count=$(echo "$verify_output" | jq -r '.deleted // 0')
+    stats=$(echo "$verify_output" | jq -c '.stats')
 
-data_dir = sys.argv[1]
-remote_target = sys.argv[2]
-state_file = sys.argv[3]
-logfile = sys.argv[4]
-config_path = sys.argv[5]
-last_minute = None
+    log_msg "Upload verification complete: $deleted_count files deleted after verification"
+    log_msg "Upload stats after verify: $stats"
 
-def log_msg(msg):
-    global last_minute
-    now = datetime.now()
-    minute_stamp = now.strftime('%Y-%m-%d %H:%M')
-    if minute_stamp != last_minute:
-        prefix = f"[{minute_stamp}] "
-        last_minute = minute_stamp
-    else:
-        prefix = ""
-    line = f"{prefix}[upload][phase=verify][component=verify] {msg}"
-    print(line, flush=True)
-    with open(logfile, 'a') as f:
-        f.write(f"{line}\n")
-
-try:
-    with open(state_file, 'r') as f:
-        state = json.load(f)
-
-    uploading_files = {k for k, v in state['files'].items() if v == 'uploading'}
-    if not uploading_files:
-        log_msg("No files to verify.")
-        sys.exit(0)
-
-    # Use rclone check --one-way --missing-on-dst to find files not yet on remote.
-    # rclone streams live progress stats every 10s natively — no silent waiting.
-    missing_tmp = tempfile.mktemp(suffix='_missing.txt')
-    check_cmd = [
-        'rclone', 'check', data_dir, remote_target,
-        '--one-way',
-        '--missing-on-dst', missing_tmp,
-        '--log-level', 'INFO',
-        '--stats', '10s',
-        # Avoid one-line carriage-return stats so piped logging does not look frozen.
-        '--filter', '+ **.flac',
-        '--filter', '+ **.log',
-        '--filter', '- **',
-    ]
-    if config_path:
-        check_cmd.extend(['--config', config_path])
-
-    log_msg(f"Running rclone check for {len(uploading_files)} files (live stats every 10s)...")
-    # Merge stderr into stdout so stats lines are captured and forwarded to log
-    proc = subprocess.Popen(
-        check_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True
-    )
-    for line in proc.stdout:
-        line = line.rstrip()
-        if line:
-            log_msg(f"  [rclone check] {line}")
-    proc.wait()
-    check_exit = proc.returncode
-    # Exit code 1 = some files missing/different (normal if any failed); >1 = rclone error
-    if check_exit > 1:
-        log_msg(f"WARNING: rclone check exited with code {check_exit}, results may be incomplete")
-
-    # Read list of files confirmed missing on remote
-    missing_on_remote = set()
-    if os.path.exists(missing_tmp):
-        with open(missing_tmp) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    missing_on_remote.add(line)
-        os.remove(missing_tmp)
-
-    log_msg(f"rclone check done: {len(missing_on_remote)} files still missing on remote")
-
-    # Files not in missing_on_remote are confirmed present on remote — safe to delete locally
-    deleted_count = 0
-    for filename in list(state['files'].keys()):
-        if state['files'][filename] == 'uploading':
-            if filename not in missing_on_remote:
-                state['files'][filename] = 'completed'
-                local_path = os.path.join(data_dir, filename)
-                if os.path.exists(local_path):
-                    try:
-                        os.remove(local_path)
-                        deleted_count += 1
-                        log_msg(f"Deleted verified uploaded file: {filename}")
-                    except Exception as e:
-                        log_msg(f"ERROR deleting {filename}: {e}")
-            else:
-                log_msg(f"File not found on remote (yet): {filename} - keeping local copy")
-
-    # Update stats
-    state['upload_stats']['completed'] = sum(1 for s in state['files'].values() if s == 'completed')
-    state['upload_stats']['uploading'] = sum(1 for s in state['files'].values() if s == 'uploading')
-    state['upload_stats']['pending'] = sum(1 for s in state['files'].values() if s == 'pending')
-    state['last_sync'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    with open(state_file, 'w') as f:
-        json.dump(state, f, indent=2)
-
-    log_msg(f"Upload verification complete: {deleted_count} files deleted after verification")
-    log_msg(f"Upload stats after verify: completed={state['upload_stats']['completed']}, pending={state['upload_stats']['pending']}, uploading={state['upload_stats']['uploading']}")
-
-except Exception as e:
-    log_msg(f"ERROR during verification: {e}")
-    sys.exit(1)
-
-PYTHON_VERIFY
-
-    if [ $? -eq 0 ]; then
-        set_upload_phase "finalize"
-        log_msg "Rclone upload cycle completed successfully"
-        # Push rclone.conf to Gist — token was likely refreshed during this run
-        _push_rclone_config_to_gist
-        exit 0
-    else
-        set_upload_phase "error"
-        log_msg "Verification failed, files kept for retry"
-        # Still push conf — token refresh happens before transfer, not only on success
-        _push_rclone_config_to_gist
-        exit 1
-    fi
+    set_upload_phase "finalize"
+    log_msg "Rclone upload cycle completed successfully"
+    # Push rclone.conf to Gist — token was likely refreshed during this run
+    _push_rclone_config_to_gist
+    exit 0
 else
     set_upload_phase "error"
     log_msg "Rclone copy failed, files kept for retry"

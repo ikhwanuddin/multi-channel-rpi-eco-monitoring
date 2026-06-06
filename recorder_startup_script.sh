@@ -168,8 +168,12 @@ log_ffmpeg_failure_event() {
         stderr_preview="no-stderr-captured"
     fi
 
+    local stderr_compact
+    stderr_compact=$(printf '%s' "$stderr_preview" | sed -E 's#file:[^ ]*/([^/ ]+)#file:.../\1#g')
+
     log_msg "FFMPEG_FAILED event_id=$event_id ctx=$context_label exit=$exit_code size=${size_bytes}B"
-    log_msg "  file: $(basename "$wav_file") | stderr: $stderr_preview"
+    log_msg "  file: $(basename "$wav_file")"
+    log_msg "  stderr: $stderr_compact"
     log_msg "  (kept for retry) hint: kirim baris ini + 30 baris sekitarnya ke developer (event_id=$event_id)"
 
     if [ -n "${logdir:-}" ]; then
@@ -873,7 +877,8 @@ else
                     flac_file="$dest_dir/${base_name}.flac"
                     ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_tmp_dir_err.XXXXXX")
 
-                    log_msg "Converting tmp [$tmp_index] $(basename "$candidate") -> $candidate_rel_dir/$(basename "$flac_file")"
+                    log_msg "Converting tmp [$tmp_index] $(basename "$candidate")"
+                    log_msg "  dest: $candidate_rel_dir/$(basename "$flac_file")"
                     ffmpeg_input="file:$candidate"
                     ffmpeg_output="file:$flac_file"
                     if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -nostdin -y -loglevel error -f wav -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then

@@ -104,153 +104,41 @@ else
 fi
 log_msg "Remote target: $remote_target"
 
-# Initialize state file if it doesn't exist
-if [ ! -f "$state_file" ]; then
-    python3 - "$state_file" << 'PYTHON_INIT'
-import json
-import sys
-state_file = sys.argv[1]
-state = {
-    "session_start": "",
-    "last_sync": "",
-    "files": {},
-    "upload_stats": {"total_files": 0, "completed": 0, "pending": 0, "uploading": 0, "total_size_gb": 0.0}
-}
-with open(state_file, 'w') as f:
-    json.dump(state, f, indent=2)
-PYTHON_INIT
-fi
+# Initialize state and scan files
+set_upload_phase "scan-mark"
+log_msg "Scanning and marking files..."
 
-# Scan local files and mark as uploading before starting rclone
-set_upload_phase "scan-local"
-if [ -n "$upload_stats_tmp" ]; then
-python3 - "$data_dir" "$state_file" << 'PYTHON_SCAN' > "$upload_stats_tmp" 2>/dev/null || true
-import json
-import os
-import sys
-from datetime import datetime
+# Use the new state manager to replace the three separate Python calls
+manager_output=$(python3 "$SCRIPT_DIR/state_manager.py" init-scan-mark "$data_dir" "$state_file")
+stats=$(echo "$manager_output" | jq -c '.stats')
+files_to_upload=$(echo "$manager_output" | jq -r '.files_to_upload[]')
 
-data_dir = sys.argv[1]
-state_file = sys.argv[2]
-
-try:
-    with open(state_file, 'r') as f:
-        state = json.load(f)
-except:
-    state = {"session_start": "", "last_sync": "", "files": {}, "upload_stats": {"total_files": 0, "completed": 0, "pending": 0, "uploading": 0, "total_size_gb": 0.0}}
-
-found_files = {}
-total_size = 0
-
-# Scan for .flac files only
-for root, dirs, files in os.walk(data_dir):
-    for file in files:
-        if file.endswith('.flac'):
-            file_path = os.path.join(root, file)
-            file_size = os.path.getsize(file_path)
-            total_size += file_size
-            rel_path = os.path.relpath(file_path, data_dir)
-            
-            if rel_path in state['files']:
-                # If a file still exists locally, do not keep it as completed.
-                # Requeue it so verify step can delete local copy once remote is confirmed.
-                if state['files'][rel_path] == 'completed':
-                    found_files[rel_path] = 'pending'
-                else:
-                    found_files[rel_path] = state['files'][rel_path]
-            else:
-                found_files[rel_path] = 'pending'
-
-state['files'] = found_files
-state['last_sync'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-state['upload_stats']['total_files'] = len(found_files)
-state['upload_stats']['completed'] = sum(1 for s in found_files.values() if s == 'completed')
-state['upload_stats']['pending'] = sum(1 for s in found_files.values() if s == 'pending')
-state['upload_stats']['uploading'] = sum(1 for s in found_files.values() if s == 'uploading')
-state['upload_stats']['total_size_gb'] = round(total_size / (1024**3), 2)
-
-with open(state_file, 'w') as f:
-    json.dump(state, f, indent=2)
-
-print(json.dumps(state['upload_stats']))
-PYTHON_SCAN
-fi
-
-# Read and log the stats
-if [ -n "$upload_stats_tmp" ] && [ -f "$upload_stats_tmp" ]; then
-    stats=$(cat "$upload_stats_tmp")
-    log_msg "Upload stats: $stats"
-fi
-
-# Mark all pending/uploading files as 'uploading'
-set_upload_phase "mark-uploading"
-python3 - "$state_file" << 'PYTHON_MARK'
-import json
-import sys
-
-state_file = sys.argv[1]
-
-with open(state_file, 'r') as f:
-    state = json.load(f)
-
-for filename in state['files']:
-    if state['files'][filename] in ['pending', 'uploading']:
-        state['files'][filename] = 'uploading'
-
-state['upload_stats']['uploading'] = len([s for s in state['files'].values() if s == 'uploading'])
-state['upload_stats']['pending'] = 0
-
-with open(state_file, 'w') as f:
-    json.dump(state, f, indent=2)
-PYTHON_MARK
-
-log_msg "Marked files as 'uploading' in state"
+log_msg "Upload stats: $stats"
+log_msg "Marked $(echo "$files_to_upload" | wc -l) files as 'uploading'"
 
 # Run rclone copy (not move!) with error handling
 set_upload_phase "rclone-copy"
 log_msg "Starting rclone copy process..."
 rclone_logfile=$(mktemp "${TMPDIR:-/tmp}/rclone.XXXXXX.log") || rclone_logfile="${TMPDIR:-/tmp}/rclone_$(date +%s).log"
 
-# Push rclone.conf to Gist after rclone run — token may have been refreshed
-# Called regardless of upload success/failure.
-_push_rclone_config_to_gist() {
-    if declare -f _read_gist_config > /dev/null 2>&1; then
-        local cf="$SCRIPT_DIR/config.json"
-        [ -f "$cf" ] || cf="./config.json"
-        if [ -f "$cf" ]; then
-            log_msg "Pushing updated rclone.conf to Gist (token may have refreshed)..."
-            if _read_gist_config "$cf"; then
-                _push_to_gist "$logfile"
-            fi
-        fi
-    else
-        log_msg "WARNING: sync_rclone_config not sourced, skipping Gist push."
-    fi
-}
-
-# Use copy instead of move for safety.
-# NOTE: Do not use --delete-empty-src-dirs here because some rclone versions
-# don't support it on copy and fail with "unknown flag".
+# Define rclone args
 rclone_args=(
     copy "$data_dir" "$remote_target"
     --log-level INFO
     --stats 10s
     --stats-one-line
-    --filter "+ **.flac"
-    --filter "+ **.log"
-    --filter "- **"
+    --files-from -  # Read from stdin
 )
 if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")
 fi
 
-log_msg "Applying upload filter for .flac and .log files (other file types are excluded)."
-log_msg "Starting live rclone stream (will print current files/folders and transfer stats every 10s)..."
-if rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[component=rclone] "; then
+log_msg "Starting live rclone stream..."
+# Feed the file list to rclone
+if printf '%s\n' "$files_to_upload" | rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[component=rclone] "; then
     rclone_exit_code=0
     log_msg "Rclone copy completed with exit code 0"
 else
-    # With pipefail enabled, this reflects rclone's non-zero exit status.
     rclone_exit_code=$?
     log_msg "Rclone copy failed with exit code $rclone_exit_code"
 fi
@@ -259,7 +147,7 @@ fi
 if [ $rclone_exit_code -eq 0 ]; then
     set_upload_phase "verify"
     log_msg "Verifying uploaded files on remote..."
-    
+
     python3 - "$data_dir" "$remote_target" "$state_file" "$logfile" "$config_path" << 'PYTHON_VERIFY'
 import json
 import os
@@ -379,7 +267,7 @@ except Exception as e:
     sys.exit(1)
 
 PYTHON_VERIFY
-    
+
     if [ $? -eq 0 ]; then
         set_upload_phase "finalize"
         log_msg "Rclone upload cycle completed successfully"

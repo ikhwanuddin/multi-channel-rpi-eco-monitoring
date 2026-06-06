@@ -129,11 +129,12 @@ If PyAudio installation fails on Raspberry Pi, try these alternatives:
 
 ### Option 1: Use system package (recommended for Raspberry Pi)
 ```bash
-sudo apt-get install python3-pyaudio
+sudo apt-get install python3-pyaudio python3-psutil
 ```
 
-### Option 2: Manual installation with pip
+### (DEPRECATED) Option 2: Manual installation with pip
 ```bash
+# This method is deprecated as the project now relies on system packages
 # Ensure dependencies are installed
 sudo apt-get install portaudio19-dev python3-dev
 
@@ -141,7 +142,7 @@ sudo apt-get install portaudio19-dev python3-dev
 pip install --no-cache-dir pyaudio
 ```
 
-### Option 3: Force binary installation
+### (DEPRECATED) Option 3: Force binary installation
 ```bash
 pip install --only-binary=all pyaudio
 ```

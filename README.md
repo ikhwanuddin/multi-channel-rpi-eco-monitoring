@@ -160,14 +160,9 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
   git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git
   ```
 * This repository is run directly from source on the Raspberry Pi. There is no `pip install .` step.
-* Install the required system packages: 
+* Install the required system packages:
   ```
-  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate chrony rclone zip python3-rpi.gpio python3-numpy python3-pyaudio alsa-utils
-  ```
-  (note: rclone for cloud upload, chrony for enhanced time synchronization)
-* Install the Python package used by the recorder scripts:
-  ```
-  python3 -m pip install -r requirements.txt
+  sudo apt-get -y install fswebcam ffmpeg usb-modeswitch ntpsec-ntpdate chrony rclone zip python3-rpi.gpio python3-numpy python3-pyaudio python3-psutil alsa-utils
   ```
 * If you are intentionally deploying the old Respeaker path instead, stop here and switch to the legacy repository/instructions before installing newer OS-specific components.
 * Set up rclone for cloud storage (optional for online upload):

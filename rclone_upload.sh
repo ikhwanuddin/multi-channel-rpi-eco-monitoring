@@ -91,9 +91,12 @@ format_rclone_line() {
 log_msg() {
     local msg="$1"
     local prefix="[upload:$UPLOAD_PHASE]"
+    local suppress_ts_newline="${2:-0}"
     update_upload_log_minute_prefix
 
-    [ -n "$UPLOAD_LOG_TS_NEWLINE" ] && printf '\n%s\n' "$UPLOAD_LOG_TS_NEWLINE" | tee -a "$logfile"
+    if [ "$suppress_ts_newline" = "0" ] && [ -n "$UPLOAD_LOG_TS_NEWLINE" ]; then
+        printf '\n%s\n' "$UPLOAD_LOG_TS_NEWLINE" | tee -a "$logfile"
+    fi
     echo "$prefix $msg" | tee -a "$logfile"
 }
 
@@ -113,7 +116,7 @@ log_stream() {
 
         if [ -n "$prefix" ]; then
             if [[ "$prefix" == *"[rclone]"* ]] && [[ "$line" == stats\ * ]]; then
-                log_msg "$line"
+                log_msg "$line" 1
             else
                 log_msg "$prefix$line"
             fi

@@ -147,8 +147,23 @@ with open('$RCLONE_CONF_PATH', 'r') as f:
 print(json.dumps(content))
 " 2>/dev/null)
 
+    if [ ! -f "$RCLONE_CONF_PATH" ]; then
+        _gist_log "ERROR: Failed to read rclone.conf for upload" "$logfile"
+        _gist_log "  path not found: $RCLONE_CONF_PATH" "$logfile"
+        rm -rf "$tmpdir"
+        return 1
+    fi
+
+    if [ ! -r "$RCLONE_CONF_PATH" ]; then
+        _gist_log "ERROR: Failed to read rclone.conf for upload" "$logfile"
+        _gist_log "  permission denied: $RCLONE_CONF_PATH" "$logfile"
+        rm -rf "$tmpdir"
+        return 1
+    fi
+
     if [ -z "$content" ]; then
         _gist_log "ERROR: Failed to read rclone.conf for upload" "$logfile"
+        _gist_log "  empty/unreadable file: $RCLONE_CONF_PATH" "$logfile"
         rm -rf "$tmpdir"
         return 1
     fi

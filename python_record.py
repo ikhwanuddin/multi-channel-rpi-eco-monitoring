@@ -1,24 +1,26 @@
-import os
-import sys
-import time
-import subprocess
-import shutil
-import signal
-import threading
-import traceback
-from datetime import datetime
 import json
 import logging
-import sensors
-import RPi.GPIO as GPIO
-import psutil
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+import traceback
+from datetime import datetime
 
-#Setup button input pins for different sensors
+import psutil
+import RPi.GPIO as GPIO
+
+import sensors
+
+# Setup button input pins for different sensors
 array_mic_button = 26  # Respeaker series
 
 
 # set a global name for a common logging for functions using this module
-LOG = 'multi-channel-rpi-eco-monitoring'
+LOG = "multi-channel-rpi-eco-monitoring"
 
 
 class MinuteBoundaryFormatter(logging.Formatter):
@@ -27,7 +29,7 @@ class MinuteBoundaryFormatter(logging.Formatter):
     """
 
     def __init__(self):
-        super().__init__('%(message)s')
+        super().__init__("%(message)s")
         self._last_minute = None
         self._lock = threading.Lock()
 
@@ -89,17 +91,19 @@ def parse_reboot_times(sys_config):
     """
     reboot_candidates = []
 
-    reboot_time = sys_config.get('reboot_time')
+    reboot_time = sys_config.get("reboot_time")
     if reboot_time:
         reboot_candidates.append(reboot_time)
 
-    reboot_time_2 = sys_config.get('reboot_time_2')
+    reboot_time_2 = sys_config.get("reboot_time_2")
     if reboot_time_2:
         reboot_candidates.append(reboot_time_2)
 
-    reboot_times = sys_config.get('reboot_times', [])
+    reboot_times = sys_config.get("reboot_times", [])
     if isinstance(reboot_times, str):
-        reboot_candidates.extend([value.strip() for value in reboot_times.split(',') if value.strip()])
+        reboot_candidates.extend(
+            [value.strip() for value in reboot_times.split(",") if value.strip()]
+        )
     elif isinstance(reboot_times, list):
         reboot_candidates.extend(reboot_times)
 
@@ -109,9 +113,11 @@ def parse_reboot_times(sys_config):
         if not candidate:
             continue
         try:
-            normalized_time = datetime.strptime(str(candidate).strip(), '%H:%M').strftime('%H:%M')
+            normalized_time = datetime.strptime(
+                str(candidate).strip(), "%H:%M"
+            ).strftime("%H:%M")
         except ValueError:
-            logging.warning('Ignoring invalid reboot time: {}'.format(candidate))
+            logging.warning("Ignoring invalid reboot time: {}".format(candidate))
             continue
 
         if normalized_time not in seen_times:
@@ -130,26 +136,31 @@ def scheduled_reboot_monitor(reboot_times, die, recording_in_progress=None):
 
     while not die.is_set():
         now = datetime.now()
-        current_time = now.strftime('%H:%M')
-        trigger_key = now.strftime('%Y-%m-%d %H:%M')
+        current_time = now.strftime("%H:%M")
+        trigger_key = now.strftime("%Y-%m-%d %H:%M")
 
         if current_time in reboot_times and trigger_key != last_trigger:
             last_trigger = trigger_key
             pending_reboot = current_time
-            logging.warning('Scheduled reboot requested for {}'.format(current_time))
+            logging.warning("Scheduled reboot requested for {}".format(current_time))
 
         if pending_reboot is not None:
             if recording_in_progress is not None and recording_in_progress.is_set():
-                logging.info('Deferring scheduled reboot {} until current recording completes'.format(pending_reboot))
+                logging.info(
+                    "Deferring scheduled reboot {} until current recording completes".format(
+                        pending_reboot
+                    )
+                )
             else:
-                logging.warning('Scheduled reboot triggered for {}'.format(pending_reboot))
-                subprocess.call('sudo reboot', shell=True)
+                logging.warning(
+                    "Scheduled reboot triggered for {}".format(pending_reboot)
+                )
+                subprocess.call("sudo reboot", shell=True)
 
         die.wait(20)
 
 
 def configure_sensor(sensor_config):
-
     """
     Get a sensor from the sensor config settings
     Args:
@@ -159,28 +170,28 @@ def configure_sensor(sensor_config):
     """
 
     # Get a reference to the Sensor class
-    sensor_type = sensor_config['sensor_type']
+    sensor_type = sensor_config["sensor_type"]
     try:
         sensor_class = getattr(sensors, sensor_type)
-        logging.info('Sensor type {} being configured.'.format(sensor_type))
+        logging.info("Sensor type {} being configured.".format(sensor_type))
     except AttributeError:
-        logging.critical('Sensor type {} not found.'.format(sensor_type))
+        logging.critical("Sensor type {} not found.".format(sensor_type))
         sys.exit()
 
     # get a configured instance of the sensor
     # TODO - not sure of exception classes here?
     try:
         sensor = sensor_class(sensor_config)
-        logging.info('{} Sensor config succeeded.'.format(sensor_type))
+        logging.info("{} Sensor config succeeded.".format(sensor_type))
     except ValueError as e:
-        logging.critical('{} Sensor config failed.'.format(sensor_type))
+        logging.critical("{} Sensor config failed.".format(sensor_type))
         raise e
 
     # If it passes config, does it pass setup.
     if sensor.setup():
-        logging.info('Sensor setup succeeded')
+        logging.info("Sensor setup succeeded")
     else:
-        logging.critical('Sensor setup failed.')
+        logging.critical("Sensor setup failed.")
         sys.exit()
 
     return sensor
@@ -205,46 +216,59 @@ def check_last_recording_size(upload_dir_pi, pre_upload_dir_pi=None):
                 for file in files:
                     full_path = os.path.join(root, file)
                     file_lower = file.lower()
-                    if file_lower.endswith(('.wav', '.flac', '.mp3')):
-                        candidates.append({
-                            'path': full_path,
-                            'mtime': os.path.getmtime(full_path),
-                            'kind': 'audio',
-                            'size': os.path.getsize(full_path),
-                        })
-                    elif '_error_audio-record-failed' in file_lower:
-                        candidates.append({
-                            'path': full_path,
-                            'mtime': os.path.getmtime(full_path),
-                            'kind': 'error',
-                            'size': 0,
-                        })
+                    if file_lower.endswith((".wav", ".flac", ".mp3")):
+                        candidates.append(
+                            {
+                                "path": full_path,
+                                "mtime": os.path.getmtime(full_path),
+                                "kind": "audio",
+                                "size": os.path.getsize(full_path),
+                            }
+                        )
+                    elif "_error_audio-record-failed" in file_lower:
+                        candidates.append(
+                            {
+                                "path": full_path,
+                                "mtime": os.path.getmtime(full_path),
+                                "kind": "error",
+                                "size": 0,
+                            }
+                        )
 
         if not candidates:
-            logging.info('No recording artefacts found for size check.')
+            logging.info("No recording artefacts found for size check.")
             return False
 
-        latest = max(candidates, key=lambda c: c['mtime'])
-        latest_file = latest['path']
+        latest = max(candidates, key=lambda c: c["mtime"])
+        latest_file = latest["path"]
 
-        if latest['kind'] == 'error':
-            logging.warning('Latest recording artefact is an error marker: {}'.format(latest_file))
+        if latest["kind"] == "error":
+            logging.warning(
+                "Latest recording artefact is an error marker: {}".format(latest_file)
+            )
             return True
 
-        file_size = latest['size']
+        file_size = latest["size"]
         if file_size < 1048576:  # 1 MB in bytes
-            logging.warning('Last recording file {} is too small ({} bytes < 1 MB).'.format(latest_file, file_size))
+            logging.warning(
+                "Last recording file {} is too small ({} bytes < 1 MB).".format(
+                    latest_file, file_size
+                )
+            )
             return True
         else:
-            logging.info('Last recording file {} size is {} bytes, OK.'.format(latest_file, file_size))
+            logging.info(
+                "Last recording file {} size is {} bytes, OK.".format(
+                    latest_file, file_size
+                )
+            )
             return False
     except Exception as e:
-        logging.error('Error checking recording file size: {}'.format(e))
+        logging.error("Error checking recording file size: {}".format(e))
         return False
 
 
 def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
-
     """
     Function to run the common sensor record loop. The sleep between
     sensor recordings can be turned off
@@ -257,26 +281,32 @@ def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
     """
 
     # Create daily folders to hold files during this recording session
-    start_date = time.strftime('%Y-%m-%d')
+    start_date = time.strftime("%Y-%m-%d")
     session_working_dir = os.path.join(working_dir, start_date)
     session_upload_dir = os.path.join(upload_dir, start_date)
     # TODO pre_upload dir as a config variable
-    session_pre_upload_dir = os.path.join('/home/pi/pre_upload_dir', start_date)
+    session_pre_upload_dir = os.path.join("/home/pi/pre_upload_dir", start_date)
 
     try:
         if not os.path.exists(session_working_dir):
             os.makedirs(session_working_dir)
     except OSError:
-        logging.critical('Could not create working directory for '
-                         'recording: {}'.format(session_working_dir))
+        logging.critical(
+            "Could not create working directory for recording: {}".format(
+                session_working_dir
+            )
+        )
         sys.exit()
 
     try:
         if not os.path.exists(session_upload_dir):
             os.makedirs(session_upload_dir)
     except OSError:
-        logging.critical('Could not create upload directory for '
-                         'recording: {}'.format(session_upload_dir))
+        logging.critical(
+            "Could not create upload directory for recording: {}".format(
+                session_upload_dir
+            )
+        )
         sys.exit()
 
     # Create the Pre-Upload Directory (For Storing all Finished Recordings)
@@ -284,14 +314,21 @@ def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
         if not os.path.exists(session_pre_upload_dir):
             os.makedirs(session_pre_upload_dir)
     except OSError:
-        logging.critical('Could not create pre-upload directory for '
-                         'recording: {}'.format(session_pre_upload_dir))
-        logging.critical('continuing anyway...')
-        #sys.exit()
+        logging.critical(
+            "Could not create pre-upload directory for recording: {}".format(
+                session_pre_upload_dir
+            )
+        )
+        logging.critical("continuing anyway...")
+        # sys.exit()
 
     # Capture data from the sensor
-    logging.info('Capturing data from sensor')
-    sensor.capture_data(working_dir=session_working_dir, upload_dir=session_upload_dir, pre_upload_dir=session_pre_upload_dir)
+    logging.info("Capturing data from sensor")
+    sensor.capture_data(
+        working_dir=session_working_dir,
+        upload_dir=session_upload_dir,
+        pre_upload_dir=session_pre_upload_dir,
+    )
 
     # Let the sensor sleep
     if sleep:
@@ -308,8 +345,8 @@ def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
     """
 
     # TODO make pre_this a configurable variable
-    pre_upload_dir = '/home/pi/pre_upload_dir'
-    start_date = time.strftime('%Y-%m-%d')
+    pre_upload_dir = "/home/pi/pre_upload_dir"
+    start_date = time.strftime("%Y-%m-%d")
     session_pre_upload_dir = os.path.join(pre_upload_dir, start_date)
 
     # Create the Pre-Upload Directory (For Storing all Finished Recordings)
@@ -317,7 +354,9 @@ def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
         if not os.path.exists(session_pre_upload_dir):
             os.makedirs(session_pre_upload_dir)
     except OSError:
-        logging.critical('Could not create pre upload directory {}'.format(session_pre_upload_dir))
+        logging.critical(
+            "Could not create pre upload directory {}".format(session_pre_upload_dir)
+        )
         return
 
     # Generate file list (including sub-directories), while dropping known
@@ -328,11 +367,11 @@ def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
         for name in files:
             full_path = os.path.join(root, name)
 
-            if 'ERROR' in name.upper():
+            if "ERROR" in name.upper():
                 # Preserve markers for diagnosis and tiny-file streak detection.
                 continue
 
-            if not name.lower().endswith('.wav'):
+            if not name.lower().endswith(".wav"):
                 continue
 
             file_list.append(full_path)
@@ -345,7 +384,7 @@ def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
 
     # wait until the next sync interval
     wait = sync_interval
-    logging.info('Waiting {} to start postprocessing again'.format(wait))
+    logging.info("Waiting {} to start postprocessing again".format(wait))
     time.sleep(wait)
 
 
@@ -357,7 +396,7 @@ def exit_handler(signal, frame):
     :return:
     """
 
-    logging.info('SIGINT detected, shutting down')
+    logging.info("SIGINT detected, shutting down")
     # set the event to signal threads
     raise StopMonitoring
 
@@ -368,12 +407,11 @@ class StopMonitoring(Exception):
     when SIGINT is detected. It allows a loop within a try/except block
     to break out and set the event to shutdown cleanly
     """
-    
+
     pass
 
 
 def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
-
     """
     Function to synchronize the upload data folder with the remote storage (rclone)
 
@@ -384,37 +422,48 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
         die: A threading event to terminate the upload server sync
     """
 
-    remote_name = rclone_config.get('remote_name', 'mybox')
-    config_path = rclone_config.get('config_path', '').strip()
-    remote_base_path = rclone_config.get('remote_base_path', 'monitoring_data/live_data')
+    remote_name = rclone_config.get("remote_name", "mybox")
+    config_path = rclone_config.get("config_path", "").strip()
+    remote_base_path = rclone_config.get(
+        "remote_base_path", "monitoring_data/live_data"
+    )
 
     # keep running while the die is not set
     while not die.is_set():
-
         start = time.time()
 
         # Update time from internet
-        logging.info('Updating time from internet before upload sync')
-        subprocess.call('bash ./update_time.sh', shell=True)
+        logging.info("Updating time from internet before upload sync")
+        subprocess.call("bash ./update_time.sh", shell=True)
 
-        logging.info('Started upload sync at {}'.format(datetime.now().strftime('%Y-%m-%d %H:%M')))
-        exit_code = subprocess.call([
-            'bash',
-            './rclone_upload.sh',
-            upload_dir_pi,
-            remote_name,
-            config_path,
-            remote_base_path
-        ])
+        logging.info(
+            "Started upload sync at {}".format(
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            )
+        )
+        exit_code = subprocess.call(
+            [
+                "bash",
+                "./rclone_upload.sh",
+                upload_dir_pi,
+                remote_name,
+                config_path,
+                remote_base_path,
+            ]
+        )
         if exit_code != 0:
-            logging.error('Upload sync failed with exit code {}'.format(exit_code))
-        logging.info('Finished upload sync at {}'.format(datetime.now().strftime('%Y-%m-%d %H:%M')))
+            logging.error("Upload sync failed with exit code {}".format(exit_code))
+        logging.info(
+            "Finished upload sync at {}".format(
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            )
+        )
 
         # wait until the next sync interval
         wait = sync_interval - (time.time() - start)
         while wait < 0:
             wait += sync_interval
-        logging.info('Waiting {} secs to next sync'.format(wait))
+        logging.info("Waiting {} secs to next sync".format(wait))
         time.sleep(wait)
 
 
@@ -430,21 +479,21 @@ def clean_dirs(working_dir, upload_dir, pre_upload_dir, clean_working_dir=True):
     """
 
     if clean_working_dir:
-        logging.info('Cleaning up working directory')
+        logging.info("Cleaning up working directory")
         shutil.rmtree(working_dir, ignore_errors=True)
     else:
-        logging.info('Skipping working directory cleanup (wipe_data_on_boot disabled)')
+        logging.info("Skipping working directory cleanup (wipe_data_on_boot disabled)")
 
     # Remove empty directories in the upload directory, from bottom up
     for subdir, dirs, files in os.walk(upload_dir, topdown=False):
         if not os.listdir(subdir):
-            logging.info('Removing empty upload directory: {}'.format(subdir))
+            logging.info("Removing empty upload directory: {}".format(subdir))
             shutil.rmtree(subdir, ignore_errors=True)
 
         # Remove empty directories in the upload directory, from bottom up
     for subdir, dirs, files in os.walk(pre_upload_dir, topdown=False):
         if not os.listdir(subdir):
-            logging.info('Removing empty pre upload directory: {}'.format(subdir))
+            logging.info("Removing empty pre upload directory: {}".format(subdir))
             shutil.rmtree(subdir, ignore_errors=True)
 
 
@@ -454,11 +503,14 @@ def purge_oldest_recording(upload_dir, threshold_percent=95):
     deletion of recorded data.
     """
     logging.info(
-        'purge_oldest_recording() called but automatic deletion is disabled. '
-        'No data was removed from {}.'.format(upload_dir))
+        "purge_oldest_recording() called but automatic deletion is disabled. "
+        "No data was removed from {}.".format(upload_dir)
+    )
 
 
-def storage_check_shutdown(min_storage_required_gb=1.0, check_path='/', warn_storage_gb=None):
+def storage_check_shutdown(
+    min_storage_required_gb=1.0, check_path="/", warn_storage_gb=None
+):
     """
     Checks remaining storage before recording and performs safe shutdown when
     free space drops below the configured safety threshold.
@@ -474,20 +526,30 @@ def storage_check_shutdown(min_storage_required_gb=1.0, check_path='/', warn_sto
 
     if gb_avail < warn_storage_gb:
         logging.warning(
-            'Storage low on {}: {:.2f} GB free (warning threshold: {:.2f} GB).'.format(
-                check_path, gb_avail, warn_storage_gb))
+            "Storage low on {}: {:.2f} GB free (warning threshold: {:.2f} GB).".format(
+                check_path, gb_avail, warn_storage_gb
+            )
+        )
 
     if gb_avail < min_storage_required_gb:
         logging.info(
-            '\nStorage below safe threshold on {}: {:.2f} GB free < {:.2f} GB. Safely shutting down.\n'.format(
-                check_path, gb_avail, min_storage_required_gb))
+            "\nStorage below safe threshold on {}: {:.2f} GB free < {:.2f} GB. Safely shutting down.\n".format(
+                check_path, gb_avail, min_storage_required_gb
+            )
+        )
         safe_shutdown()
-        
 
-def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die,
-                         recording_in_progress=None, min_free_storage_gb=1.0,
-                         warn_free_storage_gb=4.0):
 
+def continuous_recording(
+    sensor,
+    working_dir,
+    upload_dir,
+    sensor_config,
+    die,
+    recording_in_progress=None,
+    min_free_storage_gb=1.0,
+    warn_free_storage_gb=4.0,
+):
     """
     Runs a loop over the sensor sampling process
     Args:
@@ -510,7 +572,8 @@ def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die,
             storage_check_shutdown(
                 min_storage_required_gb=min_free_storage_gb,
                 check_path=upload_dir,
-                warn_storage_gb=warn_free_storage_gb)
+                warn_storage_gb=warn_free_storage_gb,
+            )
             # Begin new recording. Sleep is handled separately below so that
             # recording_in_progress can be cleared before the capture_delay
             # window, giving the scheduled reboot monitor a chance to fire
@@ -523,15 +586,20 @@ def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die,
 
             # Check if last recording file is too small and only reboot when
             # this happens repeatedly.
-            if check_last_recording_size(upload_dir, '/home/pi/pre_upload_dir'):
+            if check_last_recording_size(upload_dir, "/home/pi/pre_upload_dir"):
                 tiny_file_streak += 1
-                logging.warning('Tiny recording streak detected: {}/{}'.format(
-                    tiny_file_streak, tiny_file_reboot_threshold))
+                logging.warning(
+                    "Tiny recording streak detected: {}/{}".format(
+                        tiny_file_streak, tiny_file_reboot_threshold
+                    )
+                )
                 if tiny_file_streak >= tiny_file_reboot_threshold:
                     logging.warning(
-                        'Repeated tiny recordings detected ({} consecutive). Rebooting system.'.format(
-                            tiny_file_streak))
-                    subprocess.call('sudo reboot', shell=True)
+                        "Repeated tiny recordings detected ({} consecutive). Rebooting system.".format(
+                            tiny_file_streak
+                        )
+                    )
+                    subprocess.call("sudo reboot", shell=True)
             else:
                 tiny_file_streak = 0
 
@@ -542,7 +610,9 @@ def continuous_recording(sensor, working_dir, upload_dir, sensor_config, die,
         except Exception as e:
             if recording_in_progress is not None:
                 recording_in_progress.clear()
-            logging.error('Unhandled exception in continuous_recording loop: {}'.format(e))
+            logging.error(
+                "Unhandled exception in continuous_recording loop: {}".format(e)
+            )
             logging.error(traceback.format_exc())
             time.sleep(5)
 
@@ -562,14 +632,14 @@ def continuous_postprocess(sensor, sync_interval, upload_dir, die):
         try:
             run_postprocess(sensor, sync_interval, upload_dir, sleep=True)
         except Exception as e:
-            logging.error('Unhandled exception in continuous_postprocess loop: {}'.format(e))
+            logging.error(
+                "Unhandled exception in continuous_postprocess loop: {}".format(e)
+            )
             logging.error(traceback.format_exc())
             time.sleep(5)
-        
 
 
-def record(config_file, logfile_name, log_dir='logs'):
-
+def record(config_file, logfile_name, log_dir="logs"):
     """
     Function to setup, run and log continuous sampling from the sensor.
 
@@ -586,9 +656,9 @@ def record(config_file, logfile_name, log_dir='logs'):
     # Create the logs directory and file if needed
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    logfile = os.path.join(log_dir,logfile_name)
+    logfile = os.path.join(log_dir, logfile_name)
     if not os.path.exists(logfile):
-        open(logfile, 'w+')
+        open(logfile, "w+")
 
     # Add handlers to logging so logs are sent to stdout and the file
     logging.getLogger().setLevel(logging.INFO)
@@ -604,81 +674,105 @@ def record(config_file, logfile_name, log_dir='logs'):
 
     # Load the cpu_serial from environment variable
     try:
-        cpu_serial = os.environ['PI_ID']
+        cpu_serial = os.environ["PI_ID"]
     except KeyError:
-        logging.error('No environment variable set for cpu_serial')
-        cpu_serial = 'CPU_SERIAL_ERROR'
+        logging.error("No environment variable set for cpu_serial")
+        cpu_serial = "CPU_SERIAL_ERROR"
 
     start_time = datetime.now().strftime("%Y%m%d_%H%M")
 
-    logging.info('Start of continuous sampling: {}'.format(start_time))
+    logging.info("Start of continuous sampling: {}".format(start_time))
 
     # Log current git commit information
-    p = subprocess.Popen(['git', 'log', '-1', '--format="%H"'], stdout=subprocess.PIPE)
+    p = subprocess.Popen(["git", "log", "-1", '--format="%H"'], stdout=subprocess.PIPE)
     (stdout, _) = p.communicate()
-    logging.info('Current git commit hash: {}'.format(stdout.strip()))
+    logging.info("Current git commit hash: {}".format(stdout.strip()))
 
     # Load the config file
     try:
         config = json.load(open(config_file))
-        logging.info('Config file found')
+        logging.info("Config file found")
     except IOError:
-        logging.critical('Config file not found')
+        logging.critical("Config file not found")
         sys.exit()
 
     try:
-        sys_config = config['sys']
-        rclone_config = config['rclone']
-        sensor_config = config['sensor']
-        offline_mode = config['offline_mode']
-        force_offline_mode = str(os.environ.get('FORCE_OFFLINE_MODE', '0')).strip().lower() in ['1', 'true', 'yes', 'on']
-        working_dir = sys_config['working_dir']
-        upload_dir = sys_config['upload_dir']
-        min_free_storage_gb = float(sys_config.get('min_free_storage_gb', 1.0))
-        warn_free_storage_gb = float(sys_config.get('warn_free_storage_gb', 4.0))
+        sys_config = config["sys"]
+        rclone_config = config["rclone"]
+        sensor_config = config["sensor"]
+        offline_mode = config["offline_mode"]
+        force_offline_mode = str(
+            os.environ.get("FORCE_OFFLINE_MODE", "0")
+        ).strip().lower() in ["1", "true", "yes", "on"]
+        working_dir = sys_config["working_dir"]
+        upload_dir = sys_config["upload_dir"]
+        min_free_storage_gb = float(sys_config.get("min_free_storage_gb", 1.0))
+        warn_free_storage_gb = float(sys_config.get("warn_free_storage_gb", 4.0))
         if warn_free_storage_gb < min_free_storage_gb:
             warn_free_storage_gb = min_free_storage_gb
         reboot_times = parse_reboot_times(sys_config)
-        use_system_shutdown_button = str(sys_config.get('use_system_shutdown_button', 0)).strip().lower() in ['1', 'true', 'yes', 'on']
+        use_system_shutdown_button = str(
+            sys_config.get("use_system_shutdown_button", 0)
+        ).strip().lower() in ["1", "true", "yes", "on"]
         if force_offline_mode:
             offline_mode = 1
-            logging.info('FORCE_OFFLINE_MODE detected: upload synchronisation disabled for this run')
-        logging.info('Config loaded')
+            logging.info(
+                "FORCE_OFFLINE_MODE detected: upload synchronisation disabled for this run"
+            )
+        logging.info("Config loaded")
     except KeyError:
-        logging.info('Failed to load config')
+        logging.info("Failed to load config")
         sys.exit()
 
     # Setup GPIO for sensors that have a button
     GPIO.setmode(GPIO.BCM)
 
     # Setup button for Respeaker series (GPIO 26)
-    if sensor_config['sensor_type'] in ['Respeaker6Mic', 'Respeaker4Mic', 'Respeaker_Custom']:
+    if sensor_config["sensor_type"] in [
+        "Respeaker6Mic",
+        "Respeaker4Mic",
+        "Respeaker_Custom",
+    ]:
         if use_system_shutdown_button:
-            logging.info('System-level shutdown button enabled; skipping Python GPIO button listener for Respeaker.')
+            logging.info(
+                "System-level shutdown button enabled; skipping Python GPIO button listener for Respeaker."
+            )
         else:
             GPIO.setup(array_mic_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             try:
-                GPIO.add_event_detect(array_mic_button, GPIO.FALLING,
-                                      callback=interrupt_button_callback, bouncetime=100)
+                GPIO.add_event_detect(
+                    array_mic_button,
+                    GPIO.FALLING,
+                    callback=interrupt_button_callback,
+                    bouncetime=100,
+                )
             except RuntimeError as e:
                 logging.warning(
-                    'Failed to add GPIO edge detection on pin {} ({}). '
-                    'Continuing without Python button listener. '
-                    'If using dtoverlay gpio-shutdown, set sys.use_system_shutdown_button=1.'.format(
-                        array_mic_button, e))
+                    "Failed to add GPIO edge detection on pin {} ({}). "
+                    "Continuing without Python button listener. "
+                    "If using dtoverlay gpio-shutdown, set sys.use_system_shutdown_button=1.".format(
+                        array_mic_button, e
+                    )
+                )
 
     # Note: Sipeed7Mic uses system-level GPIO shutdown via dtoverlay in /boot/config.txt
     # No Python GPIO setup needed for Sipeed7Mic button
 
     if reboot_times:
-        logging.info('Configured daily reboot times: {}'.format(', '.join(reboot_times)))
+        logging.info(
+            "Configured daily reboot times: {}".format(", ".join(reboot_times))
+        )
     else:
-        logging.warning('No valid daily reboot times configured; scheduled reboot disabled')
+        logging.warning(
+            "No valid daily reboot times configured; scheduled reboot disabled"
+        )
 
     logging.info(
-        'Storage safety policy: no auto-delete, warn below {:.2f} GB, shutdown below {:.2f} GB'.format(
-            warn_free_storage_gb, min_free_storage_gb))
-    
+        "Storage safety policy: no auto-delete, warn below {:.2f} GB, shutdown below {:.2f} GB".format(
+            warn_free_storage_gb, min_free_storage_gb
+        )
+    )
+
     # Schedule a shutdown after X hours, based on battery life...
     # Set the number a couple hours lower than expected (to be safe)
     # estimated_battery_hours = 40
@@ -689,43 +783,49 @@ def record(config_file, logfile_name, log_dir='logs'):
 
     # Check working directory
     if os.path.exists(working_dir) and os.path.isdir(working_dir):
-        logging.info('Using {} as working directory'.format(working_dir))
+        logging.info("Using {} as working directory".format(working_dir))
     else:
         try:
             os.makedirs(working_dir)
-            logging.info('Created {} as working directory'.format(working_dir))
+            logging.info("Created {} as working directory".format(working_dir))
         except OSError:
-            logging.critical('Could not create {} as working directory'.format(working_dir))
+            logging.critical(
+                "Could not create {} as working directory".format(working_dir)
+            )
             sys.exit()
-    
+
     # Check for / create a directory for pre-compression files
     # output from this raspberry pi.
-    pre_upload_dir = '/home/pi/pre_upload_dir'
+    pre_upload_dir = "/home/pi/pre_upload_dir"
     pre_upload_dir = os.path.join(pre_upload_dir)
-    pre_upload_dir_pi = os.path.join(pre_upload_dir, 'live_data', cpu_serial)
-    
+    pre_upload_dir_pi = os.path.join(pre_upload_dir, "live_data", cpu_serial)
+
     if os.path.exists(pre_upload_dir_pi) and os.path.isdir(pre_upload_dir_pi):
-        logging.info('Using {} as pre-upload directory'.format(pre_upload_dir_pi))
+        logging.info("Using {} as pre-upload directory".format(pre_upload_dir_pi))
     else:
         try:
             os.makedirs(pre_upload_dir_pi)
-            logging.info('Created {} as pre-upload directory'.format(pre_upload_dir_pi))
+            logging.info("Created {} as pre-upload directory".format(pre_upload_dir_pi))
         except OSError:
-            logging.critical('Could not create {} as pre-upload directory'.format(pre_upload_dir_pi))
+            logging.critical(
+                "Could not create {} as pre-upload directory".format(pre_upload_dir_pi)
+            )
             sys.exit()
 
     # Check for / create an upload directory with a specific folder for
     # output from this raspberry pi.
     upload_dir = os.path.join(upload_dir)
-    upload_dir_pi = os.path.join(upload_dir, 'live_data', cpu_serial)
+    upload_dir_pi = os.path.join(upload_dir, "live_data", cpu_serial)
     if os.path.exists(upload_dir_pi) and os.path.isdir(upload_dir_pi):
-        logging.info('Using {} as upload directory'.format(upload_dir_pi))
+        logging.info("Using {} as upload directory".format(upload_dir_pi))
     else:
         try:
             os.makedirs(upload_dir_pi)
-            logging.info('Created {} as upload directory'.format(upload_dir_pi))
+            logging.info("Created {} as upload directory".format(upload_dir_pi))
         except OSError:
-            logging.critical('Could not create {} as upload directory'.format(upload_dir_pi))
+            logging.critical(
+                "Could not create {} as upload directory".format(upload_dir_pi)
+            )
             sys.exit()
 
     # Never wipe upload/live data at boot from recorder runtime.
@@ -733,18 +833,19 @@ def record(config_file, logfile_name, log_dir='logs'):
 
     # move any existing logs into the upload folder for this pi
     try:
-        upload_dir_logs = os.path.join(upload_dir_pi, 'logs')
+        upload_dir_logs = os.path.join(upload_dir_pi, "logs")
         if not os.path.exists(upload_dir_logs):
             os.makedirs(upload_dir_logs)
 
-        existing_logs = [f for f in os.listdir(log_dir) if f.endswith('.log') and f != logfile_name]
+        existing_logs = [
+            f for f in os.listdir(log_dir) if f.endswith(".log") and f != logfile_name
+        ]
         for log in existing_logs:
-            os.rename(os.path.join(log_dir, log),
-                      os.path.join(upload_dir_logs, log))
-            logging.info('Moved {} to upload'.format(log))
+            os.rename(os.path.join(log_dir, log), os.path.join(upload_dir_logs, log))
+            logging.info("Moved {} to upload".format(log))
     except OSError:
         # not critical - can leave logs in the log_dir
-        logging.error('Could not move existing logs to upload.')
+        logging.error("Could not move existing logs to upload.")
 
     # Now get the sensor
     sensor = configure_sensor(sensor_config)
@@ -752,56 +853,70 @@ def record(config_file, logfile_name, log_dir='logs'):
     # Set up the threads to run and an event handler to allow them to be shutdown cleanly
     die = threading.Event()
     signal.signal(signal.SIGINT, exit_handler)
-    
+
     if not offline_mode:
-        sync_thread = threading.Thread(target=upload_server_sync, args=(sensor.server_sync_interval,
-                                                                     rclone_config, upload_dir_pi, die))
+        sync_thread = threading.Thread(
+            target=upload_server_sync,
+            args=(sensor.server_sync_interval, rclone_config, upload_dir_pi, die),
+        )
 
     reboot_thread = None
     recording_in_progress = threading.Event()
     if reboot_times:
-        reboot_thread = threading.Thread(target=scheduled_reboot_monitor, args=(reboot_times, die, recording_in_progress))
-    
-    record_thread = threading.Thread(target=continuous_recording, args=(
-        sensor,
-        working_dir,
-        upload_dir_pi,
-        sensor_config,
-        die,
-        recording_in_progress,
-        min_free_storage_gb,
-        warn_free_storage_gb,
-    ))
+        reboot_thread = threading.Thread(
+            target=scheduled_reboot_monitor,
+            args=(reboot_times, die, recording_in_progress),
+        )
 
-    
+    record_thread = threading.Thread(
+        target=continuous_recording,
+        args=(
+            sensor,
+            working_dir,
+            upload_dir_pi,
+            sensor_config,
+            die,
+            recording_in_progress,
+            min_free_storage_gb,
+            warn_free_storage_gb,
+        ),
+    )
+
     # Postprocess the raw data in a separate thread
-    postprocess_thread = threading.Thread(target=continuous_postprocess, args=(sensor, sensor.server_sync_interval,
-                                                                    upload_dir_pi, die))
-
-
+    postprocess_thread = threading.Thread(
+        target=continuous_postprocess,
+        args=(sensor, sensor.server_sync_interval, upload_dir_pi, die),
+    )
 
     # Initialise background thread to do remote sync of the root upload directory
     # Failure here does not preclude data capture and might be temporary so log
     # errors but don't exit.
     try:
         # start the recorder
-        logging.info('Starting continuous recording at {}'.format(datetime.now().strftime('%Y-%m-%d %H:%M')))
+        logging.info(
+            "Starting continuous recording at {}".format(
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            )
+        )
         record_thread.start()
         postprocess_thread.start()
         if reboot_thread is not None:
             reboot_thread.start()
-        
+
         if offline_mode:
-            logging.info('Running in offline mode - no upload synchronisation')
+            logging.info("Running in offline mode - no upload synchronisation")
         else:
             # wait a while to allow make the two threads run out of sync
-            time.sleep(sensor.server_sync_interval/2)
+            time.sleep(sensor.server_sync_interval / 2)
             # start the upload sync
             sync_thread.start()
-            logging.info('Starting upload server sync every {} seconds at {}'.format(
-                sensor.server_sync_interval,
-                datetime.now().strftime('%Y-%m-%d %H:%M')))
-        
+            logging.info(
+                "Starting upload server sync every {} seconds at {}".format(
+                    sensor.server_sync_interval,
+                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                )
+            )
+
         # now run a loop that will continue with a small grain until
         # an interrupt arrives, this is necessary to keep the program live
         # and listening for interrupts
@@ -818,16 +933,19 @@ def record(config_file, logfile_name, log_dir='logs'):
         if not offline_mode:
             sync_thread.join()
 
-        logging.info('Recording and sync shutdown, exiting at {}'.format(datetime.now().strftime('%Y-%m-%d %H:%M')))
-    
+        logging.info(
+            "Recording and sync shutdown, exiting at {}".format(
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            )
+        )
+
 
 # On button press, safely shutdown the pi...
 def interrupt_button_callback(channel):
-    logging.info('\nButton press detected. Safely shutting down.\n')
+    logging.info("\nButton press detected. Safely shutting down.\n")
     safe_shutdown()
 
 
 if __name__ == "__main__":
-    
     # run record with three arguements - the path to the config file, the log directory and the log
     record(sys.argv[1], sys.argv[2], sys.argv[3])

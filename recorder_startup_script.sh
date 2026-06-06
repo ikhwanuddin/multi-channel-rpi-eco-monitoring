@@ -12,7 +12,7 @@ LOGFILE_ACTIVE=""
 LOG_MODE="boot"
 LOG_PHASE="init"
 LOG_LAST_MINUTE=""
-LOG_TS_PREFIX=""
+LOG_TS_NEWLINE=""
 MIN_VALID_AUDIO_BYTES=1048576
 
 update_log_minute_prefix() {
@@ -20,19 +20,22 @@ update_log_minute_prefix() {
     current_minute="$(date '+%Y-%m-%d %H:%M')"
     if [ "$current_minute" != "$LOG_LAST_MINUTE" ]; then
         LOG_LAST_MINUTE="$current_minute"
-        LOG_TS_PREFIX="[$current_minute] "
+        LOG_TS_NEWLINE="[$current_minute]"
     else
-        LOG_TS_PREFIX=""
+        LOG_TS_NEWLINE=""
     fi
 }
 
 log_msg() {
     local msg="$1"
     update_log_minute_prefix
+    local prefix="[${LOG_MODE}:${LOG_PHASE}]"
     if [ -n "$LOGFILE_ACTIVE" ]; then
-        echo "${LOG_TS_PREFIX}[startup][mode=$LOG_MODE][phase=$LOG_PHASE] $msg" | tee -a "$LOGFILE_ACTIVE"
+        [ -n "$LOG_TS_NEWLINE" ] && printf '\n%s\n' "$LOG_TS_NEWLINE" | tee -a "$LOGFILE_ACTIVE"
+        echo "$prefix $msg" | tee -a "$LOGFILE_ACTIVE"
     else
-        echo "${LOG_TS_PREFIX}[startup][mode=$LOG_MODE][phase=$LOG_PHASE] $msg"
+        [ -n "$LOG_TS_NEWLINE" ] && printf '\n%s\n' "$LOG_TS_NEWLINE"
+        echo "$prefix $msg"
     fi
 }
 
@@ -130,14 +133,14 @@ log_ffmpeg_timeout_event() {
     size_bytes=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
     event_id=$(date +"%Y%m%dT%H%M%S")
 
-    log_msg "FFMPEG_TIMEOUT_DETECTED event_id=$event_id context=$context_label timeout_secs=$timeout_secs file=$wav_file size_bytes=$size_bytes action=kept_for_retry"
-    log_msg "FEEDBACK_HINT event_id=$event_id share='Kirimkan baris FFMPEG_TIMEOUT_DETECTED + 30 baris sebelum/sesudahnya dari log upload.'"
+    log_msg "FFMPEG_TIMEOUT event_id=$event_id ctx=$context_label timeout=${timeout_secs}s size=${size_bytes}B"
+    log_msg "  file: $(basename "$wav_file") (kept for retry)"
+    log_msg "  hint: kirim baris ini + 30 baris sekitarnya ke developer (event_id=$event_id)"
 
     if [ -n "${logdir:-}" ]; then
         feedback_log="$logdir/ffmpeg_timeout_feedback.log"
         ensure_logfile_writable "$feedback_log"
-        update_log_minute_prefix
-        echo "${LOG_TS_PREFIX}event_id=$event_id context=$context_label timeout_secs=$timeout_secs file=$wav_file size_bytes=$size_bytes action=kept_for_retry" >> "$feedback_log"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') event_id=$event_id ctx=$context_label timeout=${timeout_secs}s file=$wav_file size=${size_bytes}B action=kept_for_retry" >> "$feedback_log"
     fi
 }
 
@@ -165,14 +168,14 @@ log_ffmpeg_failure_event() {
         stderr_preview="no-stderr-captured"
     fi
 
-    log_msg "FFMPEG_CONVERSION_FAILED event_id=$event_id context=$context_label exit_code=$exit_code file=$wav_file size_bytes=$size_bytes stderr='$stderr_preview' action=kept_for_retry"
-    log_msg "FEEDBACK_HINT event_id=$event_id share='Kirimkan baris FFMPEG_CONVERSION_FAILED + 30 baris sebelum/sesudahnya dari log upload.'"
+    log_msg "FFMPEG_FAILED event_id=$event_id ctx=$context_label exit=$exit_code size=${size_bytes}B"
+    log_msg "  file: $(basename "$wav_file") | stderr: $stderr_preview"
+    log_msg "  (kept for retry) hint: kirim baris ini + 30 baris sekitarnya ke developer (event_id=$event_id)"
 
     if [ -n "${logdir:-}" ]; then
         feedback_log="$logdir/ffmpeg_timeout_feedback.log"
         ensure_logfile_writable "$feedback_log"
-        update_log_minute_prefix
-        echo "${LOG_TS_PREFIX}event_id=$event_id context=$context_label exit_code=$exit_code file=$wav_file size_bytes=$size_bytes stderr='$stderr_preview' action=kept_for_retry" >> "$feedback_log"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') event_id=$event_id ctx=$context_label exit=$exit_code file=$wav_file size=${size_bytes}B stderr='$stderr_preview' action=kept_for_retry" >> "$feedback_log"
     fi
 }
 
@@ -264,33 +267,35 @@ process_pre_upload_queue_for_sipeed() {
     local staged_flac_count=0
 
     if [ ! -d "$pre_upload_dir_wav" ]; then
-        log_msg "Sipeed maintenance: pre_upload_dir not found ($pre_upload_dir_wav), skipping."
+        log_msg "Sipeed: pre_upload_dir not found, skipping"
+        log_msg "  path: $pre_upload_dir_wav"
         return 0
     fi
 
     if [ ! -d "$live_data_root" ]; then
-        log_msg "Sipeed maintenance: live_data_dir not found ($live_data_root), skipping conversion."
+        log_msg "Sipeed: live_data_dir not found, skipping conversion"
+        log_msg "  path: $live_data_root"
         return 1
     fi
 
     while IFS= read -r -d '' error_file; do
         sudo rm -f "$error_file" 2>/dev/null || true
-        log_msg "Sipeed maintenance: removed error marker $(basename "$error_file")"
+        log_msg "Sipeed: removed error marker $(basename "$error_file")"
     done < <(find "$pre_upload_dir_wav" -iname "*ERROR*" -print0 2>/dev/null)
 
     wav_count=$(find "$pre_upload_dir_wav" -name "*.wav" 2>/dev/null | wc -l)
     if [ "$wav_count" -gt 0 ]; then
         if ! command -v ffmpeg >/dev/null 2>&1; then
-            log_msg "Sipeed maintenance: ffmpeg not found, cannot convert pending WAV files."
+            log_msg "Sipeed: ffmpeg not found, cannot convert pending WAV files"
         else
-            log_msg "Sipeed maintenance: converting $wav_count WAV file(s) from pre_upload_dir before recording."
+            log_msg "Sipeed: converting $wav_count WAV file(s) from pre_upload_dir before recording"
             while IFS= read -r -d '' wav_file; do
                 wav_file=$(normalize_path_for_conversion "$wav_file")
                 [ -f "$wav_file" ] || continue
 
                 wav_size=$(stat -f%z "$wav_file" 2>/dev/null || echo 0)
                 if [ "$wav_size" -lt "$MIN_VALID_AUDIO_BYTES" ]; then
-                    log_msg "Sipeed maintenance: dropping tiny WAV $(basename "$wav_file") size_bytes=$wav_size (<$MIN_VALID_AUDIO_BYTES)"
+                    log_msg "Sipeed: skip tiny WAV $(basename "$wav_file") (${wav_size}B < ${MIN_VALID_AUDIO_BYTES}B)"
                     sudo rm -f "$wav_file" 2>/dev/null || true
                     failed_count=$((failed_count+1))
                     continue
@@ -310,7 +315,7 @@ process_pre_upload_queue_for_sipeed() {
                     if sudo rm -f "$wav_file"; then
                         converted_count=$((converted_count+1))
                     else
-                        log_msg "Sipeed maintenance: FLAC created but failed removing WAV $(basename "$wav_file")"
+                        log_msg "Sipeed: FLAC created but failed removing WAV $(basename "$wav_file")"
                         converted_count=$((converted_count+1))
                     fi
                 else
@@ -341,7 +346,7 @@ process_pre_upload_queue_for_sipeed() {
         done < <(find "$pre_upload_dir_wav" -name "*.flac" -print0 2>/dev/null)
     fi
 
-    log_msg "Sipeed maintenance summary: wav_converted=$converted_count wav_failed=$failed_count flac_staged=$staged_flac_count"
+    log_msg "Sipeed summary: wav_converted=$converted_count wav_failed=$failed_count flac_staged=$staged_flac_count"
     return 0
 }
 
@@ -369,9 +374,23 @@ run_and_log() {
     return $cmd_status
 }
 
-log_msg "##############################################"
-log_msg "Start of ecosystem monitoring startup script"
-log_msg "##############################################"
+cat << 'BANNER'
+
+===================================================================
+
+    888b     d888        d8888        d8888 8888888b.  888     888
+    8888b   d8888       d88888       d88888 888   Y88b 888     888
+    88888b.d88888      d88P888      d88P888 888    888 888     888
+    888Y88888P888     d88P 888     d88P 888 888   d88P 888     888
+    888 Y888P 888    d88P  888    d88P  888 8888888P"  888     888
+    888  Y8P  888   d88P   888   d88P   888 888 T88b   888     888
+    888   "   888  d8888888888  d8888888888 888  T88b  Y88b. .d88P
+    888       888 d88P     888 d88P     888 888   T88b  "Y88888P"
+
+          Multichannel Autonomous Acoustic Recording Unit
+
+ ===================================================================
+BANNER
 set_log_phase "bootstrap"
 
 # Get script directory for sourcing helpers
@@ -392,34 +411,34 @@ if [ "${AUTO_UPDATE_ON_STARTUP:-1}" = "1" ]; then
                 remote_hash=$(git -C "$SCRIPT_DIR" rev-parse "origin/$current_branch" 2>/dev/null || true)
 
                 if [ -n "$remote_hash" ]; then
-                          log_msg "Force-syncing local repository to origin/$current_branch (discarding local changes, keeping config.json and logs/)..."
+                          log_msg "Syncing to origin/$current_branch (preserving config.json, logs/)..."
                     if timeout 45 git -C "$SCRIPT_DIR" reset --hard "origin/$current_branch" >/dev/null 2>&1 \
                               && timeout 30 git -C "$SCRIPT_DIR" clean -fd -e config.json -e logs/ >/dev/null 2>&1; then
                         new_hash=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)
                         if [ -n "$local_hash" ] && [ -n "$new_hash" ] && [ "$local_hash" != "$new_hash" ]; then
-                            log_msg "Repository updated successfully. Restarting startup script to use latest code."
+                            log_msg "Repository updated, restarting script..."
                             exec bash "$0" "$@"
                         else
                             log_msg "Repository already up to date."
                         fi
                     else
-                        log_msg "WARNING: Force-sync failed, continuing with current local version."
+                        log_msg "WARNING: Force-sync failed, continuing with local version"
                     fi
                 else
-                    log_msg "WARNING: Could not resolve origin/$current_branch, skipping auto-update."
+                    log_msg "WARNING: Could not resolve origin/$current_branch, skipping auto-update"
                 fi
             else
-                log_msg "WARNING: Could not reach GitHub for fetch (offline/timeout). Continuing without auto-update."
+                log_msg "WARNING: Could not reach GitHub (offline/timeout), skipping auto-update"
             fi
         else
-            log_msg "WARNING: Could not determine current git branch, skipping auto-update."
+            log_msg "WARNING: Could not determine git branch, skipping auto-update"
         fi
     else
-        log_msg "Git or repository metadata not found, skipping auto-update."
+        log_msg "Git or repo metadata not found, skipping auto-update"
     fi
 fi
 
-log_msg "Note: /home/pi/.config/rclone is outside this git repo and is not affected by git clean."
+log_msg "Note: /home/pi/.config/rclone is not affected by git clean"
 
 # Source helper functions for upload mode
 if [ -f "$SCRIPT_DIR/upload_mode_helper.sh" ]; then
@@ -433,7 +452,7 @@ fi
 if [ -f "$SCRIPT_DIR/sync_rclone_config.sh" ]; then
     source "$SCRIPT_DIR/sync_rclone_config.sh"
 else
-    log_msg "WARNING: sync_rclone_config.sh not found, rclone config sync will be skipped."
+    log_msg "WARNING: sync_rclone_config.sh not found, skipping rclone config sync"
 fi
 
 # Disable activity LED to save power (path differs across Raspberry Pi models/images)
@@ -501,7 +520,7 @@ else
 fi
 
 # Update time from internet
-log_msg "Update time from internet"
+log_msg "Updating system time..."
 if ! run_and_log --prefix "[time-sync] " sudo bash ./update_time.sh; then
     log_msg "WARNING: Time update command returned non-zero status."
 fi
@@ -521,9 +540,8 @@ currentDate=$(date +"%Y-%m-%d_%H.%M")
 log_msg "Checking Python dependencies..."
 python3 -c "import pyaudio, numpy, RPi.GPIO, psutil" 2>/dev/null
 if [ $? -ne 0 ]; then
-    log_msg "WARNING: Some Python dependencies may be missing."
-    log_msg "Run: sudo apt-get install python3-rpi.gpio python3-numpy python3-pyaudio"
-    log_msg "Continuing anyway..."
+    log_msg "WARNING: some Python dependencies may be missing"
+    log_msg "  hint: sudo apt-get install python3-rpi.gpio python3-numpy python3-pyaudio"
 fi
 
 # Ensure logs directory exists
@@ -559,9 +577,9 @@ fi
 # export the raspberry pi serial number to an environment variable
 log_msg "Getting Raspberry Pi serial number..."
 if ! PI_ID=$(python3 discover_serial.py 2>&1); then
-    log_msg "ERROR: Failed to get Raspberry Pi serial number!"
-    log_msg "Command output: $PI_ID"
-    log_msg "Please check if discover_serial.py exists and is executable."
+    log_msg "ERROR: Failed to get Pi serial number"
+    log_msg "  output: $PI_ID"
+    log_msg "  check: discover_serial.py exists and is executable"
     exit 1
 fi
 export PI_ID
@@ -571,8 +589,7 @@ export PI_ID
 ##############################################
 
 set_log_phase "detect-mode"
-log_msg "Detecting operating mode based on internet connectivity..."
-log_msg "Checking for internet access (this may take a minute)..."
+log_msg "Detecting operating mode (checking internet, may take a minute)..."
 
 requested_mode=$(resolve_requested_mode "$@")
 requested_mode=$(printf '%s' "$requested_mode" | tr '[:upper:]' '[:lower:]')
@@ -582,12 +599,12 @@ case "$requested_mode" in
     record|recording|offline)
         OPERATING_MODE="OFFLINE"
         set_log_mode "offline"
-        log_msg "Mode override requested ($requested_mode) - forcing RECORDING mode"
+        log_msg "Mode override: $requested_mode -> RECORDING"
         ;;
     upload|online)
         OPERATING_MODE="ONLINE"
         set_log_mode "online"
-        log_msg "Mode override requested ($requested_mode) - forcing UPLOAD mode"
+        log_msg "Mode override: $requested_mode -> UPLOAD"
         ;;
     "")
         if check_internet; then
@@ -601,7 +618,7 @@ case "$requested_mode" in
         fi
         ;;
     *)
-        log_msg "WARNING: Unknown mode override '$requested_mode'. Using automatic internet-based detection."
+        log_msg "WARNING: Unknown mode override '$requested_mode', using auto-detection"
         if check_internet; then
             OPERATING_MODE="ONLINE"
             set_log_mode "online"
@@ -614,9 +631,7 @@ case "$requested_mode" in
         ;;
 esac
 
-log_msg "##############################################"
 log_msg "Operating Mode: $OPERATING_MODE"
-log_msg "##############################################"
 
 ##############################################
 # RECORDING MODE - Offline Recording
@@ -630,12 +645,12 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
     ensure_logfile_writable "$LOGFILE_ACTIVE"
 
     # Start recording script with auto-restart on failure
-    log_msg "Starting RECORDING mode (offline)"
-    log_msg "Command: sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
+    log_msg "Starting RECORDING mode"
+    log_msg "  cmd: python_record.py $config_file $logfile_name $logdir"
 
     if [ "$sensor_type" = "Sipeed7Mic" ]; then
         set_log_phase "sipeed-pre-record-maintenance"
-        log_msg "Sipeed7Mic detected in OFFLINE mode: prioritizing WAV->FLAC conversion before recording to reduce real-time CPU load."
+        log_msg "Sipeed7Mic: pre-converting WAV->FLAC before recording"
         process_pre_upload_queue_for_sipeed "/home/pi/monitoring_data/live_data"
         set_log_phase "recording"
     fi
@@ -643,16 +658,15 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
     restart_count=0
     set_log_phase "recording-loop"
     while true; do
-        log_msg "Attempting to start recording script (attempt $((restart_count + 1)))..."
+        log_msg "Starting recording script (attempt $((restart_count + 1)))..."
         if sudo -E env FORCE_OFFLINE_MODE=1 python3 -u python_record.py $config_file $logfile_name $logdir; then
             ensure_logfile_writable "$LOGFILE_ACTIVE"
             log_msg "Recording script exited successfully."
             break
         else
             ensure_logfile_writable "$LOGFILE_ACTIVE"
-            log_msg "ERROR: Recording script failed (attempt $((restart_count + 1)))!"
-            log_msg "Will retry in 10 seconds..."
-            log_msg "Check logs at $logdir/$logfile_name for details."
+            log_msg "ERROR: Recording script failed (attempt $((restart_count + 1))), retrying in 10s"
+            log_msg "  log: $logdir/$logfile_name"
             sleep 10
             restart_count=$((restart_count + 1))
         fi
@@ -674,10 +688,7 @@ else
     fi
     ensure_logfile_writable "$upload_logfile"
 
-    log_msg "Starting UPLOAD mode (online)"
-
-    # Get upload configuration from config.json
-    log_msg "Initializing upload mode..."
+    log_msg "Starting UPLOAD mode"
 
     # Sync rclone.conf with Gist at startup — pull if Gist is newer, push if local is newer
     if declare -f sync_rclone_config > /dev/null 2>&1; then
@@ -694,22 +705,22 @@ else
 
     if [ -z "$rclone_remote_name" ]; then
         rclone_remote_name="mybox"
-        log_msg "No rclone remote_name in config; using default: $rclone_remote_name"
+        log_msg "rclone remote_name not in config, using default: $rclone_remote_name"
     else
-        log_msg "Using rclone remote_name from config: $rclone_remote_name"
+        log_msg "rclone remote_name: $rclone_remote_name"
     fi
 
     if [ -n "$rclone_config_path" ]; then
-        log_msg "Using explicit rclone config path: $rclone_config_path"
+        log_msg "rclone config path: $rclone_config_path"
     else
-        log_msg "Using default rclone config lookup"
+        log_msg "rclone config: using default lookup path"
     fi
 
     if [ -z "$rclone_target_path" ]; then
         rclone_target_path="monitoring_data"
-        log_msg "No rclone target_path in config; using default shared folder: $rclone_target_path"
+        log_msg "rclone target_path not in config, using default: $rclone_target_path"
     else
-        log_msg "Using rclone target_path from config: $rclone_target_path"
+        log_msg "rclone target_path: $rclone_target_path"
     fi
 
     # Data directory to upload
@@ -739,25 +750,25 @@ else
           wav_count=$(find "$pre_upload_dir_wav" -name "*.wav" 2>/dev/null | wc -l)
           if [ "$wav_count" -gt 0 ]; then
               if ! command -v ffmpeg >/dev/null 2>&1; then
-                  log_msg "ERROR: ffmpeg not found. Cannot convert WAV to FLAC, skipping upload staging for WAV files."
+                  log_msg "ERROR: ffmpeg not found, cannot convert WAV to FLAC"
               else
-                  log_msg "Found $wav_count pending WAV file(s) in $pre_upload_dir_wav, converting to FLAC..."
+                  log_msg "Found $wav_count pending WAV file(s) in pre_upload_dir, converting to FLAC..."
                   # Keep conversion timeout bounded to avoid long hangs per file.
                   ffmpeg_timeout_secs=600
-                  log_msg "Using ffmpeg timeout per file: ${ffmpeg_timeout_secs}s"
+                  log_msg "  ffmpeg timeout: ${ffmpeg_timeout_secs}s per file"
                   converted_count=0
                   failed_count=0
                   while IFS= read -r -d '' wav_file; do
                       wav_file=$(normalize_path_for_conversion "$wav_file")
                       if [ ! -f "$wav_file" ]; then
-                          log_msg "WARNING: Source WAV missing before conversion (pre_upload_dir): $(printf '%q' "$wav_file")"
+                          log_msg "WARNING: WAV missing before conversion: $(basename "$wav_file")"
                           failed_count=$((failed_count+1))
                           continue
                       fi
 
                       wav_size=$(stat -f%z "$wav_file" 2>/dev/null || echo 0)
                       if [ "$wav_size" -lt "$MIN_VALID_AUDIO_BYTES" ]; then
-                          log_msg "Dropping tiny WAV in pre_upload_dir: $(basename "$wav_file") size_bytes=$wav_size (<$MIN_VALID_AUDIO_BYTES)"
+                          log_msg "Dropping tiny WAV: $(basename "$wav_file") (${wav_size}B < ${MIN_VALID_AUDIO_BYTES}B)"
                           sudo rm -f "$wav_file" 2>/dev/null || true
                           failed_count=$((failed_count+1))
                           continue
@@ -770,14 +781,14 @@ else
                       base_name=$(basename "$wav_file" .wav)
                       flac_file="$dest_dir/${base_name}.flac"
                       input_size=$(stat -f%z "$wav_file" 2>/dev/null || echo "?")
-                      log_msg "Converting ($((converted_count+failed_count+1))/$wav_count): $(basename "$wav_file") [$input_size bytes] -> $(basename "$flac_file")"
+                      log_msg "Converting ($((converted_count+failed_count+1))/$wav_count): $(basename "$wav_file") [${input_size}B]"
 
                       ffmpeg_input="file:$wav_file"
                       ffmpeg_output="file:$flac_file"
                       if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -nostdin -y -loglevel error -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
                           if sudo rm -f "$wav_file"; then
                               output_size=$(stat -f%z "$flac_file" 2>/dev/null || echo "?")
-                              log_msg "CONVERSION_OK context=pre_upload_dir wav=$(basename "$wav_file") flac_path=$flac_file flac_size_bytes=$output_size"
+                              log_msg "OK $(basename "$wav_file") -> $(basename "$flac_file") (${output_size}B)"
                               converted_count=$((converted_count+1))
                           else
                               log_msg "WARNING: FLAC created but failed to remove source WAV: $(basename "$wav_file")"
@@ -799,7 +810,7 @@ else
                   log_msg "WAV->FLAC conversion complete: success=$converted_count, failed=$failed_count, total=$wav_count"
               fi
           else
-              log_msg "No pending WAV files found in $pre_upload_dir_wav."
+              log_msg "No pending WAV files in pre_upload_dir"
           fi
 
           # Stage any pre-existing FLAC files from pre_upload_dir into live_data_dir.
@@ -832,9 +843,10 @@ else
 
         if [ -d "$tmp_dir" ]; then
             if ! command -v ffmpeg >/dev/null 2>&1; then
-                log_msg "ERROR: ffmpeg not found. Cannot convert candidate files in $tmp_dir."
+                log_msg "ERROR: ffmpeg not found, cannot convert candidate files in tmp_dir"
             else
-                log_msg "Scanning $tmp_dir for candidate audio files (no extension) to convert..."
+                log_msg "Scanning tmp_dir for candidate audio files..."
+                log_msg "  path: $tmp_dir"
                 ffmpeg_timeout_secs=300
                 tmp_converted=0
                 tmp_failed=0
@@ -861,13 +873,13 @@ else
                     flac_file="$dest_dir/${base_name}.flac"
                     ffmpeg_err_file=$(mktemp "${TMPDIR:-/tmp}/ffmpeg_tmp_dir_err.XXXXXX")
 
-                    log_msg "Converting tmp candidate [$tmp_index] src_rel_dir=$candidate_rel_dir src_file=$(basename "$candidate") dest_dir=$dest_dir dest_file=$(basename "$flac_file")"
+                    log_msg "Converting tmp [$tmp_index] $(basename "$candidate") -> $candidate_rel_dir/$(basename "$flac_file")"
                     ffmpeg_input="file:$candidate"
                     ffmpeg_output="file:$flac_file"
                     if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -nostdin -y -loglevel error -f wav -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
                         if sudo rm -f "$candidate"; then
                             output_size=$(stat -f%z "$flac_file" 2>/dev/null || echo "?")
-                            log_msg "CONVERSION_OK context=tmp_dir src=$(basename "$candidate") flac_path=$flac_file flac_size_bytes=$output_size"
+                            log_msg "OK $(basename "$candidate") -> $(basename "$flac_file") (${output_size}B)"
                             tmp_converted=$((tmp_converted+1))
                         else
                             log_msg "WARNING: FLAC created but failed to remove source tmp file: $(basename "$candidate")"
@@ -890,7 +902,7 @@ else
                 log_msg "tmp_dir conversion complete: success=$tmp_converted, failed=$tmp_failed, scanned=$tmp_index"
             fi
         else
-            log_msg "tmp_dir not present: $tmp_dir, skipping tmp conversions."
+            log_msg "tmp_dir not found ($tmp_dir), skipping"
         fi
 
         # Safety pass: convert any WAV that already exists in live_data for this device.
@@ -902,11 +914,10 @@ else
             live_wav_count=$(find "$pi_live_data_dir" -name "*.wav" 2>/dev/null | wc -l)
             if [ "$live_wav_count" -gt 0 ]; then
                 if ! command -v ffmpeg >/dev/null 2>&1; then
-                    log_msg "ERROR: ffmpeg not found. Cannot convert existing WAV files in live_data."
+                    log_msg "ERROR: ffmpeg not found, cannot convert WAV files in live_data"
                 else
                     ffmpeg_timeout_secs=300
-                    log_msg "Found $live_wav_count WAV file(s) already in live_data (including legacy folders), converting in-place to FLAC (timeout=${ffmpeg_timeout_secs}s)..."
-                    log_msg "Using ffmpeg timeout per file: ${ffmpeg_timeout_secs}s"
+                    log_msg "Found $live_wav_count WAV file(s) in live_data, converting in-place to FLAC (timeout=${ffmpeg_timeout_secs}s)..."
                     converted_live_count=0
                     failed_live_count=0
                     live_index=0
@@ -914,14 +925,14 @@ else
                         live_index=$((live_index+1))
                         live_wav_file=$(normalize_path_for_conversion "$live_wav_file")
                         if [ ! -f "$live_wav_file" ]; then
-                            log_msg "WARNING: Source WAV missing before conversion (live_data) [$live_index/$live_wav_count]: $(printf '%q' "$live_wav_file")"
+                            log_msg "WARNING: WAV missing [$live_index/$live_wav_count]: $(basename "$live_wav_file")"
                             failed_live_count=$((failed_live_count+1))
                             continue
                         fi
 
                         live_wav_size=$(stat -f%z "$live_wav_file" 2>/dev/null || echo 0)
                         if [ "$live_wav_size" -lt "$MIN_VALID_AUDIO_BYTES" ]; then
-                            log_msg "Dropping tiny WAV in live_data: $(basename "$live_wav_file") size_bytes=$live_wav_size (<$MIN_VALID_AUDIO_BYTES)"
+                            log_msg "Dropping tiny WAV: $(basename "$live_wav_file") (${live_wav_size}B < ${MIN_VALID_AUDIO_BYTES}B)"
                             sudo rm -f "$live_wav_file" 2>/dev/null || true
                             failed_live_count=$((failed_live_count+1))
                             continue
@@ -934,7 +945,7 @@ else
                         if sudo timeout "$ffmpeg_timeout_secs" ffmpeg -nostdin -y -loglevel error -i "$ffmpeg_input" -c:a flac -compression_level 2 "$ffmpeg_output" 2>"$ffmpeg_err_file"; then
                             if sudo rm -f "$live_wav_file"; then
                                 output_size=$(stat -f%z "$live_flac_file" 2>/dev/null || echo "?")
-                                log_msg "CONVERSION_OK context=live_data wav=$(basename "$live_wav_file") flac_path=$live_flac_file flac_size_bytes=$output_size"
+                                log_msg "OK $(basename "$live_wav_file") -> $(basename "$live_flac_file") (${output_size}B)"
                                 converted_live_count=$((converted_live_count+1))
                             else
                                 log_msg "WARNING: FLAC created but failed to remove source WAV: $(basename "$live_wav_file")"
@@ -970,19 +981,19 @@ else
         fallback_state_dir="/tmp/monitoring_upload_state"
         mkdir -p "$fallback_state_dir"
         state_file="$fallback_state_dir/.rclone_state_${PI_ID}.json"
-        log_msg "WARNING: Cannot write state file in $live_data_dir, using fallback: $state_file"
+        log_msg "WARNING: Cannot write state file in live_data, using fallback:"
+        log_msg "  $state_file"
     fi
 
     # Initialize rclone state
     init_rclone_state "$state_file" "$live_data_dir"
 
     # Scan and update state with files on disk
-    if ! run_and_log --prefix "[component=upload-helper] " update_rclone_state_from_disk "$state_file" "$live_data_dir"; then
+    if ! run_and_log --prefix "[upload-helper] " update_rclone_state_from_disk "$state_file" "$live_data_dir"; then
         log_msg "WARNING: Failed to refresh rclone state from disk."
     fi
 
-    log_msg "Starting upload process..."
-    log_msg "For graceful shutdown, press Ctrl+C or press physical shutdown button"
+    log_msg "Starting upload process (Ctrl+C or shutdown button to stop)"
 
     # Main upload loop - keep retrying upload with internet monitoring
     upload_complete=0
@@ -993,7 +1004,7 @@ else
     while [ $upload_complete -eq 0 ] && [ $retry_count -lt $max_retries ]; do
 
         # Check internet before attempting upload
-        log_msg "Checking internet connectivity before upload..."
+        log_msg "Checking internet..."
 
         if ! check_internet_quick; then
             log_msg "No internet available, waiting to reconnect..."
@@ -1001,7 +1012,7 @@ else
             continue
         fi
 
-        log_msg "Internet available, proceeding with upload..."
+        log_msg "Internet available, uploading..."
 
         # Stage runtime logs into live_data so they are included in rclone source path.
         staged_logs_dir="$live_data_dir/$PI_ID/logs"
@@ -1014,7 +1025,7 @@ else
                 log_msg "WARNING: Failed to stage log file for upload: $(basename "$log_src")"
             fi
         done < <(find "$logdir" -maxdepth 1 -type f -name "*.log" -print0 2>/dev/null)
-        log_msg "Staged $staged_logs_count log file(s) into $staged_logs_dir"
+        log_msg "Staged $staged_logs_count log file(s) for upload"
 
         # Run upload script with sudo so verified files can be deleted even if
         # they are owned by root (recording flow often runs with elevated perms).

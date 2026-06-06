@@ -507,34 +507,34 @@ if [ -f "$config_file" ]; then
 fi
 
 if [ -n "$sipeed_reboot_times" ]; then
-    log_msg "Configured reboot/maintenance times from config: $sipeed_reboot_times"
+    log_msg "Reboot times: $sipeed_reboot_times"
 else
-    log_msg "No valid reboot/maintenance times found in config."
+    log_msg "No reboot times in config"
 fi
 
 if [ "$sensor_type" = "Sipeed7Mic" ]; then
-    log_msg "Turning all 12 LEDs off on the mic array (Sipeed7Mic)"
+    log_msg "Turning off 12 LEDs (Sipeed7Mic)"
     chmod +x ./led_off.sh
     chmod +x ./led_on.sh
     sudo bash ./led_off.sh
 elif [[ "$sensor_type" == Respeaker* ]]; then
-    log_msg "Sensor is $sensor_type, skipping Sipeed LED control"
+    log_msg "Sensor: $sensor_type (skip Sipeed LED)"
 else
-    log_msg "Sensor type unknown or not Sipeed, skipping Sipeed LED control"
+    log_msg "Sensor: unknown, skip Sipeed LED"
 fi
 
 # Update time from internet
 log_msg "Updating system time..."
-if ! run_and_log --prefix "[time-sync] " sudo bash ./update_time.sh; then
-    log_msg "WARNING: Time update command returned non-zero status."
+if ! run_and_log sudo bash ./update_time.sh; then
+    log_msg "WARNING: Time update failed"
 fi
 
 # Start ssh-agent so password not required
 if ssh_agent_env=$(ssh-agent -s 2>/dev/null); then
     eval "$ssh_agent_env" >/dev/null
-    log_msg "ssh-agent started successfully"
+    log_msg "ssh-agent started"
 else
-    log_msg "WARNING: Failed to start ssh-agent"
+    log_msg "WARNING: ssh-agent failed"
 fi
 
 # Add in current date and time to log files
@@ -544,14 +544,13 @@ currentDate=$(date +"%Y-%m-%d_%H.%M")
 log_msg "Checking Python dependencies..."
 python3 -c "import pyaudio, numpy, RPi.GPIO, psutil" 2>/dev/null
 if [ $? -ne 0 ]; then
-    log_msg "WARNING: some Python dependencies may be missing"
-    log_msg "  hint: sudo apt-get install python3-rpi.gpio python3-numpy python3-pyaudio"
+    log_msg "WARNING: Python deps missing (pyaudio/numpy/RPi.GPIO/psutil)"
 fi
 
 # Ensure logs directory exists
 logdir='logs'
 if [ ! -d "$logdir" ]; then
-    log_msg "Creating logs directory..."
+    log_msg "Creating logs directory"
     mkdir -p "$logdir"
 fi
 
@@ -560,30 +559,29 @@ log_msg "Checking required files..."
 required_files="python_record.py discover_serial.py upload_mode_helper.sh"
 for file in $required_files; do
     if [ ! -f "$file" ]; then
-        log_msg "ERROR: Required file '$file' not found!"
+        log_msg "ERROR: Required file '$file' not found"
         exit 1
     fi
 done
-log_msg "All required files found."
+log_msg "All required files found"
 if [ ! -f $config_file ]; then
-        log_msg "Config file '$config_file' not found!"
-        log_msg "Would you like to run setup_config.py to create it? (1 for yes, 0 for no) [1]:"
-        read -r response
-        response=${response:-1}
-        if [ "$response" = "1" ]; then
-            python3 setup_config.py
-        else
-            log_msg "Exiting without creating config."
-            exit 1
-        fi
+    log_msg "Config file '$config_file' not found"
+    log_msg "Run setup_config.py? (1=yes/0=no) [1]:"
+    read -r response
+    response=${response:-1}
+    if [ "$response" = "1" ]; then
+        python3 setup_config.py
+    else
+        log_msg "Exiting without creating config"
+        exit 1
+    fi
 fi
 
 # export the raspberry pi serial number to an environment variable
-log_msg "Getting Raspberry Pi serial number..."
+log_msg "Getting Pi serial number..."
 if ! PI_ID=$(python3 discover_serial.py 2>&1); then
     log_msg "ERROR: Failed to get Pi serial number"
     log_msg "  output: $PI_ID"
-    log_msg "  check: discover_serial.py exists and is executable"
     exit 1
 fi
 export PI_ID

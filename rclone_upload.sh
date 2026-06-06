@@ -100,6 +100,25 @@ log_msg() {
     echo "$prefix $msg" | tee -a "$logfile"
 }
 
+log_stats_block() {
+    local label="$1"
+    local stats_json="$2"
+
+    local total completed pending uploading size_gb
+    total="$(echo "$stats_json" | jq -r '.total_files // 0' 2>/dev/null || echo 0)"
+    completed="$(echo "$stats_json" | jq -r '.completed // 0' 2>/dev/null || echo 0)"
+    pending="$(echo "$stats_json" | jq -r '.pending // 0' 2>/dev/null || echo 0)"
+    uploading="$(echo "$stats_json" | jq -r '.uploading // 0' 2>/dev/null || echo 0)"
+    size_gb="$(echo "$stats_json" | jq -r '.total_size_gb // 0' 2>/dev/null || echo 0)"
+
+    log_msg "$label"
+    log_msg "  total files : $total"
+    log_msg "  uploading   : $uploading"
+    log_msg "  pending     : $pending"
+    log_msg "  completed   : $completed"
+    log_msg "  total size  : ${size_gb} GB"
+}
+
 set_upload_phase() {
     UPLOAD_PHASE="${1:-unknown}"
 }
@@ -174,7 +193,7 @@ manager_output=$(python3 "$SCRIPT_DIR/state_manager.py" init-scan-mark "$data_di
 stats=$(echo "$manager_output" | jq -c '.stats')
 files_to_upload=$(echo "$manager_output" | jq -r '.files_to_upload[]')
 
-log_msg "Upload stats: $stats"
+log_stats_block "Upload stats:" "$stats"
 log_msg "Marked $(echo "$files_to_upload" | wc -l) files as 'uploading'"
 
 # Run rclone copy (not move!) with error handling
@@ -203,7 +222,11 @@ _push_rclone_config_to_gist() {
         if [ -f "$cf" ]; then
             log_msg "Pushing updated rclone.conf to Gist (token may have refreshed)..."
             if _read_gist_config "$cf"; then
-                _push_to_gist "$logfile"
+                if [ -n "$config_path" ]; then
+                    RCLONE_CONF_PATH="$config_path" _push_to_gist "$logfile"
+                else
+                    _push_to_gist "$logfile"
+                fi
             fi
         fi
     else
@@ -255,7 +278,7 @@ if [ $rclone_exit_code -eq 0 ]; then
     stats=$(echo "$verify_output" | jq -c '.stats')
 
     log_msg "Upload verification complete: $deleted_count files deleted after verification"
-    log_msg "Upload stats after verify: $stats"
+    log_stats_block "Upload stats after verify:" "$stats"
 
     set_upload_phase "finalize"
     log_msg "Rclone upload cycle completed successfully"

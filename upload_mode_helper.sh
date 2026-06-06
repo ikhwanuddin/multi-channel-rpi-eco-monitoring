@@ -7,16 +7,16 @@
 ##############################################
 
 UPLOAD_HELPER_LAST_MINUTE=""
-UPLOAD_HELPER_TS_PREFIX=""
+UPLOAD_HELPER_TS_NEWLINE=""
 
 update_upload_helper_minute_prefix() {
     local current_minute
     current_minute="$(date '+%Y-%m-%d %H:%M')"
     if [ "$current_minute" != "$UPLOAD_HELPER_LAST_MINUTE" ]; then
         UPLOAD_HELPER_LAST_MINUTE="$current_minute"
-        UPLOAD_HELPER_TS_PREFIX="[$current_minute] "
+        UPLOAD_HELPER_TS_NEWLINE="[$current_minute]"
     else
-        UPLOAD_HELPER_TS_PREFIX=""
+        UPLOAD_HELPER_TS_NEWLINE=""
     fi
 }
 
@@ -24,7 +24,8 @@ append_upload_helper_log() {
     local logfile="$1"
     local msg="$2"
     update_upload_helper_minute_prefix
-    echo "${UPLOAD_HELPER_TS_PREFIX}${msg}" >> "$logfile"
+    [ -n "$UPLOAD_HELPER_TS_NEWLINE" ] && printf '\n%s\n' "$UPLOAD_HELPER_TS_NEWLINE" >> "$logfile"
+    echo "$msg" >> "$logfile"
 }
 
 # Helper function to check internet connectivity
@@ -32,24 +33,24 @@ append_upload_helper_log() {
 check_internet() {
     local max_attempts=10
     local attempt=0
-    
+
     while true; do
         # Try Google
         if timeout 2 ping -c 1 8.8.8.8 >/dev/null 2>&1; then
             return 0
         fi
-        
+
         # Try Cloudflare
         if timeout 2 ping -c 1 1.1.1.1 >/dev/null 2>&1; then
             return 0
         fi
-        
+
         attempt=$((attempt + 1))
         if [ $attempt -ge $max_attempts ]; then
             # Just log, don't return failure - will retry indefinitely
             return 1
         fi
-        
+
         sleep 1
     done
 }
@@ -71,7 +72,7 @@ check_internet_quick() {
 init_rclone_state() {
     local state_file="$1"
     local live_data_dir="$2"
-    
+
     if [ ! -f "$state_file" ]; then
         # Create new state file
         local session_start=$(date +"%Y-%m-%d_%H.%M.%S")
@@ -97,14 +98,14 @@ EOF
 update_rclone_state_from_disk() {
     local state_file="$1"
     local live_data_dir="$2"
-    
+
     if [ ! -f "$state_file" ] || [ ! -d "$live_data_dir" ]; then
         return 1
     fi
-    
+
     # Temporary file for updated state
     local temp_state=$(mktemp)
-    
+
     python3 - "$state_file" "$live_data_dir" << 'PYTHON_EOF'
 import json
 import os
@@ -135,10 +136,10 @@ for root, dirs, files in os.walk(live_data_dir):
             file_path = os.path.join(root, file)
             file_size = os.path.getsize(file_path)
             total_size += file_size
-            
+
             # Use relative path as key for consistency
             rel_path = os.path.relpath(file_path, live_data_dir)
-            
+
             if rel_path not in state['files']:
                 # New file - add as pending
                 found_files[rel_path] = 'pending'
@@ -179,7 +180,7 @@ update_file_status() {
     local state_file="$1"
     local filename="$2"
     local new_status="$3"
-    
+
     python3 - "$state_file" "$filename" "$new_status" << 'PYTHON_EOF'
 import json
 import sys
@@ -191,15 +192,15 @@ new_status = sys.argv[3]
 try:
     with open(state_file, 'r') as f:
         state = json.load(f)
-    
+
     if filename in state['files']:
         state['files'][filename] = new_status
-        
+
         # Recalculate stats
         state['upload_stats']['completed'] = sum(1 for s in state['files'].values() if s == 'completed')
         state['upload_stats']['pending'] = sum(1 for s in state['files'].values() if s == 'pending')
         state['upload_stats']['uploading'] = sum(1 for s in state['files'].values() if s == 'uploading')
-        
+
         with open(state_file, 'w') as f:
             json.dump(state, f, indent=2)
 except Exception as e:
@@ -212,7 +213,7 @@ PYTHON_EOF
 get_pending_files() {
     local state_file="$1"
     local live_data_dir="$2"
-    
+
     python3 - "$state_file" "$live_data_dir" << 'PYTHON_EOF'
 import json
 import sys
@@ -224,7 +225,7 @@ live_data_dir = sys.argv[2]
 try:
     with open(state_file, 'r') as f:
         state = json.load(f)
-    
+
     for filename, status in state['files'].items():
         if status in ['pending', 'uploading']:
             file_path = os.path.join(live_data_dir, filename)
@@ -243,13 +244,13 @@ monitor_internet_during_upload() {
     local rclone_pid="$1"
     local logfile="$2"
     local check_interval=30  # 2x per minute
-    
+
     local last_online=1
     local last_offline_log=""
-    
+
     while kill -0 "$rclone_pid" 2>/dev/null; do
         sleep $check_interval
-        
+
         if check_internet_quick; then
             if [ $last_online -eq 0 ]; then
                 append_upload_helper_log "$logfile" "Internet connection restored"
@@ -272,7 +273,7 @@ setup_upload_shutdown_handler() {
     local upload_pid="$2"
     local logfile="$3"
     local button_pin=26  # Default for Respeaker
-    
+
     # For Sipeed7Mic, button is via GPIO but we assume it's already handled at OS level
     # So we just trap SIGTERM here
     trap "handle_upload_shutdown $upload_pid '$logfile'" SIGTERM SIGINT
@@ -281,10 +282,10 @@ setup_upload_shutdown_handler() {
 handle_upload_shutdown() {
     local upload_pid="$1"
     local logfile="$2"
-    
+
     append_upload_helper_log "$logfile" "Shutdown signal received during upload mode"
     append_upload_helper_log "$logfile" "Terminating upload gracefully..."
-    
+
     # Send SIGTERM to upload process to let it cleanup
     if kill -0 "$upload_pid" 2>/dev/null; then
         kill -TERM "$upload_pid"
@@ -294,14 +295,14 @@ handle_upload_shutdown() {
             sleep 1
             wait_count=$((wait_count + 1))
         done
-        
+
         # Force kill if still running
         if kill -0 "$upload_pid" 2>/dev/null; then
             append_upload_helper_log "$logfile" "Force killing upload process"
             kill -9 "$upload_pid" 2>/dev/null || true
         fi
     fi
-    
+
     append_upload_helper_log "$logfile" "Upload mode ended, system can now shutdown or switch mode"
 }
 

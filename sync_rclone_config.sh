@@ -29,7 +29,7 @@ RCLONE_CONF_PATH="${RCLONE_CONF_PATH:-$HOME/.config/rclone/rclone.conf}"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-30}"
 GIST_LOG_LAST_MINUTE=""
-GIST_LOG_TS_PREFIX=""
+GIST_LOG_TS_NEWLINE=""
 
 _curl_common_args() {
     echo "-sS --connect-timeout $CURL_CONNECT_TIMEOUT --max-time $CURL_MAX_TIME"
@@ -39,15 +39,48 @@ _make_temp_dir() {
     mktemp -d "${TMPDIR:-/tmp}/gist_sync.XXXXXX"
 }
 
+_detect_rclone_conf_path() {
+    local configured_path="$RCLONE_CONF_PATH"
+    local candidates=()
+
+    # 1) Explicitly configured path wins when present.
+    [ -n "$configured_path" ] && candidates+=("$configured_path")
+
+    # 2) If running via sudo, prefer the invoking user's rclone config.
+    if [ -n "${SUDO_USER:-}" ]; then
+        local sudo_home=""
+        sudo_home=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)
+        [ -z "$sudo_home" ] && sudo_home="/home/$SUDO_USER"
+        candidates+=("$sudo_home/.config/rclone/rclone.conf")
+    fi
+
+    # 3) Current user's home and common Raspberry Pi default.
+    candidates+=("$HOME/.config/rclone/rclone.conf")
+    candidates+=("/home/pi/.config/rclone/rclone.conf")
+
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        [ -n "$candidate" ] || continue
+        if [ -f "$candidate" ]; then
+            RCLONE_CONF_PATH="$candidate"
+            return 0
+        fi
+    done
+
+    # Keep configured/default path even if missing so errors stay actionable.
+    [ -n "$configured_path" ] && RCLONE_CONF_PATH="$configured_path"
+    return 1
+}
+
 # ── Internal: log helper ──────────────────────────────────────────────────────
 _update_gist_log_minute_prefix() {
     local current_minute
     current_minute="$(date '+%Y-%m-%d %H:%M')"
     if [ "$current_minute" != "$GIST_LOG_LAST_MINUTE" ]; then
         GIST_LOG_LAST_MINUTE="$current_minute"
-        GIST_LOG_TS_PREFIX="[$current_minute] "
+        GIST_LOG_TS_NEWLINE="[$current_minute]"
     else
-        GIST_LOG_TS_PREFIX=""
+        GIST_LOG_TS_NEWLINE=""
     fi
 }
 
@@ -55,7 +88,8 @@ _gist_log() {
     local msg="$1"
     local logfile="${2:-/dev/stdout}"
     _update_gist_log_minute_prefix
-    echo "${GIST_LOG_TS_PREFIX}[gist-sync] $msg" | tee -a "$logfile"
+    [ -n "$GIST_LOG_TS_NEWLINE" ] && printf '\n%s\n' "$GIST_LOG_TS_NEWLINE" | tee -a "$logfile"
+    echo "[gist-sync] $msg" | tee -a "$logfile"
 }
 
 # Resolve the preferred owner for rclone.conf.
@@ -138,14 +172,7 @@ _push_to_gist() {
     response_file="$tmpdir/push_response.json"
     err_file="$tmpdir/push_curl.err"
 
-    # Read file content and escape for JSON
-    local content
-    content=$(python3 -c "
-import json, sys
-with open('$RCLONE_CONF_PATH', 'r') as f:
-    content = f.read()
-print(json.dumps(content))
-" 2>/dev/null)
+    _detect_rclone_conf_path >/dev/null 2>&1 || true
 
     if [ ! -f "$RCLONE_CONF_PATH" ]; then
         _gist_log "ERROR: Failed to read rclone.conf for upload" "$logfile"
@@ -157,13 +184,23 @@ print(json.dumps(content))
     if [ ! -r "$RCLONE_CONF_PATH" ]; then
         _gist_log "ERROR: Failed to read rclone.conf for upload" "$logfile"
         _gist_log "  permission denied: $RCLONE_CONF_PATH" "$logfile"
+        _gist_log "  hint: check owner/perm with: ls -l $RCLONE_CONF_PATH" "$logfile"
         rm -rf "$tmpdir"
         return 1
     fi
 
+    # Read file content and escape for JSON
+    local content
+    content=$(python3 -c "
+import json, sys
+with open('$RCLONE_CONF_PATH', 'r') as f:
+    content = f.read()
+print(json.dumps(content))
+" 2>/dev/null)
+
     if [ -z "$content" ]; then
         _gist_log "ERROR: Failed to read rclone.conf for upload" "$logfile"
-        _gist_log "  empty/unreadable file: $RCLONE_CONF_PATH" "$logfile"
+        _gist_log "  unreadable content from: $RCLONE_CONF_PATH" "$logfile"
         rm -rf "$tmpdir"
         return 1
     fi
@@ -308,6 +345,9 @@ sync_rclone_config() {
     local meta_err_file=""
 
     _gist_log "Starting rclone.conf sync..." "$logfile"
+
+    _detect_rclone_conf_path >/dev/null 2>&1 || true
+    _gist_log "Using local rclone.conf path: $RCLONE_CONF_PATH" "$logfile"
 
     tmpdir=$(_make_temp_dir)
     if [ -z "$tmpdir" ] || [ ! -d "$tmpdir" ]; then

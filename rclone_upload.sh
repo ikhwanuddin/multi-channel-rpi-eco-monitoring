@@ -81,6 +81,11 @@ else
     log_msg "Rclone config path: default lookup"
 fi
 
+if ! command -v jq >/dev/null 2>&1; then
+    log_msg "ERROR: jq binary not found. Please install with 'sudo apt install jq'"
+    exit 127
+fi
+
 if ! command -v rclone >/dev/null 2>&1; then
     log_msg "ERROR: rclone binary not found in PATH"
     exit 127
@@ -132,6 +137,23 @@ rclone_args=(
 if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")
 fi
+
+# Push rclone.conf to Gist — token may have been refreshed
+# Called regardless of upload success/failure.
+_push_rclone_config_to_gist() {
+    if declare -f _read_gist_config > /dev/null 2>&1; then
+        local cf="$SCRIPT_DIR/config.json"
+        [ -f "$cf" ] || cf="./config.json"
+        if [ -f "$cf" ]; then
+            log_msg "Pushing updated rclone.conf to Gist (token may have refreshed)..."
+            if _read_gist_config "$cf"; then
+                _push_to_gist "$logfile"
+            fi
+        fi
+    else
+        log_msg "WARNING: sync_rclone_config not sourced, skipping Gist push."
+    fi
+}
 
 # Helper for rclone copy with retry logic
 rclone_copy_with_retry() {

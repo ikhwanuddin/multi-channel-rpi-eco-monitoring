@@ -523,7 +523,6 @@ python3 -c "import pyaudio, numpy, RPi.GPIO, psutil" 2>/dev/null
 if [ $? -ne 0 ]; then
     log_msg "WARNING: Some Python dependencies may be missing."
     log_msg "Run: sudo apt-get install python3-rpi.gpio python3-numpy python3-pyaudio"
-    log_msg "Then: python3 -m pip install -r requirements.txt"
     log_msg "Continuing anyway..."
 fi
 
@@ -624,12 +623,12 @@ log_msg "##############################################"
 ##############################################
 if [ "$OPERATING_MODE" = "OFFLINE" ]; then
     set_log_phase "recording"
-    
+
     # the file in which to store the logging from this run
     logfile_name="multi_rpi_eco_"$PI_ID"_"$currentDate".log"
     LOGFILE_ACTIVE="$logdir/$logfile_name"
     ensure_logfile_writable "$LOGFILE_ACTIVE"
-    
+
     # Start recording script with auto-restart on failure
     log_msg "Starting RECORDING mode (offline)"
     log_msg "Command: sudo -E python3 -u python_record.py $config_file $logfile_name $logdir"
@@ -640,7 +639,7 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
         process_pre_upload_queue_for_sipeed "/home/pi/monitoring_data/live_data"
         set_log_phase "recording"
     fi
-    
+
     restart_count=0
     set_log_phase "recording-loop"
     while true; do
@@ -664,19 +663,19 @@ if [ "$OPERATING_MODE" = "OFFLINE" ]; then
 ##############################################
 else
     set_log_phase "upload-init"
-    
+
     logfile_name="multi_rpi_eco_upload_"$PI_ID"_"$currentDate".log"
     upload_logfile="$logdir/$logfile_name"
     LOGFILE_ACTIVE="$upload_logfile"
-    
+
     # Ensure logs directory exists
     if [ ! -d "$logdir" ]; then
         mkdir -p "$logdir"
     fi
     ensure_logfile_writable "$upload_logfile"
-    
+
     log_msg "Starting UPLOAD mode (online)"
-    
+
     # Get upload configuration from config.json
     log_msg "Initializing upload mode..."
 
@@ -712,17 +711,17 @@ else
     else
         log_msg "Using rclone target_path from config: $rclone_target_path"
     fi
-    
+
     # Data directory to upload
     live_data_dir="/home/pi/monitoring_data/live_data"
     state_file="$live_data_dir/.rclone_state.json"
-    
+
     # Ensure live_data directory exists
     if [ ! -d "$live_data_dir" ]; then
         log_msg "ERROR: live_data directory not found: $live_data_dir"
         exit 1
     fi
-    
+
     log_msg "Live data directory: $live_data_dir"
 
     # Convert pending WAV files from pre_upload_dir to FLAC before upload.
@@ -973,35 +972,35 @@ else
         state_file="$fallback_state_dir/.rclone_state_${PI_ID}.json"
         log_msg "WARNING: Cannot write state file in $live_data_dir, using fallback: $state_file"
     fi
-    
+
     # Initialize rclone state
     init_rclone_state "$state_file" "$live_data_dir"
-    
+
     # Scan and update state with files on disk
     if ! run_and_log --prefix "[component=upload-helper] " update_rclone_state_from_disk "$state_file" "$live_data_dir"; then
         log_msg "WARNING: Failed to refresh rclone state from disk."
     fi
-    
+
     log_msg "Starting upload process..."
     log_msg "For graceful shutdown, press Ctrl+C or press physical shutdown button"
-    
+
     # Main upload loop - keep retrying upload with internet monitoring
     upload_complete=0
     retry_count=0
     max_retries=999  # Essentially unlimited until user intervenes
     set_log_phase "upload-loop"
-    
+
     while [ $upload_complete -eq 0 ] && [ $retry_count -lt $max_retries ]; do
-        
+
         # Check internet before attempting upload
         log_msg "Checking internet connectivity before upload..."
-        
+
         if ! check_internet_quick; then
             log_msg "No internet available, waiting to reconnect..."
             sleep 30
             continue
         fi
-        
+
         log_msg "Internet available, proceeding with upload..."
 
         # Stage runtime logs into live_data so they are included in rclone source path.
@@ -1016,7 +1015,7 @@ else
             fi
         done < <(find "$logdir" -maxdepth 1 -type f -name "*.log" -print0 2>/dev/null)
         log_msg "Staged $staged_logs_count log file(s) into $staged_logs_dir"
-        
+
         # Run upload script with sudo so verified files can be deleted even if
         # they are owned by root (recording flow often runs with elevated perms).
         if sudo -E bash ./rclone_upload.sh "$live_data_dir" "$rclone_remote_name" "$state_file" "$upload_logfile" "$rclone_config_path" "$rclone_target_path"; then
@@ -1030,9 +1029,9 @@ else
             sleep 30
         fi
     done
-    
+
     log_msg "Upload mode finished"
-    
+
 fi
 
 set_log_phase "shutdown"

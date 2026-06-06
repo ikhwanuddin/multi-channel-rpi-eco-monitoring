@@ -692,18 +692,22 @@ else
 
     log_msg "Starting UPLOAD mode"
 
-    # Sync rclone.conf with Gist at startup — pull if Gist is newer, push if local is newer
-    if declare -f sync_rclone_config > /dev/null 2>&1; then
-        log_msg "Syncing rclone.conf with Gist (startup)..."
-        sync_rclone_config "$config_file" "$upload_logfile"
-    else
-        log_msg "WARNING: sync_rclone_config not available, skipping."
-    fi
-
     # Extract optional rclone settings from config.json
     rclone_remote_name=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('remote_name', ''))" 2>/dev/null)
     rclone_config_path=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('config_path', ''))" 2>/dev/null)
     rclone_target_path=$(python3 -c "import json; config=json.load(open('$config_file')); print((config.get('rclone', {}) or {}).get('target_path', ''))" 2>/dev/null)
+
+    # Sync rclone.conf with Gist at startup — pull if Gist is newer, push if local is newer
+    if declare -f sync_rclone_config > /dev/null 2>&1; then
+        log_msg "Syncing rclone.conf with Gist (startup)..."
+        if [ -n "$rclone_config_path" ]; then
+            RCLONE_CONF_PATH="$rclone_config_path" sync_rclone_config "$config_file" "$upload_logfile"
+        else
+            sync_rclone_config "$config_file" "$upload_logfile"
+        fi
+    else
+        log_msg "WARNING: sync_rclone_config not available, skipping."
+    fi
 
     if [ -z "$rclone_remote_name" ]; then
         rclone_remote_name="mybox"

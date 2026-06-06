@@ -286,6 +286,10 @@ Common upload phase values:
 * `finalize`
 * `error`
 
+Upload logging note:
+
+* During `rclone-copy`, rclone one-line stats are emitted every `30s` (`--stats 30s --stats-one-line`).
+
 For ready-to-use grep filters based on this contract, see [advanced_configuration.md](advanced_configuration.md).
 
 ### System-Wide Shutdown Button (Recommended)

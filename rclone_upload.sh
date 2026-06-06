@@ -20,7 +20,7 @@ config_path="${5:-}"
 target_path="${6:-}"
 UPLOAD_PHASE="init"
 UPLOAD_LOG_LAST_MINUTE=""
-UPLOAD_LOG_TS_PREFIX=""
+UPLOAD_LOG_TS_NEWLINE=""
 upload_stats_tmp=$(mktemp "${TMPDIR:-/tmp}/upload_stats.XXXXXX") || upload_stats_tmp=""
 rclone_logfile=""
 
@@ -43,16 +43,58 @@ update_upload_log_minute_prefix() {
     current_minute="$(date '+%Y-%m-%d %H:%M')"
     if [ "$current_minute" != "$UPLOAD_LOG_LAST_MINUTE" ]; then
         UPLOAD_LOG_LAST_MINUTE="$current_minute"
-        UPLOAD_LOG_TS_PREFIX="[$current_minute] "
+        UPLOAD_LOG_TS_NEWLINE="[$current_minute]"
     else
-        UPLOAD_LOG_TS_PREFIX=""
+        UPLOAD_LOG_TS_NEWLINE=""
     fi
+}
+
+short_path() {
+    local p="$1"
+    local max_len="${2:-72}"
+    local base
+    base="$(basename "$p")"
+
+    if [ ${#p} -le "$max_len" ]; then
+        printf '%s' "$p"
+    else
+        printf '.../%s' "$base"
+    fi
+}
+
+format_rclone_line() {
+    local line="$1"
+
+    # Drop rclone timestamp/level prefix to keep terminal concise.
+    line="$(echo "$line" | sed -E 's/^[0-9]{4}\/[0-9]{2}\/[0-9]{2}[[:space:]]+[0-9]{2}:[0-9]{2}:[0-9]{2}[[:space:]]+[A-Z]+[[:space:]]+:[[:space:]]*//')"
+
+    # Compact one-line stats output.
+    if [[ "$line" == *"xfr#"* ]]; then
+        line="$(echo "$line" | sed -E 's/^[[:space:]]+//')"
+        printf 'stats %s' "$line"
+        return
+    fi
+
+    # Shorten long file paths in transfer lines.
+    if [[ "$line" =~ ^(.+):[[:space:]]+(.+)$ ]]; then
+        local lhs="${BASH_REMATCH[1]}"
+        local rhs="${BASH_REMATCH[2]}"
+        if [[ "$lhs" == *"/"* ]]; then
+            printf '%s: %s' "$(basename "$lhs")" "$rhs"
+            return
+        fi
+    fi
+
+    printf '%s' "$line"
 }
 
 log_msg() {
     local msg="$1"
+    local prefix="[upload:$UPLOAD_PHASE]"
     update_upload_log_minute_prefix
-    echo "${UPLOAD_LOG_TS_PREFIX}[upload][phase=$UPLOAD_PHASE] $msg" | tee -a "$logfile"
+
+    [ -n "$UPLOAD_LOG_TS_NEWLINE" ] && printf '\n%s\n' "$UPLOAD_LOG_TS_NEWLINE" | tee -a "$logfile"
+    echo "$prefix $msg" | tee -a "$logfile"
 }
 
 set_upload_phase() {
@@ -62,9 +104,19 @@ set_upload_phase() {
 # Stream stdin to log_msg with an optional message prefix.
 log_stream() {
     local prefix="${1:-}"
+    local line
     while IFS= read -r line; do
+        if [[ "$prefix" == *"[rclone]"* ]]; then
+            line="$(format_rclone_line "$line")"
+        fi
+        [ -z "$line" ] && continue
+
         if [ -n "$prefix" ]; then
-            log_msg "$prefix$line"
+            if [[ "$prefix" == *"[rclone]"* ]] && [[ "$line" == stats\ * ]]; then
+                log_msg "$line"
+            else
+                log_msg "$prefix$line"
+            fi
         else
             log_msg "$line"
         fi
@@ -72,13 +124,13 @@ log_stream() {
 }
 
 log_msg "=== Starting rclone upload ==="
-log_msg "Data directory: $data_dir"
+log_msg "Data dir: $(short_path "$data_dir")"
 log_msg "Remote: $remote_name"
-log_msg "State file: $state_file"
+log_msg "State file: $(short_path "$state_file")"
 if [ -n "$config_path" ]; then
-    log_msg "Rclone config path: $config_path"
+    log_msg "Rclone config: $(short_path "$config_path")"
 else
-    log_msg "Rclone config path: default lookup"
+    log_msg "Rclone config: default lookup"
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -92,7 +144,8 @@ if ! command -v rclone >/dev/null 2>&1; then
 fi
 
 if [ ! -d "$data_dir" ]; then
-    log_msg "ERROR: Source directory does not exist: $data_dir"
+    log_msg "ERROR: Source directory does not exist"
+    log_msg "  path: $(short_path "$data_dir")"
     exit 1
 fi
 
@@ -102,10 +155,10 @@ data_top_folder_name=$(basename "$data_dir")
 # Determine remote target
 if [ -n "$target_path" ]; then
     remote_target="${remote_name}:${target_path}"
-    log_msg "Using explicit remote target path: $target_path"
+    log_msg "Remote target path: $target_path"
 else
     remote_target="${remote_name}:${data_top_folder_name}"
-    log_msg "Using default remote target path from data dir name: $data_top_folder_name"
+    log_msg "Remote target path: default ($data_top_folder_name)"
 fi
 log_msg "Remote target: $remote_target"
 
@@ -162,7 +215,7 @@ rclone_copy_with_retry() {
     local delay=10
 
     while [ $attempt -le $max_attempts ]; do
-        if printf '%s\n' "$files_to_upload" | rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[component=rclone] "; then
+        if printf '%s\n' "$files_to_upload" | rclone "${rclone_args[@]}" 2>&1 | tee -a "$rclone_logfile" | log_stream "[rclone] "; then
             return 0
         fi
 

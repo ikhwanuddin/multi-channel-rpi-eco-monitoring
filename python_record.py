@@ -35,12 +35,12 @@ class MinuteBoundaryFormatter(logging.Formatter):
 
     def format(self, record):
         msg = super().format(record)
-        minute_stamp = datetime.fromtimestamp(record.created).strftime('%Y-%m-%d %H:%M')
+        minute_stamp = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M")
 
         with self._lock:
             if minute_stamp != self._last_minute:
                 self._last_minute = minute_stamp
-                return '[{}] {}'.format(minute_stamp, msg)
+                return "[{}] {}".format(minute_stamp, msg)
 
         return msg
 
@@ -323,12 +323,28 @@ def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
         # sys.exit()
 
     # Capture data from the sensor
-    logging.info("Capturing data from sensor")
-    sensor.capture_data(
-        working_dir=session_working_dir,
-        upload_dir=session_upload_dir,
-        pre_upload_dir=session_pre_upload_dir,
+    start_capture = time.time()
+    logging.info(
+        "record_sensor: Capturing data from sensor at {}".format(
+            time.strftime("%Y-%m-%d %H:%M:%S")
+        )
     )
+    try:
+        sensor.capture_data(
+            working_dir=session_working_dir,
+            upload_dir=session_upload_dir,
+            pre_upload_dir=session_pre_upload_dir,
+        )
+        elapsed = time.time() - start_capture
+        logging.info("record_sensor: capture_data completed in {:.1f}s".format(elapsed))
+    except Exception:
+        elapsed = time.time() - start_capture
+        logging.error(
+            "record_sensor: capture_data raised an exception after {:.1f}s for {}. "
+            "Check sensor class stderr logs above.".format(elapsed, start_date)
+        )
+        # Re-raise so continuous_recording loop catches and counts tiny file streak.
+        raise
 
     # Let the sensor sleep
     if sleep:
@@ -611,9 +627,23 @@ def continuous_recording(
             if recording_in_progress is not None:
                 recording_in_progress.clear()
             logging.error(
-                "Unhandled exception in continuous_recording loop: {}".format(e)
+                "continuous_recording: unhandled exception at {}: {}".format(
+                    time.strftime("%Y-%m-%d %H:%M:%S"), e
+                )
             )
             logging.error(traceback.format_exc())
+            # Log disk usage snapshot for diagnosis.
+            try:
+                du = psutil.disk_usage(upload_dir)
+                logging.warning(
+                    "continuous_recording: disk status on {}: {:.2f} GB free / {:.2f} GB total".format(
+                        upload_dir,
+                        du.free / (1024**3),
+                        du.total / (1024**3),
+                    )
+                )
+            except Exception:
+                pass
             time.sleep(5)
 
 

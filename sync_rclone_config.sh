@@ -110,6 +110,22 @@ _resolve_rclone_owner() {
     echo "$owner_user:$owner_group"
 }
 
+# ── Fix ownership and permissions on a file/dir to the resolved rclone owner ─
+_fix_ownership() {
+    local target="$1"
+    local perm_mode="${2:-600}"
+    local owner_spec
+    owner_spec=$(_resolve_rclone_owner)
+
+    if command -v sudo >/dev/null 2>&1; then
+        sudo chown "$owner_spec" "$target" 2>/dev/null || chown "$owner_spec" "$target" 2>/dev/null || true
+        sudo chmod "$perm_mode" "$target" 2>/dev/null || chmod "$perm_mode" "$target" 2>/dev/null || true
+    else
+        chown "$owner_spec" "$target" 2>/dev/null || true
+        chmod "$perm_mode" "$target" 2>/dev/null || true
+    fi
+}
+
 # ── Read gist credentials from config.json ────────────────────────────────────
 _read_gist_config() {
     local config_file="${1:-./config.json}"
@@ -297,8 +313,11 @@ except (KeyError, TypeError):
         return 1
     fi
 
-    # Ensure directory exists
-    mkdir -p "$(dirname "$RCLONE_CONF_PATH")"
+    # Ensure directory exists and correct ownership
+    local rclone_dir
+    rclone_dir="$(dirname "$RCLONE_CONF_PATH")"
+    mkdir -p "$rclone_dir"
+    _fix_ownership "$rclone_dir" 755
 
     # Download raw content
     local dl_code
@@ -306,19 +325,13 @@ except (KeyError, TypeError):
         -H "Authorization: token $GIST_TOKEN" \
         "$raw_url" 2>"$raw_err_file")
 
+    # Fix ownership of the config file regardless of download success,
+    # so a partial/failed download doesn't leave a root-owned artifact.
+    if [ -f "$RCLONE_CONF_PATH" ]; then
+        _fix_ownership "$RCLONE_CONF_PATH" 600
+    fi
+
     if [ "$dl_code" = "200" ]; then
-        # Keep ownership on the intended non-root user even when called via sudo.
-        local owner_spec
-        owner_spec=$(_resolve_rclone_owner)
-
-        if command -v sudo >/dev/null 2>&1; then
-            sudo chown "$owner_spec" "$RCLONE_CONF_PATH" 2>/dev/null || chown "$owner_spec" "$RCLONE_CONF_PATH" 2>/dev/null || true
-            sudo chmod 600 "$RCLONE_CONF_PATH" 2>/dev/null || chmod 600 "$RCLONE_CONF_PATH" 2>/dev/null || true
-        else
-            chown "$owner_spec" "$RCLONE_CONF_PATH" 2>/dev/null || true
-            chmod 600 "$RCLONE_CONF_PATH" 2>/dev/null || true
-        fi
-
         _gist_log "Pull successful - rclone.conf updated (HTTP $dl_code)" "$logfile"
         rm -rf "$tmpdir"
         return 0

@@ -171,18 +171,17 @@ if [ ! -d "$data_dir" ]; then
     exit 1
 fi
 
-# Get data folder name for remote path
-data_top_folder_name=$(basename "$data_dir")
+    # Get data folder name for remote path
+    # Custom structure: Files/monitoring_data/<RPiID>/<date>
+    # data_dir is expected to be: .../live_data/<RPiID>
 
-# Determine remote target
-if [ -n "$target_path" ]; then
-    remote_target="${remote_name}:${target_path}"
-    log_msg "Remote target path: $target_path"
-else
-    remote_target="${remote_name}:${data_top_folder_name}"
-    log_msg "Remote target path: default ($data_top_folder_name)"
-fi
-log_msg "Remote target: $remote_target"
+    rpi_id=$(basename "$data_dir")
+    current_date=$(date '+%Y-%m-%d')
+    remote_target_path="Files/monitoring_data/${rpi_id}/${current_date}"
+
+    remote_target="${remote_name}:${remote_target_path}"
+    log_msg "Remote target path: $remote_target_path"
+    log_msg "Remote target: $remote_target"
 
 # Initialize state and scan files
 set_upload_phase "scan-mark"
@@ -208,6 +207,9 @@ rclone_args=(
     --stats 30s
     --stats-one-line
     --files-from -  # Read from stdin
+    --transfers 4
+    --checkers 8
+    --buffer-size 16M
 )
 if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")

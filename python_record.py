@@ -543,6 +543,11 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
         logging.info("Updating time from internet before upload sync")
         subprocess.call("bash ./update_time.sh", shell=True)
 
+        # Force a shorter interval for the *next* sync if internet was detected
+        # (This makes the system more responsive)
+        if is_internet_available():
+            sync_interval = 60  # Reduce to 1 minute when internet is available
+
         logging.info(
             "Started upload sync at {}".format(
                 datetime.now().strftime("%Y-%m-%d %H:%M")

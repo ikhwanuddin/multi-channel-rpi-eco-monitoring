@@ -163,7 +163,6 @@ class Sipeed7Mic(SensorBase):
         try:
             card_arg = "plughw:{},0".format(self.card)
             cmd = [
-                "sudo",
                 "arecord",
                 "-D",
                 card_arg,

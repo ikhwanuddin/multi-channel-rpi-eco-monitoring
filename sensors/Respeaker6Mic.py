@@ -112,7 +112,7 @@ class Respeaker6Mic(SensorBase):
         file_size = 0
 
         try:
-            cmd_str = "sudo arecord -Dac108 -f S32_LE -r 16000 -c 6 --duration {} {}"
+            cmd_str = "arecord -Dac108 -f S32_LE -r 16000 -c 6 --duration {} {}"
             full_cmd = cmd_str.format(self.record_length, wfile)
             logging.info("{} - arecord command: {}".format(self.current_file, full_cmd))
 
@@ -167,7 +167,7 @@ class Respeaker6Mic(SensorBase):
                     )
                     # Also kill any lingering arecord processes.
                     subprocess.run(
-                        "sudo pkill -9 arecord", shell=True, stderr=subprocess.DEVNULL
+                        "pkill -9 arecord", shell=True, stderr=subprocess.DEVNULL
                     )
             except Exception as proc_exc:
                 arecord_exit_code = -1

@@ -653,6 +653,7 @@ def continuous_recording(
     upload_dir,
     sensor_config,
     die,
+    test_mode,
     recording_in_progress=None,
     min_free_storage_gb=1.0,
     warn_free_storage_gb=4.0,
@@ -665,6 +666,7 @@ def continuous_recording(
         upload_dir: Path to the final directory used to upload processed files
         sensor_config: The sensor configuration dictionary
         die: A threading event to terminate the upload server sync
+        test_mode: Boolean, if True forces recording even if internet is available
     """
 
     # Require multiple consecutive tiny files before rebooting to avoid
@@ -676,7 +678,6 @@ def continuous_recording(
     while not die.is_set():
         try:
             # Check for internet to decide whether to record
-            test_mode = config.get("test_mode", 0) == 1
             # We need to define force_record here based on config or default
             force_record = False  # Default behavior if not defined in config
             if not force_record and is_internet_available() and not test_mode:
@@ -1009,6 +1010,7 @@ def record(config_file, logfile_name, log_dir="logs"):
             upload_dir_pi,
             sensor_config,
             die,
+            test_mode,
             recording_in_progress,
             min_free_storage_gb,
             warn_free_storage_gb,

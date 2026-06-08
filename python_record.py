@@ -53,10 +53,10 @@ def auto_update_repository():
             subprocess.call(["git", "-C", script_dir, "fetch", "origin"], timeout=30)
             == 0
         ):
-            # 2. Reset hard ke origin/main
+            # 2. Reset hard ke origin/master
             if (
                 subprocess.call(
-                    ["git", "-C", script_dir, "reset", "--hard", "origin/main"],
+                    ["git", "-C", script_dir, "reset", "--hard", "origin/master"],
                     timeout=45,
                 )
                 == 0
@@ -79,7 +79,7 @@ def auto_update_repository():
 
                 logging.info("Repository updated successfully.")
             else:
-                logging.warning("Failed to reset to origin/main.")
+                logging.warning("Failed to reset to origin/master.")
         else:
             logging.warning(
                 "Could not reach GitHub (offline/timeout), skipping auto-update"

@@ -75,7 +75,7 @@ def pre_verify(data_dir, state_file, remote_target, config_path):
     state = load_state(state_file)
 
     # 1. Get remote list
-    lsf_cmd = ["rclone", "lsf", "--files-only", "--format", "p", remote_target]
+    lsf_cmd = ["rclone", "lsf", "-R", "--files-only", "--format", "p", remote_target]
     if config_path:
         lsf_cmd.extend(["--config", config_path])
 
@@ -121,7 +121,7 @@ def verify_finalize(data_dir, state_file, remote_target, config_path, dry_run=Fa
         return
 
     # 1. Get remote list using lsf (much faster than check)
-    lsf_cmd = ["rclone", "lsf", "--files-only", "--format", "p", remote_target]
+    lsf_cmd = ["rclone", "lsf", "-R", "--files-only", "--format", "p", remote_target]
     if config_path:
         lsf_cmd.extend(["--config", config_path])
 

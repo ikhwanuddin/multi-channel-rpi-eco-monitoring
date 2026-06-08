@@ -863,6 +863,9 @@ def record(config_file, logfile_name, log_dir="logs"):
         sys.exit()
 
     # Setup GPIO for sensors that have a button
+    logging.info(
+        f"DEBUG: Setup starting. offline_mode={offline_mode}, test_mode={test_mode}"
+    )
     GPIO.setmode(GPIO.BCM)
 
     # Setup button for Respeaker series (GPIO 26)
@@ -920,6 +923,7 @@ def record(config_file, logfile_name, log_dir="logs"):
     # subprocess.call(battery_shutdown_cmd, shell=True)
 
     # Check working directory
+    logging.info("DEBUG: Working directory check.")
     if os.path.exists(working_dir) and os.path.isdir(working_dir):
         logging.info("Using {} as working directory".format(working_dir))
     else:
@@ -983,9 +987,11 @@ def record(config_file, logfile_name, log_dir="logs"):
         logging.error("Could not move existing logs to upload.")
 
     # Now get the sensor
+    logging.info("DEBUG: Configuring sensor.")
     sensor = configure_sensor(sensor_config)
 
     # Set up the threads to run and an event handler to allow them to be shutdown cleanly
+    logging.info("DEBUG: Setting up threads.")
     die = threading.Event()
     signal.signal(signal.SIGINT, exit_handler)
 
@@ -1044,6 +1050,7 @@ def record(config_file, logfile_name, log_dir="logs"):
         elif test_mode:
             logging.info("Running in test mode - upload synchronisation disabled")
         else:
+            logging.info("DEBUG: Entering else block for sync_thread.")
             # wait a while to allow make the two threads run out of sync
             time.sleep(sensor.server_sync_interval / 2)
             # start the upload sync

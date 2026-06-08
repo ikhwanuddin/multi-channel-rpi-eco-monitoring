@@ -676,8 +676,10 @@ def continuous_recording(
     while not die.is_set():
         try:
             # Check for internet to decide whether to record
-            force_record = os.environ.get("FORCE_RECORD_MODE", "0") == "1"
-            if not force_record and is_internet_available():
+            test_mode = config.get("test_mode", 0) == 1
+            # We need to define force_record here based on config or default
+            force_record = False  # Default behavior if not defined in config
+            if not force_record and is_internet_available() and not test_mode:
                 logging.info("Internet detected. Pausing recording to allow upload.")
                 time.sleep(60)  # Wait 60 seconds before re-checking
                 continue
@@ -834,6 +836,7 @@ def record(config_file, logfile_name, log_dir="logs"):
         rclone_config = config["rclone"]
         sensor_config = config["sensor"]
         offline_mode = config["offline_mode"]
+        test_mode = config.get("test_mode", 0) == 1
         force_offline_mode = str(
             os.environ.get("FORCE_OFFLINE_MODE", "0")
         ).strip().lower() in ["1", "true", "yes", "on"]
@@ -984,7 +987,7 @@ def record(config_file, logfile_name, log_dir="logs"):
     die = threading.Event()
     signal.signal(signal.SIGINT, exit_handler)
 
-    if not offline_mode:
+    if not offline_mode and not test_mode:
         sync_thread = threading.Thread(
             target=upload_server_sync,
             args=(sensor.server_sync_interval, rclone_config, upload_dir_pi, die),
@@ -1035,6 +1038,8 @@ def record(config_file, logfile_name, log_dir="logs"):
 
         if offline_mode:
             logging.info("Running in offline mode - no upload synchronisation")
+        elif test_mode:
+            logging.info("Running in test mode - upload synchronisation disabled")
         else:
             # wait a while to allow make the two threads run out of sync
             time.sleep(sensor.server_sync_interval / 2)

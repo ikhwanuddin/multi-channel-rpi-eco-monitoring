@@ -683,14 +683,24 @@ def continuous_recording(
     tiny_file_reboot_threshold = 3
 
     # Start recording
+    internet_paused_logged = False
     while not die.is_set():
         try:
             # Check for internet to decide whether to record
             # We need to define force_record here based on config or default
             force_record = False  # Default behavior if not defined in config
             if not force_record and is_internet_available() and not test_mode:
-                logging.info("Internet detected. Pausing recording to allow upload.")
+                if not internet_paused_logged:
+                    logging.info(
+                        "Internet detected. Pausing recording to allow upload."
+                    )
+                    internet_paused_logged = True
+                time.sleep(
+                    1
+                )  # Small sleep to prevent CPU hogging while waiting for upload
                 continue
+
+            internet_paused_logged = False  # Reset flag when recording resumes
 
             # Never delete recorded data automatically. Only perform safety checks.
             storage_check_shutdown(

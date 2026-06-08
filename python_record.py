@@ -1,3 +1,4 @@
+import gc
 import json
 import logging
 import os
@@ -21,6 +22,35 @@ array_mic_button = 26  # Respeaker series
 
 # set a global name for a common logging for functions using this module
 LOG = "multi-channel-rpi-eco-monitoring"
+
+
+def gc_and_log_memory(caller_name):
+    """
+    Run garbage collection to reclaim memory and log current Python process
+    and overall system RAM usage to diagnose and prevent memory leaks.
+    """
+    try:
+        # Run Garbage Collector
+        collected = gc.collect()
+
+        # Get process memory usage
+        process = psutil.Process(os.getpid())
+        proc_mem_mb = process.memory_info().rss / (1024 * 1024)
+
+        # Get overall system memory usage
+        sys_mem = psutil.virtual_memory()
+        sys_avail_mb = sys_mem.available / (1024 * 1024)
+        sys_total_mb = sys_mem.total / (1024 * 1024)
+
+        logging.info(
+            "[{}] RAM Info - Process: {:.2f} MB | System Available: {:.2f}/{:.2f} MB | GC collected: {} objects".format(
+                caller_name, proc_mem_mb, sys_avail_mb, sys_total_mb, collected
+            )
+        )
+    except Exception as e:
+        logging.warning(
+            "Failed to collect garbage or log memory in {}: {}".format(caller_name, e)
+        )
 
 
 class MinuteBoundaryFormatter(logging.Formatter):
@@ -480,6 +510,7 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
         while wait < 0:
             wait += sync_interval
         logging.info("Waiting {} secs to next sync".format(wait))
+        gc_and_log_memory("upload_server_sync")
         time.sleep(wait)
 
 
@@ -621,6 +652,7 @@ def continuous_recording(
 
             # Sleep between recordings with recording_in_progress cleared so
             # scheduled_reboot_monitor can trigger during the capture_delay.
+            gc_and_log_memory("continuous_recording")
             sensor.sleep()
 
         except Exception as e:
@@ -661,6 +693,7 @@ def continuous_postprocess(sensor, sync_interval, upload_dir, die):
     while not die.is_set():
         try:
             run_postprocess(sensor, sync_interval, upload_dir, sleep=True)
+            gc_and_log_memory("continuous_postprocess")
         except Exception as e:
             logging.error(
                 "Unhandled exception in continuous_postprocess loop: {}".format(e)

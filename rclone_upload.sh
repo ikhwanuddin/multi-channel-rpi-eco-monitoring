@@ -185,7 +185,10 @@ fi
 
 # Initialize state and scan files
 set_upload_phase "scan-mark"
-log_msg "Scanning and marking files..."
+log_msg "Pre-verifying existing files on remote..."
+python3 "$SCRIPT_DIR/state_manager.py" pre-verify "$data_dir" "$state_file" --remote-target "$remote_target" --config-path "$config_path"
+
+log_msg "Scanning and marking new files..."
 
 # Use the new state manager to replace the three separate Python calls
 manager_output=$(python3 "$SCRIPT_DIR/state_manager.py" init-scan-mark "$data_dir" "$state_file")

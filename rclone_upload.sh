@@ -176,8 +176,8 @@ fi
     # data_dir is expected to be: .../live_data/<RPiID>
 
     rpi_id=$(basename "$data_dir")
-    current_date=$(date '+%Y-%m-%d')
-    remote_target_path="monitoring_data/${rpi_id}/${current_date}"
+    # Date removed to keep structure: monitoring_data/<RPiID>/
+    remote_target_path="monitoring_data/${rpi_id}"
 
     remote_target="${remote_name}:${remote_target_path}"
     log_msg "Remote target path: $remote_target_path"

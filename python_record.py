@@ -519,72 +519,54 @@ class StopMonitoring(Exception):
 
 def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
     logging.info("Function upload_server_sync has been called.")
-    """
-    Function to synchronize the upload data folder with the remote storage (rclone)
-
-    Parameters:
-        sync_interval: The time interval between synchronisation connections
-        rclone_config: A dictionary holding the rclone configuration
-        upload_dir_pi: The upload directory to synchronise (device-specific directory)
-        die: A threading event to terminate the upload server sync
-    """
 
     remote_name = rclone_config.get("remote_name", "mybox")
     config_path = rclone_config.get("config_path", "").strip()
-    remote_base_path = rclone_config.get(
-        "remote_base_path", "monitoring_data/live_data"
-    )
+    remote_base_path = rclone_config.get("remote_base_path", "monitoring_data")
 
-    # keep running while the die is not set
+    # Flag untuk memaksa sync instan
+    force_sync_now = threading.Event()
+
     while not die.is_set():
         start = time.time()
 
-        # Update time from internet
-        logging.info("Updating time from internet before upload sync")
-        subprocess.call("bash ./update_time.sh", shell=True)
-
-        # Force a shorter interval for the *next* sync if internet was detected
-        # (This makes the system more responsive)
+        # Cek internet & sinkronisasi lebih sering jika internet aktif
         if is_internet_available():
-            sync_interval = 60  # Reduce to 1 minute when internet is available
+            logging.info("Updating time from internet")
+            subprocess.call("bash ./update_time.sh", shell=True)
 
-        logging.info(
-            "Started upload sync at {}".format(
-                datetime.now().strftime("%Y-%m-%d %H:%M")
+            logging.info("Starting immediate upload sync.")
+
+            # Persiapan file state & log
+            state_file = os.path.join(
+                os.path.dirname(upload_dir_pi), "rclone_state.json"
             )
-        )
+            logfile = os.path.join(os.path.dirname(upload_dir_pi), "rclone.log")
 
-        # Define state and log files for the upload process
-        state_file = os.path.join(os.path.dirname(upload_dir_pi), "rclone_state.json")
-        logfile = os.path.join(os.path.dirname(upload_dir_pi), "rclone.log")
-
-        exit_code = subprocess.call(
-            [
-                "bash",
-                "./rclone_upload.sh",
-                upload_dir_pi,
-                remote_name,
-                state_file,
-                logfile,
-                config_path,
-                remote_base_path,
-            ]
-        )
-        if exit_code != 0:
-            logging.error("Upload sync failed with exit code {}".format(exit_code))
-        logging.info(
-            "Finished upload sync at {}".format(
-                datetime.now().strftime("%Y-%m-%d %H:%M")
+            exit_code = subprocess.call(
+                [
+                    "bash",
+                    "./rclone_upload.sh",
+                    upload_dir_pi,
+                    remote_name,
+                    state_file,
+                    logfile,
+                    config_path,
+                    remote_base_path,
+                ]
             )
-        )
 
-        # wait until the next sync interval
-        wait = sync_interval - (time.time() - start)
-        while wait < 0:
-            wait += sync_interval
-        logging.info("Waiting {} secs to next sync".format(wait))
+            if exit_code != 0:
+                logging.error("Upload sync failed with exit code {}".format(exit_code))
+                time.sleep(30)  # Tunggu sejenak jika gagal sebelum coba lagi
+            else:
+                logging.info("Upload sync cycle finished.")
+                time.sleep(10)  # Jeda singkat antar siklus sukses agar CPU tidak 100%
+        else:
+            # Jika tidak ada internet, tidur lebih lama
+            time.sleep(60)
+
         gc_and_log_memory("upload_server_sync")
-        time.sleep(wait)
 
 
 def clean_dirs(working_dir, upload_dir, pre_upload_dir, clean_working_dir=True):

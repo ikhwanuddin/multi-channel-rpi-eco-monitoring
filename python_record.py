@@ -39,54 +39,42 @@ def is_internet_available():
 
 def auto_update_repository():
     """
-    Force-sync repository to origin/main.
-    Preserves config.json and logs/ by excluding them from git clean.
+    Force-sync repository to origin/master, discarding local changes.
     """
     try:
-        # Menentukan path direktori skrip ini
         script_dir = os.path.dirname(os.path.abspath(__file__))
+        logging.info("Memulai auto-update repository...")
 
-        logging.info("Checking for repository updates from GitHub...")
+        # 1. Pastikan kita di branch master
+        subprocess.call(["git", "-C", script_dir, "checkout", "master"], timeout=30)
 
-        # 1. Fetch perubahan terbaru
-        if (
-            subprocess.call(["git", "-C", script_dir, "fetch", "origin"], timeout=30)
-            == 0
-        ):
-            # 2. Reset hard ke origin/master
-            if (
-                subprocess.call(
-                    ["git", "-C", script_dir, "reset", "--hard", "origin/master"],
-                    timeout=45,
-                )
-                == 0
-            ):
-                # 3. Clean file yang tidak dilacak (kecuali config.json dan logs/)
-                subprocess.call(
-                    [
-                        "git",
-                        "-C",
-                        script_dir,
-                        "clean",
-                        "-fd",
-                        "-e",
-                        "config.json",
-                        "-e",
-                        "logs/",
-                    ],
-                    timeout=30,
-                )
+        # 2. Ambil data terbaru dari remote
+        subprocess.call(["git", "-C", script_dir, "fetch", "origin"], timeout=30)
 
-                logging.info("Repository updated successfully.")
-            else:
-                logging.warning("Failed to reset to origin/master.")
-        else:
-            logging.warning(
-                "Could not reach GitHub (offline/timeout), skipping auto-update"
-            )
+        # 3. FORCE RESET ke origin/master (INI AKAN MENGHAPUS SEMUA PERUBAHAN LOKAL DI RPI)
+        subprocess.call(
+            ["git", "-C", script_dir, "reset", "--hard", "origin/master"], timeout=60
+        )
 
+        # 4. Bersihkan file yang tidak perlu
+        subprocess.call(
+            [
+                "git",
+                "-C",
+                script_dir,
+                "clean",
+                "-fd",
+                "-e",
+                "config.json",
+                "-e",
+                "logs/",
+            ],
+            timeout=30,
+        )
+
+        logging.info("Auto-update selesai.")
     except Exception as e:
-        logging.warning("Auto-update failed: {}".format(e))
+        logging.warning("Auto-update gagal: {}".format(e))
 
 
 def gc_and_log_memory(caller_name):
@@ -463,10 +451,17 @@ def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
     # Create the Pre-Upload Directory (For Storing all Finished Recordings)
     try:
         if not os.path.exists(session_pre_upload_dir):
-            os.makedirs(session_pre_upload_dir)
-    except OSError:
+            os.makedirs(session_pre_upload_dir, exist_ok=True)
+            logging.info(
+                "Created pre-upload directory for recording: {}".format(
+                    session_pre_upload_dir
+                )
+            )
+    except OSError as e:
         logging.critical(
-            "Could not create pre upload directory {}".format(session_pre_upload_dir)
+            "Could not create pre upload directory {}: {}".format(
+                session_pre_upload_dir, e
+            )
         )
         return
 

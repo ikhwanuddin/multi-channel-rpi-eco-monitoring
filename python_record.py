@@ -518,6 +518,7 @@ class StopMonitoring(Exception):
 
 
 def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
+    logging.info("Function upload_server_sync has been called.")
     """
     Function to synchronize the upload data folder with the remote storage (rclone)
 
@@ -1047,6 +1048,7 @@ def record(config_file, logfile_name, log_dir="logs"):
             time.sleep(sensor.server_sync_interval / 2)
             # start the upload sync
             sync_thread.start()
+            logging.info("Thread upload sync has started.")
             logging.info(
                 "Starting upload server sync every {} seconds at {}".format(
                     sensor.server_sync_interval,

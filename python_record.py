@@ -37,6 +37,58 @@ def is_internet_available():
         return False
 
 
+def auto_update_repository():
+    """
+    Force-sync repository to origin/main.
+    Preserves config.json and logs/ by excluding them from git clean.
+    """
+    try:
+        # Menentukan path direktori skrip ini
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+
+        logging.info("Checking for repository updates from GitHub...")
+
+        # 1. Fetch perubahan terbaru
+        if (
+            subprocess.call(["git", "-C", script_dir, "fetch", "origin"], timeout=30)
+            == 0
+        ):
+            # 2. Reset hard ke origin/main
+            if (
+                subprocess.call(
+                    ["git", "-C", script_dir, "reset", "--hard", "origin/main"],
+                    timeout=45,
+                )
+                == 0
+            ):
+                # 3. Clean file yang tidak dilacak (kecuali config.json dan logs/)
+                subprocess.call(
+                    [
+                        "git",
+                        "-C",
+                        script_dir,
+                        "clean",
+                        "-fd",
+                        "-e",
+                        "config.json",
+                        "-e",
+                        "logs/",
+                    ],
+                    timeout=30,
+                )
+
+                logging.info("Repository updated successfully.")
+            else:
+                logging.warning("Failed to reset to origin/main.")
+        else:
+            logging.warning(
+                "Could not reach GitHub (offline/timeout), skipping auto-update"
+            )
+
+    except Exception as e:
+        logging.warning("Auto-update failed: {}".format(e))
+
+
 def gc_and_log_memory(caller_name):
     """
     Run garbage collection to reclaim memory and log current Python process
@@ -764,6 +816,9 @@ def record(config_file, logfile_name, log_dir="logs"):
     start_time = datetime.now().strftime("%Y%m%d_%H%M")
 
     logging.info("Start of continuous sampling: {}".format(start_time))
+
+    # Perform auto-update
+    auto_update_repository()
 
     # Log current git commit information
     p = subprocess.Popen(["git", "log", "-1", '--format="%H"'], stdout=subprocess.PIPE)

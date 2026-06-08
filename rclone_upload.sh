@@ -177,7 +177,7 @@ fi
 
     rpi_id=$(basename "$data_dir")
     current_date=$(date '+%Y-%m-%d')
-    remote_target_path="Files/monitoring_data/${rpi_id}/${current_date}"
+    remote_target_path="monitoring_data/${rpi_id}/${current_date}"
 
     remote_target="${remote_name}:${remote_target_path}"
     log_msg "Remote target path: $remote_target_path"

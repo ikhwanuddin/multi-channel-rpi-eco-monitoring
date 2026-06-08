@@ -240,16 +240,16 @@ def configure_sensor(sensor_config):
     return sensor
 
 
-def check_last_recording_size(upload_dir_pi, pre_upload_dir_pi=None):
+def check_last_recording_size(upload_dir, pre_upload_dir=None):
     """
     Check the latest recording artefact across upload/pre-upload directories.
     Returns True when the latest artefact indicates a failed or suspiciously small
     recording.
     """
     try:
-        scan_roots = [upload_dir_pi]
-        if pre_upload_dir_pi:
-            scan_roots.append(pre_upload_dir_pi)
+        scan_roots = [upload_dir]
+        if pre_upload_dir:
+            scan_roots.append(pre_upload_dir)
 
         candidates = []
         for scan_root in scan_roots:
@@ -879,20 +879,17 @@ def record(config_file, logfile_name, log_dir="logs"):
     # Check for / create a directory for pre-compression files
     # output from this raspberry pi.
     pre_upload_dir = "/home/pi/pre_upload_dir"
-    pre_upload_dir = os.path.join(pre_upload_dir)
-    pre_upload_dir_pi = os.path.join(pre_upload_dir, "live_data", cpu_serial)
-
-    if os.path.exists(pre_upload_dir_pi) and os.path.isdir(pre_upload_dir_pi):
-        logging.info("Using {} as pre-upload directory".format(pre_upload_dir_pi))
-    else:
+    if not os.path.exists(pre_upload_dir):
         try:
-            os.makedirs(pre_upload_dir_pi)
-            logging.info("Created {} as pre-upload directory".format(pre_upload_dir_pi))
+            os.makedirs(pre_upload_dir)
+            logging.info("Created {} as pre-upload directory".format(pre_upload_dir))
         except OSError:
             logging.critical(
-                "Could not create {} as pre-upload directory".format(pre_upload_dir_pi)
+                "Could not create {} as pre-upload directory".format(pre_upload_dir)
             )
             sys.exit()
+    else:
+        logging.info("Using {} as pre-upload directory".format(pre_upload_dir))
 
     # Check for / create an upload directory with a specific folder for
     # output from this raspberry pi.

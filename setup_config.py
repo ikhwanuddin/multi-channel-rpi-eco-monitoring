@@ -177,7 +177,18 @@ def main():
             ),
             "default": 1,
             "valid": [0, 1],
-        }
+        },
+        {
+            "name": "test_mode",
+            "type": int,
+            "prompt": (
+                "Enable test mode?\n"
+                "1 = Yes (forces recording even if internet is available, skips all uploads)\n"
+                "0 = No (standard behavior)"
+            ),
+            "default": 0,
+            "valid": [0, 1],
+        },
     ]
 
     deployment_config = {}
@@ -333,10 +344,15 @@ def main():
     for option in sys_config_options:
         config_parse(option, sys_config)
 
-    config = {'rclone': rclone_config, 'gist': gist_config,
-              'offline_mode': offline_config['offline_mode'],
-              'has_internet': deployment_config['has_internet'],
-              'sensor': sensor_config, 'sys': sys_config}
+    config = {
+        "rclone": rclone_config,
+        "gist": gist_config,
+        "offline_mode": offline_config["offline_mode"],
+        "has_internet": deployment_config["has_internet"],
+        "test_mode": deployment_config["test_mode"],
+        "sensor": sensor_config,
+        "sys": sys_config,
+    }
 
     # save the config
     with open(config_file, "w") as fp:

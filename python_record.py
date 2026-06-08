@@ -434,70 +434,42 @@ def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
         sensor.sleep()
 
 
-def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
+def run_postprocess(sensor, upload_dir):
     """
-    Function to handle optional postprocessing seperately to recording
-
-    Args:
-        sensor: A sensor instance
-        upload_dir: The upload directory root to put compressed files in
+    Function to handle mandatory postprocessing (move, convert, compress)
+    of recordings before the next recording cycle starts.
     """
-
-    # TODO make pre_this a configurable variable
+    tmp_dir = "/home/pi/tmp_dir"
     pre_upload_dir = "/home/pi/pre_upload_dir"
     start_date = time.strftime("%Y-%m-%d")
     session_pre_upload_dir = os.path.join(pre_upload_dir, start_date)
 
-    # Create the Pre-Upload Directory (For Storing all Finished Recordings)
-    try:
-        if not os.path.exists(session_pre_upload_dir):
-            os.makedirs(session_pre_upload_dir, exist_ok=True)
-            logging.info(
-                "Created pre-upload directory for recording: {}".format(
-                    session_pre_upload_dir
-                )
-            )
-    except OSError as e:
-        logging.critical(
-            "Could not create pre upload directory {}: {}".format(
-                session_pre_upload_dir, e
-            )
-        )
-        return
+    # 1. Ensure directories exist
+    os.makedirs(session_pre_upload_dir, exist_ok=True)
 
-    # Generate file list (including sub-directories), while dropping known
-    # invalid leftovers so they do not block future postprocessing attempts.
+    # 2. Move raw data from tmp_dir to pre_upload_dir
+    raw_files = [f for f in os.listdir(tmp_dir) if f.endswith(".wav")]
+    for f in raw_files:
+        src = os.path.join(tmp_dir, f)
+        dst = os.path.join(session_pre_upload_dir, f)
+        shutil.move(src, dst)
+        logging.info("Moved {} to pre-upload".format(f))
+
+    # 3. Process files in pre_upload_dir and move to upload_dir
     file_list = []
-
-    for root, directories, files in os.walk(pre_upload_dir, topdown=False):
+    for root, _, files in os.walk(pre_upload_dir):
         for name in files:
-            full_path = os.path.join(root, name)
+            if name.lower().endswith(".wav"):
+                file_list.append(os.path.join(root, name))
 
-            if "ERROR" in name.upper():
-                # Preserve markers for diagnosis and tiny-file streak detection.
-                continue
-
-            if not name.lower().endswith(".wav"):
-                continue
-
-            file_list.append(full_path)
-
-    if len(file_list) == 0:
-        pass
-    else:
+    if file_list:
+        logging.info("Processing {} files...".format(len(file_list)))
         for i in file_list:
             sensor.postprocess(i, upload_dir)
-
-    # wait until the next sync interval
-    wait = sync_interval
-    logging.info("Waiting {} to start postprocessing again".format(wait))
-    # Removed time.sleep(wait) to prevent blocking the thread if not needed,
-    # but run_postprocess is called in a loop in continuous_postprocess,
-    # so we should perhaps sleep briefly to prevent 100% CPU usage if no files processed.
-    if len(file_list) > 0:
-        time.sleep(1)
-    else:
-        time.sleep(wait)
+            # Remove raw file after successful processing
+            if os.path.exists(i):
+                os.remove(i)
+                logging.info("Processed and removed raw file: {}".format(i))
 
 
 def exit_handler(signal, frame):
@@ -675,6 +647,9 @@ def continuous_recording(
     internet_paused_logged = False
     while not die.is_set():
         try:
+            # Mandatorily process any pending recordings before starting a new one
+            run_postprocess(sensor, upload_dir)
+
             # Check for internet to decide whether to record
             # We need to define force_record here based on config or default
             force_record = False  # Default behavior if not defined in config
@@ -753,29 +728,6 @@ def continuous_recording(
                 )
             except Exception:
                 pass
-            time.sleep(5)
-
-
-def continuous_postprocess(sensor, sync_interval, upload_dir, die):
-    """
-    Runs a loop over the sensor sampling process
-    Args:
-        sensor: A instance of one of the sensor classes
-        working_dir: Path to the working directory for recording
-        upload_dir: Path to the final directory used to upload processed files
-        die: A threading event to terminate the upload server sync
-    """
-
-    # Start recording
-    while not die.is_set():
-        try:
-            run_postprocess(sensor, sync_interval, upload_dir, sleep=True)
-            gc_and_log_memory("continuous_postprocess")
-        except Exception as e:
-            logging.error(
-                "Unhandled exception in continuous_postprocess loop: {}".format(e)
-            )
-            logging.error(traceback.format_exc())
             time.sleep(5)
 
 
@@ -1038,12 +990,6 @@ def record(config_file, logfile_name, log_dir="logs"):
         ),
     )
 
-    # Postprocess the raw data in a separate thread
-    postprocess_thread = threading.Thread(
-        target=continuous_postprocess,
-        args=(sensor, sensor.server_sync_interval, upload_dir_pi, die),
-    )
-
     # Initialise background thread to do remote sync of the root upload directory
     # Failure here does not preclude data capture and might be temporary so log
     # errors but don't exit.
@@ -1055,7 +1001,6 @@ def record(config_file, logfile_name, log_dir="logs"):
             )
         )
         record_thread.start()
-        postprocess_thread.start()
         if reboot_thread is not None:
             reboot_thread.start()
 
@@ -1085,7 +1030,6 @@ def record(config_file, logfile_name, log_dir="logs"):
         # wait for them to finish and then exit the program
         die.set()
         record_thread.join()
-        postprocess_thread.join()
         if reboot_thread is not None:
             reboot_thread.join()
         if not offline_mode:

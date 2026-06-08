@@ -676,7 +676,8 @@ def continuous_recording(
     while not die.is_set():
         try:
             # Check for internet to decide whether to record
-            if is_internet_available():
+            force_record = os.environ.get("FORCE_RECORD_MODE", "0") == "1"
+            if not force_record and is_internet_available():
                 logging.info("Internet detected. Pausing recording to allow upload.")
                 time.sleep(60)  # Wait 60 seconds before re-checking
                 continue

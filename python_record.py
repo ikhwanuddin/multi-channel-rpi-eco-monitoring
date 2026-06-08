@@ -491,7 +491,13 @@ def run_postprocess(sensor, sync_interval, upload_dir, sleep=True):
     # wait until the next sync interval
     wait = sync_interval
     logging.info("Waiting {} to start postprocessing again".format(wait))
-    time.sleep(wait)
+    # Removed time.sleep(wait) to prevent blocking the thread if not needed,
+    # but run_postprocess is called in a loop in continuous_postprocess,
+    # so we should perhaps sleep briefly to prevent 100% CPU usage if no files processed.
+    if len(file_list) > 0:
+        time.sleep(1)
+    else:
+        time.sleep(wait)
 
 
 def exit_handler(signal, frame):
@@ -1059,9 +1065,7 @@ def record(config_file, logfile_name, log_dir="logs"):
             logging.info("Running in test mode - upload synchronisation disabled")
         else:
             logging.info("DEBUG: Entering else block for sync_thread.")
-            # wait a while to allow make the two threads run out of sync
-            time.sleep(sensor.server_sync_interval / 2)
-            # start the upload sync
+            # Start sync thread immediately
             sync_thread.start()
             logging.info("Thread upload sync has started.")
             logging.info(

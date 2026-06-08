@@ -548,12 +548,19 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
                 datetime.now().strftime("%Y-%m-%d %H:%M")
             )
         )
+
+        # Define state and log files for the upload process
+        state_file = os.path.join(os.path.dirname(upload_dir_pi), "rclone_state.json")
+        logfile = os.path.join(os.path.dirname(upload_dir_pi), "rclone.log")
+
         exit_code = subprocess.call(
             [
                 "bash",
                 "./rclone_upload.sh",
                 upload_dir_pi,
                 remote_name,
+                state_file,
+                logfile,
                 config_path,
                 remote_base_path,
             ]

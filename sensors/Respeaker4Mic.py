@@ -1,14 +1,14 @@
-import time
-import subprocess
-import os
-import sensors
 import logging
+import os
+import subprocess
+import time
+
+import sensors
 from sensors.SensorBase import SensorBase
 
+
 class Respeaker4Mic(SensorBase):
-
     def __init__(self, config=None):
-
         """
         A class to record audio from a USB Soundcard microphone.
 
@@ -21,18 +21,18 @@ class Respeaker4Mic(SensorBase):
         # code uses the variables named and described in the config static to set
         # defaults and override with any passed in the config file.
         opts = self.options()
-        opts = {var['name']: var for var in opts}
+        opts = {var["name"]: var for var in opts}
 
-        self.record_length = sensors.set_option('record_length', config, opts)
-        self.compress_data = sensors.set_option('compress_data', config, opts)
-        self.capture_delay = sensors.set_option('capture_delay', config, opts)
+        self.record_length = sensors.set_option("record_length", config, opts)
+        self.compress_data = sensors.set_option("compress_data", config, opts)
+        self.capture_delay = sensors.set_option("capture_delay", config, opts)
 
         # set internal variables and required class variables
-        self.working_file = 'currentlyRecording.wav'
+        self.working_file = "currentlyRecording.wav"
         self.current_file = None
         self.working_dir = None
         self.upload_dir = None
-        self.pre_upload_dir = '/home/pi/pre_upload_dir'
+        self.pre_upload_dir = "/home/pi/pre_upload_dir"
         self.server_sync_interval = self.record_length + self.capture_delay
 
     @staticmethod
@@ -40,25 +40,34 @@ class Respeaker4Mic(SensorBase):
         """
         Static method defining the config options and defaults for the sensor class
         """
-        return [{'name': 'record_length',
-                 'type': int,
-                 'default': 1200,
-                 'prompt': 'What is the time in seconds of the audio segments?'},
-                {'name': 'compress_data',
-                 'type': bool,
-                 'default': False,
-                 'prompt': 'Should the audio data be compressed using FLAC?'},
-                {'name': 'capture_delay',
-                 'type': int,
-                 'default': 300,
-                 'prompt': 'How long should the system wait between audio samples?'}
-                ]
+        return [
+            {
+                "name": "record_length",
+                "type": int,
+                "default": 1200,
+                "prompt": "What is the time in seconds of the audio segments?",
+            },
+            {
+                "name": "compress_data",
+                "type": bool,
+                "default": False,
+                "prompt": "Should the audio data be compressed using FLAC?",
+            },
+            {
+                "name": "capture_delay",
+                "type": int,
+                "default": 300,
+                "prompt": "How long should the system wait between audio samples?",
+            },
+        ]
 
     def setup(self):
 
         try:
             # Load alsactl file - increased microphone volume level
-            subprocess.call('alsactl --file ./audio_sensor_scripts/asound.state restore', shell=True)
+            subprocess.call(
+                "alsactl --file ./audio_sensor_scripts/asound.state restore", shell=True
+            )
             return True
         except:
             raise EnvironmentError
@@ -78,59 +87,67 @@ class Respeaker4Mic(SensorBase):
         self.pre_upload_dir = pre_upload_dir
 
         # Name files by start time and duration
-        start_time = time.strftime('%H-%M-%S')
-        self.current_file = '{}_dur={}secs'.format(start_time, self.record_length)
+        start_time = time.strftime("%H-%M-%S")
+        self.current_file = "{}_dur={}secs".format(start_time, self.record_length)
 
         # Record for a specific duration
-        logging.info('\n{} - Started recording at {} \n'.format(self.current_file, start_time))
+        logging.info(
+            "\n{} - Started recording at {} \n".format(self.current_file, start_time)
+        )
         wfile = os.path.join(self.working_dir, self.working_file)
         ofile = os.path.join(self.working_dir, self.current_file)
         try:
-            cmd = 'sudo arecord -Dac108 -f S32_LE -r 16000 -c 4 --duration {} {}'
+            cmd = "arecord -Dac108 -f S32_LE -r 16000 -c 4 --duration {} {}"
             subprocess.call(cmd.format(self.record_length, wfile), shell=True)
-            self.uncomp_file = ofile + '.wav'
+            self.uncomp_file = ofile + ".wav"
             os.rename(wfile, self.uncomp_file)
         except Exception:
-            logging.info('Error recording from audio card. Creating dummy file')
-            open(ofile + '_ERROR_audio-record-failed', 'a').close()
+            logging.info("Error recording from audio card. Creating dummy file")
+            open(ofile + "_ERROR_audio-record-failed", "a").close()
             time.sleep(1)
 
-        end_time = time.strftime('%H-%M-%S')
-        logging.info('\n{} - Finished recording\n'.format(self.current_file))
+        end_time = time.strftime("%H-%M-%S")
+        logging.info("\n{} - Finished recording\n".format(self.current_file))
 
     def postprocess(self, wfile, upload_dir):
         """
         Method to optionally compress raw audio data to FLAC and stage data to
         upload folder
         """
-        
+
         # Take it to the session working directory
-        start_date = time.strftime('%Y-%m-%d')
-        s_wfile = os.path.join('/home/pi/pre_upload_dir', start_date, wfile)
+        start_date = time.strftime("%Y-%m-%d")
+        s_wfile = os.path.join("/home/pi/pre_upload_dir", start_date, wfile)
 
         if self.compress_data:
-
             # Move File to Pre-Upload Directory
-            ofilename = wfile.replace(".wav",".flac")
+            ofilename = wfile.replace(".wav", ".flac")
             ofile = os.path.join(upload_dir, start_date, ofilename)
-            time_now = time.strftime('%H-%M-%S')
-            
-            # Audio is compressed using a FLAC Encoding            
+            time_now = time.strftime("%H-%M-%S")
+
+            # Audio is compressed using a FLAC Encoding
             # Removed:  >/dev/null 2>&1
-            try: 
-                logging.info('\n Starting compression of {} to {} at {}\n'.format(wfile, ofile, time_now))
+            try:
+                logging.info(
+                    "\n Starting compression of {} to {} at {}\n".format(
+                        wfile, ofile, time_now
+                    )
+                )
                 # Use FLAC level 2 (fast) instead of default 5 (medium) for RPi performance
-                cmd = ('ffmpeg -i {} -c:a flac -compression_level 2 {}') 
+                cmd = "ffmpeg -i {} -c:a flac -compression_level 2 {}"
                 subprocess.call(cmd.format(s_wfile, ofile), shell=True)
                 os.remove(s_wfile)
-                time_now = time.strftime('%H-%M-%S')
-                logging.info('\n Finished compression of {} to {} at {}\n'.format(wfile, ofile, time_now))
+                time_now = time.strftime("%H-%M-%S")
+                logging.info(
+                    "\n Finished compression of {} to {} at {}\n".format(
+                        wfile, ofile, time_now
+                    )
+                )
             except Exception:
-                logging.info('Error compressing {}'. format(wfile))
-            
+                logging.info("Error compressing {}".format(wfile))
 
         else:
             # Don't compress, store as wav
-            logging.info('\n{} - No postprocessing of audio data\n'.format(wfile))
-            ofile = os.path.join(upload_dir, wfile) + '.wav'
+            logging.info("\n{} - No postprocessing of audio data\n".format(wfile))
+            ofile = os.path.join(upload_dir, wfile) + ".wav"
             os.rename(s_wfile, ofile)

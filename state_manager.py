@@ -71,6 +71,49 @@ def init_scan_mark(data_dir, state_file):
     print(json.dumps({"stats": state["upload_stats"], "files_to_upload": file_list}))
 
 
+def pre_verify(data_dir, state_file, remote_target, config_path):
+    state = load_state(state_file)
+
+    # 1. Get remote list
+    lsf_cmd = ["rclone", "lsf", "--files-only", "--format", "p", remote_target]
+    if config_path:
+        lsf_cmd.extend(["--config", config_path])
+
+    try:
+        remote_list = subprocess.check_output(
+            lsf_cmd, universal_newlines=True
+        ).splitlines()
+        remote_set = set(remote_list)
+    except subprocess.CalledProcessError:
+        print("Error: Failed to list remote files for pre-verify")
+        return
+
+    # 2. Update state to completed if found on remote
+    updated = False
+    for rel_path in list(state["files"].keys()):
+        if rel_path in remote_set and state["files"][rel_path] != "completed":
+            state["files"][rel_path] = "completed"
+            updated = True
+
+    if updated:
+        # Update stats
+        state["upload_stats"].update(
+            {
+                "completed": sum(
+                    1 for s in state["files"].values() if s == "completed"
+                ),
+                "uploading": sum(
+                    1 for s in state["files"].values() if s == "uploading"
+                ),
+                "pending": sum(1 for s in state["files"].values() if s == "pending"),
+            }
+        )
+        save_state(state_file, state)
+        print(json.dumps({"status": "updated", "stats": state["upload_stats"]}))
+    else:
+        print(json.dumps({"status": "no_change"}))
+
+
 def verify_finalize(data_dir, state_file, remote_target, config_path, dry_run=False):
     state = load_state(state_file)
     uploading_files = [k for k, v in state["files"].items() if v == "uploading"]
@@ -117,7 +160,9 @@ def verify_finalize(data_dir, state_file, remote_target, config_path, dry_run=Fa
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("op", choices=["init-scan-mark", "verify-finalize"])
+    parser.add_argument(
+        "op", choices=["init-scan-mark", "verify-finalize", "pre-verify"]
+    )
     parser.add_argument("data_dir")
     parser.add_argument("state_file")
     parser.add_argument("--remote-target", required=False)
@@ -135,3 +180,5 @@ if __name__ == "__main__":
             args.config_path,
             dry_run=args.dry_run,
         )
+    elif args.op == "pre-verify":
+        pre_verify(args.data_dir, args.state_file, args.remote_target, args.config_path)

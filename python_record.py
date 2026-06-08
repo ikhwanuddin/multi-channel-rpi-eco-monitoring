@@ -517,25 +517,25 @@ class StopMonitoring(Exception):
     pass
 
 
-def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
+def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die, sync_trigger):
     logging.info("Function upload_server_sync has been called.")
 
     remote_name = rclone_config.get("remote_name", "mybox")
     config_path = rclone_config.get("config_path", "").strip()
     remote_base_path = rclone_config.get("remote_base_path", "monitoring_data")
 
-    # Flag untuk memaksa sync instan
-    force_sync_now = threading.Event()
-
     while not die.is_set():
-        start = time.time()
+        # Menunggu trigger (instan) atau timeout (sync_interval)
+        sync_trigger.wait(timeout=sync_interval)
+        sync_trigger.clear()
 
-        # Cek internet & sinkronisasi lebih sering jika internet aktif
+        if die.is_set():
+            break
+
+        # Cek internet & sinkronisasi
         if is_internet_available():
-            logging.info("Updating time from internet")
+            logging.info("Internet detected. Starting immediate upload sync.")
             subprocess.call("bash ./update_time.sh", shell=True)
-
-            logging.info("Starting immediate upload sync.")
 
             # Persiapan file state & log
             state_file = os.path.join(
@@ -558,13 +558,8 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die):
 
             if exit_code != 0:
                 logging.error("Upload sync failed with exit code {}".format(exit_code))
-                time.sleep(30)  # Tunggu sejenak jika gagal sebelum coba lagi
-            else:
-                logging.info("Upload sync cycle finished.")
-                time.sleep(10)  # Jeda singkat antar siklus sukses agar CPU tidak 100%
         else:
-            # Jika tidak ada internet, tidur lebih lama
-            time.sleep(60)
+            logging.info("Internet not available. Skipping sync.")
 
         gc_and_log_memory("upload_server_sync")
 
@@ -648,6 +643,7 @@ def continuous_recording(
     upload_dir,
     sensor_config,
     die,
+    sync_trigger,
     test_mode,
     recording_in_progress=None,
     min_free_storage_gb=1.0,
@@ -681,6 +677,7 @@ def continuous_recording(
                     logging.info(
                         "Internet detected. Pausing recording to allow upload."
                     )
+                    sync_trigger.set()  # Trigger sync immediately
                     internet_paused_logged = True
                 time.sleep(
                     1
@@ -996,12 +993,19 @@ def record(config_file, logfile_name, log_dir="logs"):
     # Set up the threads to run and an event handler to allow them to be shutdown cleanly
     logging.info("DEBUG: Setting up threads.")
     die = threading.Event()
+    sync_trigger = threading.Event()
     signal.signal(signal.SIGINT, exit_handler)
 
     if not offline_mode and not test_mode:
         sync_thread = threading.Thread(
             target=upload_server_sync,
-            args=(sensor.server_sync_interval, rclone_config, upload_dir_pi, die),
+            args=(
+                sensor.server_sync_interval,
+                rclone_config,
+                upload_dir_pi,
+                die,
+                sync_trigger,
+            ),
         )
 
     reboot_thread = None
@@ -1020,6 +1024,7 @@ def record(config_file, logfile_name, log_dir="logs"):
             upload_dir_pi,
             sensor_config,
             die,
+            sync_trigger,
             test_mode,
             recording_in_progress,
             min_free_storage_gb,

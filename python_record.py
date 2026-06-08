@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -22,6 +23,18 @@ array_mic_button = 26  # Respeaker series
 
 # set a global name for a common logging for functions using this module
 LOG = "multi-channel-rpi-eco-monitoring"
+
+
+def is_internet_available():
+    """
+    Check if internet is available by connecting to a public DNS.
+    """
+    try:
+        # Connect to Google Public DNS
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        return True
+    except OSError:
+        return False
 
 
 def gc_and_log_memory(caller_name):
@@ -615,6 +628,12 @@ def continuous_recording(
     # Start recording
     while not die.is_set():
         try:
+            # Check for internet to decide whether to record
+            if is_internet_available():
+                logging.info("Internet detected. Pausing recording to allow upload.")
+                time.sleep(60)  # Wait 60 seconds before re-checking
+                continue
+
             # Never delete recorded data automatically. Only perform safety checks.
             storage_check_shutdown(
                 min_storage_required_gb=min_free_storage_gb,

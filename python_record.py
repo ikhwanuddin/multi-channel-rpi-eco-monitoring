@@ -690,7 +690,6 @@ def continuous_recording(
             force_record = False  # Default behavior if not defined in config
             if not force_record and is_internet_available() and not test_mode:
                 logging.info("Internet detected. Pausing recording to allow upload.")
-                time.sleep(60)  # Wait 60 seconds before re-checking
                 continue
 
             # Never delete recorded data automatically. Only perform safety checks.

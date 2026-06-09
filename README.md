@@ -50,6 +50,28 @@ Key changes include:
   12. Added support for Sipeed 7-Mic Array sensor (Sipeed7Mic.py).
   13. Separated interactive configuration logic into setup_config.py for modularity and ease of use.
 
+### Configuration & Operational Scenarios
+
+The system behavior is controlled primarily via `config.json`.
+
+#### Operational Scenarios
+
+| Scenario | `offline_mode` | `test_mode` | Description |
+| :--- | :---: | :---: | :--- |
+| **Forest (Deployment)** | `1` | `0` | Records continuously, skips all network/upload attempts. |
+| **Home (Upload)** | `0` | `0` | Connects to network, performs time-sync, uploads to cloud. |
+| **Development/Testing** | `1` | `1` | Forces short recording intervals, adds debug logs, skips uploads. |
+
+#### Editing `config.json`
+
+**⚠️ CRITICAL WARNING:** When editing `config.json` manually:
+- Use **strict JSON format**.
+- **NO comments allowed** (i.e., do not add `#` or `//` inside the file).
+- Ensure all keys and string values are enclosed in **double quotes** (`"`).
+- **NO trailing commas** after the last item in a dictionary or list.
+
+The system will fail to start (`JSONDecodeError`) if these rules are broken. It is recommended to use `python setup_config.py` for generating the file instead of manual editing whenever possible.
+
 NOTE! SD card should have sufficiently fast read/write speed (Class 10, **minimum 150 mb/s**), otherwise you will get overrun errors during recording. This means data won't record properly - you may see dead channels with no data.
 
 This code has been setup to run on a **Raspberry Pi Zero 2 W+**, **Raspberry Pi 3B+**, and **Raspberry Pi 4B+**
@@ -242,9 +264,59 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
     to shut down the Pi
   * After reboot, the Pi should be good to go!
 
-### Additional Configuration
+## Service Management (Recommended)
 
-For advanced configuration options including shutdown button setup, power saving configurations, troubleshooting, and additional notes, see [advanced_configuration.md](advanced_configuration.md).
+Running `python_record.py` as a `systemd` service is the recommended way to ensure your monitoring unit runs reliably. This method provides automatic restarts on failure, native logging, and better system integration.
+
+### Setup Instructions
+
+1.  **Create the Service Unit File**:
+    ```bash
+    sudo nano /etc/systemd/system/eco-monitor.service
+    ```
+
+2.  **Paste the following configuration**:
+    *   **Note**: Be sure to update the `PI_ID` environment variable with your specific Raspberry Pi's unique ID.
+
+    ```ini
+    [Unit]
+    Description=Eco Monitoring Service
+    After=network.target
+
+    [Service]
+    User=pi
+    WorkingDirectory=/home/pi/multi-channel-rpi-eco-monitoring
+    # Change the PI_ID below to match your device
+    Environment="PI_ID=RPiID-000000009c3f398b"
+    ExecStart=/usr/bin/python3 /home/pi/multi-channel-rpi-eco-monitoring/python_record.py /home/pi/multi-channel-rpi-eco-monitoring/config.json logfile.log
+    Restart=always
+    RestartSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+3.  **Enable and Start the Service**:
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl enable eco-monitor.service
+    sudo systemctl start eco-monitor.service
+    ```
+
+### Service Commands
+
+You can use the following commands to manage your monitoring service:
+
+| Action | Command |
+| :--- | :--- |
+| **Check Status** | `sudo systemctl status eco-monitor.service` |
+| **Start Service** | `sudo systemctl start eco-monitor.service` |
+| **Stop Service** | `sudo systemctl stop eco-monitor.service` |
+| **Restart Service** | `sudo systemctl restart eco-monitor.service` |
+| **View Logs** | `journalctl -u eco-monitor.service -f` |
+
+---
+> **Legacy Note**: The previous method using `recorder_startup_script.sh` in `/etc/profile` is now considered legacy and is **not recommended** for new deployments. Please migrate to the `systemd` service method described above for better stability.
 
 ### Log Prefix Contract
 

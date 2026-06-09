@@ -2,6 +2,8 @@
 
 This document contains additional setup instructions for specialized configurations and optimizations for the multi-channel Raspberry Pi ecosystem monitoring system.
 
+> **Note**: For fundamental configuration of operational modes (Forest/Home/Test) and how to safely edit `config.json`, please refer to the [Configuration & Operational Scenarios](../README.md#configuration--operational-scenarios) section in the `README.md`.
+
 ## Shutdown Button Setup for Sipeed 7-Mic Array
 
 ![GPIO Pin on Raspberry Pi Zero 2 W](https://i.sstatic.net/yHddo.png)

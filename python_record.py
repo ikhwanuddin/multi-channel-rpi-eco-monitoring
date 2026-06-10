@@ -652,7 +652,7 @@ def continuous_recording(
 
             # Check for internet to decide whether to record
             # We need to define force_record here based on config or default
-            force_record = False  # Default behavior if not defined in config
+            force_record = sensor_config.get("offline_mode", 0) == 1
             if not force_record and is_internet_available() and not test_mode:
                 if not internet_paused_logged:
                     logging.info(
@@ -980,7 +980,7 @@ def record(config_file, logfile_name, log_dir="logs"):
             sensor,
             working_dir,
             upload_dir_pi,
-            sensor_config,
+            config,
             die,
             sync_trigger,
             test_mode,

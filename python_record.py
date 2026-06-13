@@ -96,8 +96,8 @@ def gc_and_log_memory(caller_name):
         sys_total_mb = sys_mem.total / (1024 * 1024)
 
         logging.info(
-            "[{}] RAM Info - Process: {:.2f} MB | System Available: {:.2f}/{:.2f} MB | GC collected: {} objects".format(
-                caller_name, proc_mem_mb, sys_avail_mb, sys_total_mb, collected
+            "RAM: {:.0f} MB proc, {:.0f}/{:.0f} MB free/total, {} objects freed.".format(
+                proc_mem_mb, sys_avail_mb, sys_total_mb, collected
             )
         )
     except Exception as e:
@@ -407,11 +407,7 @@ def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
 
     # Capture data from the sensor
     start_capture = time.time()
-    logging.info(
-        "record_sensor: Capturing data from sensor at {}".format(
-            time.strftime("%Y-%m-%d %H:%M:%S")
-        )
-    )
+    logging.info("Capture started.")
     try:
         sensor.capture_data(
             working_dir=session_working_dir,
@@ -419,7 +415,7 @@ def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
             pre_upload_dir=session_pre_upload_dir,
         )
         elapsed = time.time() - start_capture
-        logging.info("record_sensor: capture_data completed in {:.1f}s".format(elapsed))
+        logging.info("Capture completed in {:.1f}s.".format(elapsed))
     except Exception:
         elapsed = time.time() - start_capture
         logging.error(
@@ -655,9 +651,7 @@ def continuous_recording(
             force_record = sensor_config.get("offline_mode", 0) == 1
             if not force_record and is_internet_available() and not test_mode:
                 if not internet_paused_logged:
-                    logging.info(
-                        "Internet detected. Pausing recording to allow upload."
-                    )
+                    logging.info("Upload in progress; pausing record.")
                     sync_trigger.set()  # Trigger sync immediately
                     internet_paused_logged = True
                 time.sleep(
@@ -688,7 +682,7 @@ def continuous_recording(
             if check_last_recording_size(upload_dir, "/home/pi/pre_upload_dir"):
                 tiny_file_streak += 1
                 logging.warning(
-                    "Tiny recording streak detected: {}/{}".format(
+                    "Tiny file: {}/{} consecutive.".format(
                         tiny_file_streak, tiny_file_reboot_threshold
                     )
                 )
@@ -720,8 +714,7 @@ def continuous_recording(
             try:
                 du = psutil.disk_usage(upload_dir)
                 logging.warning(
-                    "continuous_recording: disk status on {}: {:.2f} GB free / {:.2f} GB total".format(
-                        upload_dir,
+                    "Disk: {:.1f} GB free / {:.1f} GB total.".format(
                         du.free / (1024**3),
                         du.total / (1024**3),
                     )

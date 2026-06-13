@@ -151,9 +151,7 @@ class Sipeed7Mic(SensorBase):
         # Record for a specific duration
         wfile = os.path.join(self.working_dir, self.current_file)
         ofile = os.path.join(self.pre_upload_dir, self.current_file)
-        logging.info(
-            "\n{} - Started recording at {}".format(self.current_file, start_time)
-        )
+        logging.info("Recording started: {}".format(self.current_file))
         record_succeeded = False
         record_result = None
         arecord_stderr = ""
@@ -176,9 +174,7 @@ class Sipeed7Mic(SensorBase):
                 str(self.record_length),
                 wfile,
             ]
-            logging.info(
-                "{} - arecord command: {}".format(self.current_file, " ".join(cmd))
-            )
+            logging.debug("arecord: {}".format(" ".join(cmd)))
 
             # Allow additional grace on low-power Pi Zero 2W before declaring timeout.
             kill_time = max(int(self.record_length * 1.75), self.record_length + 180)
@@ -247,8 +243,8 @@ class Sipeed7Mic(SensorBase):
             exit_code = record_result.returncode if record_result else -1
             timeout_tag = " timeout=true" if timeout_happened else ""
             logging.info(
-                "{} - arecord exited with code={} file_size={} bytes{}".format(
-                    self.current_file, exit_code, file_size, timeout_tag
+                "arecord exit code={}, size={} bytes{}.".format(
+                    exit_code, file_size, timeout_tag
                 )
             )
 
@@ -256,18 +252,14 @@ class Sipeed7Mic(SensorBase):
                 # Full stderr — useful for catching overrun/underrun warnings
                 # even when arecord exits 0.
                 for line in arecord_stderr.splitlines():
-                    logging.warning(
-                        "{} - arecord-stderr: {}".format(self.current_file, line)
-                    )
+                    logging.warning("arecord stderr: {}".format(line))
 
             # Remove file if too small and mark as missing.
             if file_exists and file_size < self.MIN_VALID_AUDIO_BYTES:
                 logging.warning(
-                    "{} - recorded file {:.2f} KB below minimum {:.2f} KB; "
-                    "discarding".format(
-                        self.current_file,
-                        file_size / 1024.0,
-                        self.MIN_VALID_AUDIO_BYTES / 1024.0,
+                    "File too small: {:.1f} MB < {:.1f} MB; discarding.".format(
+                        file_size / (1024 * 1024),
+                        self.MIN_VALID_AUDIO_BYTES / (1024 * 1024),
                     )
                 )
                 os.remove(wfile)
@@ -299,8 +291,8 @@ class Sipeed7Mic(SensorBase):
             self.uncomp_file_name = ofile + ".wav"
             os.rename(wfile, self.uncomp_file_name)
             logging.info(
-                "{} - recording success, {:.2f} KB transferred to {}".format(
-                    self.current_file, file_size / 1024.0, self.uncomp_file_name
+                "Recorded: {:.1f} MB -> {}".format(
+                    file_size / (1024 * 1024), os.path.basename(self.uncomp_file_name)
                 )
             )
             record_succeeded = True
@@ -311,11 +303,7 @@ class Sipeed7Mic(SensorBase):
                     os.remove(wfile)
                 except OSError:
                     pass
-            logging.error(
-                "{} - Error recording from audio card: {}".format(
-                    self.current_file, exc
-                )
-            )
+            logging.error("Recording failed: {}".format(exc))
             marker_file = ofile + "_ERROR_audio-record-failed"
             with open(marker_file, "w") as f:
                 f.write("time={}\n".format(time.strftime("%Y-%m-%d %H:%M:%S")))
@@ -340,11 +328,7 @@ class Sipeed7Mic(SensorBase):
                     pass
 
         if record_succeeded:
-            logging.info(
-                "\n{} recording and transfer complete at {}\n".format(
-                    self.current_file, time.strftime("%H-%M-%S")
-                )
-            )
+            logging.info("Recording done.")
 
     def postprocess(self, wfile, upload_dir):
         """
@@ -352,10 +336,7 @@ class Sipeed7Mic(SensorBase):
         WAV files are already staged in pre_upload_dir by capture_data(); compression
         will be handled later by the upload pipeline's pre_upload_dir mechanism.
         """
-        logging.info(
-            "\n{} - Skipping compression on Sipeed (RPi Zero 2W); "
-            "will be handled during upload".format(wfile)
-        )
+        logging.info("Compression: skipped (RPi Zero 2W; handled at upload).")
 
 
 def _truncate_stderr(stderr, max_lines=10):

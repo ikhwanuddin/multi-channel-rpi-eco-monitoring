@@ -430,15 +430,28 @@ def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
         sensor.sleep()
 
 
+def _is_wav_file(path):
+    """Return True if path begins with a RIFF/WAVE header (valid WAV magic bytes)."""
+    try:
+        with open(path, "rb") as f:
+            header = f.read(12)
+        return len(header) == 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE"
+    except OSError:
+        return False
+
+
 def run_postprocess(sensor, upload_dir):
     """
     Function to handle mandatory postprocessing (move, convert, compress)
     of recordings before the next recording cycle starts.
 
     Steps:
-      1. Recursively scan tmp_dir for leftover WAV files and move each one
-         to pre_upload_dir preserving its original date sub-directory.
-      2. Recursively scan pre_upload_dir for all WAV files.
+      1. Recursively scan tmp_dir for files to stage into pre_upload_dir:
+         - Files ending in .wav are moved as-is.
+         - Files with no extension are validated via WAV magic bytes; valid
+           ones are renamed to <name>.wav before moving. Invalid or too-small
+           files are discarded.
+      2. Recursively scan pre_upload_dir for all .wav files.
       3. For each WAV: discard if < MIN_VALID_BYTES, otherwise call
          sensor.postprocess(). If postprocess returns False (compression
          failed) discard the WAV rather than leaving it to block future runs.
@@ -447,21 +460,59 @@ def run_postprocess(sensor, upload_dir):
     tmp_dir = "/home/pi/tmp_dir"
     pre_upload_dir = "/home/pi/pre_upload_dir"
 
-    # 1. Recursively move WAV files from tmp_dir to pre_upload_dir,
-    #    preserving the original date sub-directory of each file.
+    # 1. Recursively scan tmp_dir and stage files into pre_upload_dir.
     for root, _, files in os.walk(tmp_dir):
         for name in files:
-            if not name.lower().endswith(".wav"):
-                continue
             src = os.path.join(root, name)
-            # Derive the relative date sub-path (e.g. "2026-03-19") from
-            # the actual directory the file sits in, not today's date.
             rel = os.path.relpath(root, tmp_dir)
             dst_dir = os.path.join(pre_upload_dir, rel)
-            os.makedirs(dst_dir, exist_ok=True)
-            dst = os.path.join(dst_dir, name)
-            shutil.move(src, dst)
-            logging.info("Moved {} -> pre-upload ({})".format(name, rel))
+
+            if name.lower().endswith(".wav"):
+                # Already has the correct extension — move as-is.
+                os.makedirs(dst_dir, exist_ok=True)
+                shutil.move(src, os.path.join(dst_dir, name))
+                logging.info("Staged {} -> pre-upload ({})".format(name, rel))
+
+            elif "." not in name:
+                # No extension: likely an arecord output interrupted before
+                # capture_data could rename it. Validate before accepting.
+                try:
+                    size = os.path.getsize(src)
+                except OSError:
+                    logging.warning("Could not stat {}; skipping.".format(src))
+                    continue
+
+                if size < MIN_VALID_BYTES:
+                    logging.warning(
+                        "Raw file too small ({:.1f} KB < 1 MB), discarding: {}".format(
+                            size / 1024.0, name
+                        )
+                    )
+                    try:
+                        os.remove(src)
+                    except OSError as exc:
+                        logging.error("Could not delete {}: {}".format(src, exc))
+                    continue
+
+                if not _is_wav_file(src):
+                    logging.warning(
+                        "Not a WAV file (no RIFF/WAVE header), discarding: {}".format(
+                            name
+                        )
+                    )
+                    try:
+                        os.remove(src)
+                    except OSError as exc:
+                        logging.error("Could not delete {}: {}".format(src, exc))
+                    continue
+
+                wav_name = name + ".wav"
+                os.makedirs(dst_dir, exist_ok=True)
+                shutil.move(src, os.path.join(dst_dir, wav_name))
+                logging.info(
+                    "Raw WAV found (no ext): {} -> staged as {}".format(name, wav_name)
+                )
+            # Files with other extensions are left untouched.
 
     # 2. Collect all WAV files now in pre_upload_dir.
     file_list = []
@@ -485,7 +536,7 @@ def run_postprocess(sensor, upload_dir):
         if size < MIN_VALID_BYTES:
             logging.warning(
                 "Discarding too-small file ({:.1f} KB < 1 MB): {}".format(
-                    size / 1024.0, wav_path
+                    size / 1024.0, os.path.basename(wav_path)
                 )
             )
             try:
@@ -498,7 +549,9 @@ def run_postprocess(sensor, upload_dir):
         ok = sensor.postprocess(wav_path, upload_dir)
         if not ok and os.path.exists(wav_path):
             logging.warning(
-                "Compression failed; discarding source WAV: {}".format(wav_path)
+                "Compression failed; discarding source WAV: {}".format(
+                    os.path.basename(wav_path)
+                )
             )
             try:
                 os.remove(wav_path)
@@ -1025,12 +1078,20 @@ def record(config_file, logfile_name, log_dir="logs"):
     # Failure here does not preclude data capture and might be temporary so log
     # errors but don't exit.
     try:
-        # start the recorder
         logging.info(
             "Starting continuous recording at {}".format(
                 datetime.now().strftime("%Y-%m-%d %H:%M")
             )
         )
+
+        # Drain any pending files from previous sessions before the recording
+        # thread is allowed to start. This is a blocking call — the thread
+        # cannot begin until every queued WAV has been converted to FLAC (or
+        # discarded if too small / corrupted).
+        logging.info("Draining pending queue before first recording...")
+        run_postprocess(sensor, upload_dir_pi)
+        logging.info("Queue drained. Starting recording.")
+
         record_thread.start()
         if reboot_thread is not None:
             reboot_thread.start()

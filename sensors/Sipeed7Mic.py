@@ -149,7 +149,7 @@ class Sipeed7Mic(SensorBase):
         self.current_file = "{}_dur={}secs".format(start_time, self.record_length)
 
         # Record for a specific duration
-        wfile = os.path.join(self.working_dir, self.current_file)
+        wfile = os.path.join(self.working_dir, self.current_file) + ".wav"
         ofile = os.path.join(self.pre_upload_dir, self.current_file)
         logging.info("Recording started: {}".format(self.current_file))
         record_succeeded = False

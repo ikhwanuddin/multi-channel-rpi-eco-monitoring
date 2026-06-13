@@ -332,11 +332,64 @@ class Sipeed7Mic(SensorBase):
 
     def postprocess(self, wfile, upload_dir):
         """
-        On RPi Zero 2W the CPU is too slow for real-time FLAC compression.
-        WAV files are already staged in pre_upload_dir by capture_data(); compression
-        will be handled later by the upload pipeline's pre_upload_dir mechanism.
+        Optionally compress raw WAV audio to FLAC and stage the file into
+        upload_dir, mirroring the directory structure of pre_upload_dir.
+        Compression is controlled by the compress_data config option.
         """
-        logging.info("Compression: skipped (RPi Zero 2W; handled at upload).")
+        pre_upload_dir = "/home/pi/pre_upload_dir"
+
+        # Extract date sub-directory and filename from the full path.
+        file_path = wfile.split(os.sep)
+        filename = file_path[5]
+        start_date = file_path[4]
+
+        # Ensure the date-scoped upload sub-directory exists.
+        session_upload_dir = os.path.join(upload_dir, start_date)
+        try:
+            if not os.path.exists(session_upload_dir):
+                os.makedirs(session_upload_dir)
+        except OSError:
+            logging.critical(
+                "Could not create upload directory for recording: {}".format(
+                    session_upload_dir
+                )
+            )
+            sys.exit()
+
+        # Destination path mirrors the source path under upload_dir.
+        ofile = wfile.replace(pre_upload_dir, upload_dir)
+
+        if self.compress_data:
+            ofile = ofile.replace(".wav", ".flac")
+            try:
+                logging.info(
+                    "Compressing {} -> {} at {}".format(
+                        wfile, ofile, time.strftime("%H-%M-%S")
+                    )
+                )
+                ffmpeg_cmd = "ffmpeg -i {} -c:a flac -compression_level 2 {}".format(
+                    wfile, ofile
+                )
+                logging.debug("ffmpeg command: {}".format(ffmpeg_cmd))
+                ff_ret = subprocess.call(ffmpeg_cmd, shell=True)
+                if ff_ret != 0:
+                    logging.error(
+                        "ffmpeg compression exited with code {} for {}".format(
+                            ff_ret, wfile
+                        )
+                    )
+                else:
+                    os.remove(wfile)
+                    logging.info(
+                        "Compression done: {} at {}".format(
+                            ofile, time.strftime("%H-%M-%S")
+                        )
+                    )
+            except Exception as exc:
+                logging.error("Error compressing {}: {}".format(wfile, exc))
+        else:
+            logging.info("Compression disabled; moving {} as-is.".format(wfile))
+            os.rename(wfile, ofile)
 
 
 def _truncate_stderr(stderr, max_lines=10):

@@ -335,6 +335,11 @@ class Sipeed7Mic(SensorBase):
         Optionally compress raw WAV audio to FLAC and stage the file into
         upload_dir, mirroring the directory structure of pre_upload_dir.
         Compression is controlled by the compress_data config option.
+
+        Returns:
+            True  — file successfully staged in upload_dir (WAV removed).
+            False — compression failed or an exception occurred; WAV is left
+                    in place so the caller can decide what to do with it.
         """
         pre_upload_dir = "/home/pi/pre_upload_dir"
 
@@ -361,35 +366,52 @@ class Sipeed7Mic(SensorBase):
 
         if self.compress_data:
             ofile = ofile.replace(".wav", ".flac")
+            fname = os.path.basename(wfile)
             try:
-                logging.info(
-                    "Compressing {} -> {} at {}".format(
-                        wfile, ofile, time.strftime("%H-%M-%S")
-                    )
+                logging.info("Compressing {} -> FLAC".format(fname))
+                ffmpeg_cmd = [
+                    "ffmpeg",
+                    "-i",
+                    wfile,
+                    "-c:a",
+                    "flac",
+                    "-compression_level",
+                    "2",
+                    ofile,
+                ]
+                logging.debug("ffmpeg command: {}".format(" ".join(ffmpeg_cmd)))
+                result = subprocess.run(
+                    ffmpeg_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                 )
-                ffmpeg_cmd = "ffmpeg -i {} -c:a flac -compression_level 2 {}".format(
-                    wfile, ofile
-                )
-                logging.debug("ffmpeg command: {}".format(ffmpeg_cmd))
-                ff_ret = subprocess.call(ffmpeg_cmd, shell=True)
-                if ff_ret != 0:
+                if result.returncode != 0:
                     logging.error(
-                        "ffmpeg compression exited with code {} for {}".format(
-                            ff_ret, wfile
+                        "ffmpeg failed (code {}) for {}".format(
+                            result.returncode, fname
                         )
                     )
-                else:
-                    os.remove(wfile)
-                    logging.info(
-                        "Compression done: {} at {}".format(
-                            ofile, time.strftime("%H-%M-%S")
-                        )
-                    )
+                    # Surface ffmpeg stderr only on failure.
+                    if result.stderr:
+                        for line in (
+                            result.stderr.decode("utf-8", errors="replace")
+                            .strip()
+                            .splitlines()
+                        ):
+                            logging.error("ffmpeg: {}".format(line))
+                    return False
+                os.remove(wfile)
+                logging.info("Compression done: {}".format(os.path.basename(ofile)))
+                return True
             except Exception as exc:
-                logging.error("Error compressing {}: {}".format(wfile, exc))
+                logging.error("Error compressing {}: {}".format(fname, exc))
+                return False
         else:
-            logging.info("Compression disabled; moving {} as-is.".format(wfile))
+            logging.info(
+                "Compression disabled; moving {} as-is.".format(os.path.basename(wfile))
+            )
             os.rename(wfile, ofile)
+            return True
 
 
 def _truncate_stderr(stderr, max_lines=10):

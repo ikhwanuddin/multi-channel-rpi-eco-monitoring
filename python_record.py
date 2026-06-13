@@ -434,38 +434,76 @@ def run_postprocess(sensor, upload_dir):
     """
     Function to handle mandatory postprocessing (move, convert, compress)
     of recordings before the next recording cycle starts.
+
+    Steps:
+      1. Recursively scan tmp_dir for leftover WAV files and move each one
+         to pre_upload_dir preserving its original date sub-directory.
+      2. Recursively scan pre_upload_dir for all WAV files.
+      3. For each WAV: discard if < MIN_VALID_BYTES, otherwise call
+         sensor.postprocess(). If postprocess returns False (compression
+         failed) discard the WAV rather than leaving it to block future runs.
     """
+    MIN_VALID_BYTES = 1024 * 1024  # 1 MB
     tmp_dir = "/home/pi/tmp_dir"
     pre_upload_dir = "/home/pi/pre_upload_dir"
-    start_date = time.strftime("%Y-%m-%d")
-    session_pre_upload_dir = os.path.join(pre_upload_dir, start_date)
 
-    # 1. Ensure directories exist
-    os.makedirs(session_pre_upload_dir, exist_ok=True)
+    # 1. Recursively move WAV files from tmp_dir to pre_upload_dir,
+    #    preserving the original date sub-directory of each file.
+    for root, _, files in os.walk(tmp_dir):
+        for name in files:
+            if not name.lower().endswith(".wav"):
+                continue
+            src = os.path.join(root, name)
+            # Derive the relative date sub-path (e.g. "2026-03-19") from
+            # the actual directory the file sits in, not today's date.
+            rel = os.path.relpath(root, tmp_dir)
+            dst_dir = os.path.join(pre_upload_dir, rel)
+            os.makedirs(dst_dir, exist_ok=True)
+            dst = os.path.join(dst_dir, name)
+            shutil.move(src, dst)
+            logging.info("Moved {} -> pre-upload ({})".format(name, rel))
 
-    # 2. Move raw data from tmp_dir to pre_upload_dir
-    raw_files = [f for f in os.listdir(tmp_dir) if f.endswith(".wav")]
-    for f in raw_files:
-        src = os.path.join(tmp_dir, f)
-        dst = os.path.join(session_pre_upload_dir, f)
-        shutil.move(src, dst)
-        logging.info("Moved {} to pre-upload".format(f))
-
-    # 3. Process files in pre_upload_dir and move to upload_dir
+    # 2. Collect all WAV files now in pre_upload_dir.
     file_list = []
     for root, _, files in os.walk(pre_upload_dir):
         for name in files:
             if name.lower().endswith(".wav"):
                 file_list.append(os.path.join(root, name))
 
-    if file_list:
-        logging.info("Processing {} files...".format(len(file_list)))
-        for i in file_list:
-            sensor.postprocess(i, upload_dir)
-            # Remove raw file after successful processing
-            if os.path.exists(i):
-                os.remove(i)
-                logging.info("Processed and removed raw file: {}".format(i))
+    if not file_list:
+        return
+
+    logging.info("Processing {} files...".format(len(file_list)))
+    for wav_path in file_list:
+        # 3a. Discard files that are too small to be valid recordings.
+        try:
+            size = os.path.getsize(wav_path)
+        except OSError:
+            logging.warning("Could not stat {}; skipping.".format(wav_path))
+            continue
+
+        if size < MIN_VALID_BYTES:
+            logging.warning(
+                "Discarding too-small file ({:.1f} KB < 1 MB): {}".format(
+                    size / 1024.0, wav_path
+                )
+            )
+            try:
+                os.remove(wav_path)
+            except OSError as exc:
+                logging.error("Could not delete {}: {}".format(wav_path, exc))
+            continue
+
+        # 3b. Attempt compression / staging.
+        ok = sensor.postprocess(wav_path, upload_dir)
+        if not ok and os.path.exists(wav_path):
+            logging.warning(
+                "Compression failed; discarding source WAV: {}".format(wav_path)
+            )
+            try:
+                os.remove(wav_path)
+            except OSError as exc:
+                logging.error("Could not delete {}: {}".format(wav_path, exc))
 
 
 def exit_handler(signal, frame):

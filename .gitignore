@@ -15,3 +15,4 @@ continuous_monitoring_data/
 tmp_data/
 
 fs_expanded
+.DS_Store

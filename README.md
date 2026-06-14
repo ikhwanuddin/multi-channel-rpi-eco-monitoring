@@ -281,11 +281,14 @@ Running `python_record.py` as a `systemd` service is the recommended way to ensu
     ```ini
     [Unit]
     Description=Eco Monitoring Service
-    After=network.target
+    After=network.target time-sync.target
+    Wants=time-sync.target
 
     [Service]
     User=pi
     WorkingDirectory=/home/pi/multi-channel-rpi-eco-monitoring
+    # Wait up to 60 seconds for NTP synchronization before starting
+    ExecStartPre=/bin/bash -c 'for i in {1..60}; do if timedatectl status | grep -q "System clock synchronized: yes"; then echo "Time synced"; break; fi; echo "Waiting for time sync..."; sleep 1; done'
     # Change the PI_ID below to match your device
     Environment="PI_ID=RPiID-000000009c3f398b"
     ExecStart=/usr/bin/python3 /home/pi/multi-channel-rpi-eco-monitoring/python_record.py /home/pi/multi-channel-rpi-eco-monitoring/config.json logfile.log

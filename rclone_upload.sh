@@ -155,6 +155,16 @@ else
     log_msg "Rclone config: default lookup"
 fi
 
+# Ensure rclone config file is accessible (fixes potential root ownership issues)
+if declare -f ensure_rclone_config_accessible > /dev/null 2>&1; then
+    if [ -n "$config_path" ]; then
+        ensure_rclone_config_accessible "$config_path" "$logfile"
+    else
+        _detect_rclone_conf_path >/dev/null 2>&1 || true
+        ensure_rclone_config_accessible "$RCLONE_CONF_PATH" "$logfile"
+    fi
+fi
+
 if ! command -v jq >/dev/null 2>&1; then
     log_msg "ERROR: jq binary not found. Please install with 'sudo apt install jq'"
     exit 127

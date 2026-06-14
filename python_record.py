@@ -28,10 +28,11 @@ LOG = "multi-channel-rpi-eco-monitoring"
 def is_internet_available():
     """
     Check if internet is available by connecting to a public DNS.
+    Using a more robust timeout.
     """
     try:
-        # Connect to Google Public DNS
-        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        # Increased timeout to 10 seconds to be more robust
+        socket.create_connection(("8.8.8.8", 53), timeout=10)
         return True
     except OSError:
         return False
@@ -734,11 +735,21 @@ def continuous_recording(
             run_postprocess(sensor, upload_dir)
 
             # Check for internet to decide whether to record
-            # We need to define force_record here based on config or default
+            # Perbaikan: Mengakses offline_mode dari root config (yang diteruskan sebagai sensor_config)
             force_record = sensor_config.get("offline_mode", 0) == 1
-            if not force_record and is_internet_available() and not test_mode:
+
+            # Check if sync is currently triggered
+            is_syncing = sync_trigger.is_set()
+
+            if (
+                not force_record
+                and (is_internet_available() or is_syncing)
+                and not test_mode
+            ):
                 if not internet_paused_logged:
-                    logging.info("Upload in progress; pausing record.")
+                    logging.info(
+                        f"Upload in progress (internet={is_internet_available()}, syncing={is_syncing}); pausing record."
+                    )
                     sync_trigger.set()  # Trigger sync immediately
                     internet_paused_logged = True
                 time.sleep(

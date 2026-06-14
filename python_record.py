@@ -549,14 +549,10 @@ def run_postprocess(sensor, upload_dir):
         ok = sensor.postprocess(wav_path, upload_dir)
         if not ok and os.path.exists(wav_path):
             logging.warning(
-                "Compression failed; discarding source WAV: {}".format(
+                "Compression failed or interrupted; keeping source WAV to retry later: {}".format(
                     os.path.basename(wav_path)
                 )
             )
-            try:
-                os.remove(wav_path)
-            except OSError as exc:
-                logging.error("Could not delete {}: {}".format(wav_path, exc))
 
 
 def exit_handler(signal, frame):

@@ -319,6 +319,8 @@ class Respeaker6Mic(SensorBase):
                     "flac",
                     "-compression_level",
                     "2",
+                    "-f",
+                    "flac",  # force output format to flac since output file has .tmp extension
                     ofile_tmp,
                 ]
                 logging.debug("ffmpeg command: {}".format(" ".join(ffmpeg_cmd)))

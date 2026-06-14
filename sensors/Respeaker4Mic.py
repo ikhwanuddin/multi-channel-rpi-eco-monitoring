@@ -144,6 +144,8 @@ class Respeaker4Mic(SensorBase):
                     "flac",
                     "-compression_level",
                     "2",
+                    "-f",
+                    "flac",  # force output format to flac since output file has .tmp extension
                     ofile_tmp,
                 ]
                 result = subprocess.run(

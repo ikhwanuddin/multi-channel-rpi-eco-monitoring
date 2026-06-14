@@ -126,6 +126,41 @@ _fix_ownership() {
     fi
 }
 
+# ── Ensure rclone config file is accessible (fixes potential root ownership issues) ─
+ensure_rclone_config_accessible() {
+    local config_file="$1"
+    local logfile="${2:-/dev/stdout}"
+
+    if [ -z "$config_file" ]; then
+        return 0
+    fi
+
+    if [ -f "$config_file" ]; then
+        if [ ! -r "$config_file" ]; then
+            _gist_log "WARNING: rclone config is not readable: $config_file" "$logfile"
+            _gist_log "Attempting to fix ownership and permissions..." "$logfile"
+
+            # Ensure we detect path for owner resolution
+            RCLONE_CONF_PATH="$config_file"
+
+            local config_dir
+            config_dir=$(dirname "$config_file")
+
+            # Fix directory permissions/ownership first
+            _fix_ownership "$config_dir" 700
+
+            # Fix file permissions/ownership
+            _fix_ownership "$config_file" 600
+
+            if [ -r "$config_file" ]; then
+                _gist_log "Successfully restored readability to $config_file" "$logfile"
+            else
+                _gist_log "ERROR: Could not restore readability to $config_file. Check sudo status." "$logfile"
+            fi
+        fi
+    fi
+}
+
 # ── Read gist credentials from config.json ────────────────────────────────────
 _read_gist_config() {
     local config_file="${1:-./config.json}"
@@ -360,6 +395,7 @@ sync_rclone_config() {
     _gist_log "Starting rclone.conf sync..." "$logfile"
 
     _detect_rclone_conf_path >/dev/null 2>&1 || true
+    ensure_rclone_config_accessible "$RCLONE_CONF_PATH" "$logfile"
     _gist_log "Using local rclone.conf path: $RCLONE_CONF_PATH" "$logfile"
 
     tmpdir=$(_make_temp_dir)

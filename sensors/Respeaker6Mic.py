@@ -302,39 +302,52 @@ class Respeaker6Mic(SensorBase):
         if self.compress_data:
             # Get Filename Ready for Compression
             ofile = ofile.replace(".wav", ".flac")
+            fname = os.path.basename(wfile)
 
             # Audio is compressed using a FLAC Encoding
             try:
-                logging.info(
-                    "\n Starting compression of {} to {} at {}\n".format(
-                        wfile, ofile, time.strftime("%H-%M-%S")
-                    )
-                )
+                logging.info("Compressing {} -> FLAC".format(fname))
                 # Use FLAC level 2 (fast) instead of default 5 (medium) for RPi performance
-                ffmpeg_cmd = "ffmpeg -i {} -c:a flac -compression_level 2 {}".format(
-                    wfile, ofile
+                ffmpeg_cmd = [
+                    "ffmpeg",
+                    "-i",
+                    wfile,
+                    "-c:a",
+                    "flac",
+                    "-compression_level",
+                    "2",
+                    ofile,
+                ]
+                logging.debug("ffmpeg command: {}".format(" ".join(ffmpeg_cmd)))
+                result = subprocess.run(
+                    ffmpeg_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                 )
-                logging.debug("ffmpeg command: {}".format(ffmpeg_cmd))
-                ff_ret = subprocess.call(ffmpeg_cmd, shell=True)
-                if ff_ret != 0:
+                if result.returncode != 0:
                     logging.error(
-                        "ffmpeg compression exited with code {} for {}".format(
-                            ff_ret, wfile
+                        "ffmpeg failed (code {}) for {}".format(
+                            result.returncode, fname
                         )
                     )
+                    if result.stderr:
+                        for line in (
+                            result.stderr.decode("utf-8", errors="replace")
+                            .strip()
+                            .splitlines()
+                        ):
+                            logging.error("ffmpeg: {}".format(line))
                 else:
                     os.remove(wfile)
-                    logging.info(
-                        "\n Finished compression of {} to {} at {}\n".format(
-                            wfile, ofile, time.strftime("%H-%M-%S")
-                        )
-                    )
+                    logging.info("Compression done: {}".format(os.path.basename(ofile)))
             except Exception as exc:
-                logging.error("Error compressing {}: {}".format(wfile, exc))
+                logging.error("Error compressing {}: {}".format(fname, exc))
 
         else:
             # Don't compress, store as wav
-            logging.info("\n{} - No postprocessing of audio data\n".format(wfile))
+            logging.info(
+                "Compression disabled; moving {} as-is.".format(os.path.basename(wfile))
+            )
             os.rename(wfile, ofile)
 
 

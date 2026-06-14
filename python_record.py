@@ -858,6 +858,13 @@ def record(config_file, logfile_name, log_dir="logs"):
     # Perform auto-update
     auto_update_repository()
 
+    # Reload systemd daemon to pick up any potential service file changes
+    try:
+        logging.info("Reloading systemd daemon...")
+        subprocess.call(["sudo", "systemctl", "daemon-reload"], timeout=10)
+    except Exception as e:
+        logging.warning("Failed to reload systemd daemon: {}".format(e))
+
     # Log current git commit information
     p = subprocess.Popen(["git", "log", "-1", '--format="%H"'], stdout=subprocess.PIPE)
     (stdout, _) = p.communicate()

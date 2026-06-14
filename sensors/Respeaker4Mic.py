@@ -123,10 +123,11 @@ class Respeaker4Mic(SensorBase):
             # Move File to Pre-Upload Directory
             ofilename = wfile.replace(".wav", ".flac")
             ofile = os.path.join(upload_dir, start_date, ofilename)
+            ofile_tmp = ofile + ".tmp"
             time_now = time.strftime("%H-%M-%S")
+            success = False
 
             # Audio is compressed using a FLAC Encoding
-            # Removed:  >/dev/null 2>&1
             try:
                 logging.info(
                     "\n Starting compression of {} to {} at {}\n".format(
@@ -134,20 +135,71 @@ class Respeaker4Mic(SensorBase):
                     )
                 )
                 # Use FLAC level 2 (fast) instead of default 5 (medium) for RPi performance
-                cmd = "ffmpeg -i {} -c:a flac -compression_level 2 {}"
-                subprocess.call(cmd.format(s_wfile, ofile), shell=True)
+                cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    s_wfile,
+                    "-c:a",
+                    "flac",
+                    "-compression_level",
+                    "2",
+                    ofile_tmp,
+                ]
+                result = subprocess.run(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                )
+                if result.returncode != 0:
+                    logging.error(
+                        "ffmpeg failed (code {}) for {}".format(
+                            result.returncode, wfile
+                        )
+                    )
+                    if result.stderr:
+                        for line in (
+                            result.stderr.decode("utf-8", errors="replace")
+                            .strip()
+                            .splitlines()
+                        ):
+                            logging.error("ffmpeg: {}".format(line))
+                    return False
+
+                # Only on successful completion: rename tmp to target, and remove source WAV
+                os.rename(ofile_tmp, ofile)
                 os.remove(s_wfile)
+                success = True
                 time_now = time.strftime("%H-%M-%S")
                 logging.info(
                     "\n Finished compression of {} to {} at {}\n".format(
                         wfile, ofile, time_now
                     )
                 )
-            except Exception:
-                logging.info("Error compressing {}".format(wfile))
+                return True
+            except Exception as exc:
+                logging.error("Error compressing {}: {}".format(wfile, exc))
+                return False
+            finally:
+                # If compression failed or was interrupted, clean up the temporary file
+                if not success and os.path.exists(ofile_tmp):
+                    try:
+                        os.remove(ofile_tmp)
+                        logging.info(
+                            "Removed incomplete temporary file: {}".format(
+                                os.path.basename(ofile_tmp)
+                            )
+                        )
+                    except OSError as exc:
+                        logging.error(
+                            "Could not remove temporary file {}: {}".format(
+                                ofile_tmp, exc
+                            )
+                        )
 
         else:
             # Don't compress, store as wav
             logging.info("\n{} - No postprocessing of audio data\n".format(wfile))
             ofile = os.path.join(upload_dir, wfile) + ".wav"
             os.rename(s_wfile, ofile)
+            return True

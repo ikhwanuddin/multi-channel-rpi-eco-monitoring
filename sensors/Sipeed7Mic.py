@@ -366,18 +366,21 @@ class Sipeed7Mic(SensorBase):
 
         if self.compress_data:
             ofile = ofile.replace(".wav", ".flac")
+            ofile_tmp = ofile + ".tmp"
             fname = os.path.basename(wfile)
+            success = False
             try:
                 logging.info("Compressing {} -> FLAC".format(fname))
                 ffmpeg_cmd = [
                     "ffmpeg",
+                    "-y",  # overwrite existing temporary file if left over from a previous interrupted run
                     "-i",
                     wfile,
                     "-c:a",
                     "flac",
                     "-compression_level",
                     "2",
-                    ofile,
+                    ofile_tmp,
                 ]
                 logging.debug("ffmpeg command: {}".format(" ".join(ffmpeg_cmd)))
                 result = subprocess.run(
@@ -400,12 +403,32 @@ class Sipeed7Mic(SensorBase):
                         ):
                             logging.error("ffmpeg: {}".format(line))
                     return False
+
+                # Only on successful completion: rename tmp to target, and remove source WAV
+                os.rename(ofile_tmp, ofile)
                 os.remove(wfile)
+                success = True
                 logging.info("Compression done: {}".format(os.path.basename(ofile)))
                 return True
             except Exception as exc:
                 logging.error("Error compressing {}: {}".format(fname, exc))
                 return False
+            finally:
+                # If compression failed or was interrupted, clean up the temporary file
+                if not success and os.path.exists(ofile_tmp):
+                    try:
+                        os.remove(ofile_tmp)
+                        logging.info(
+                            "Removed incomplete temporary file: {}".format(
+                                os.path.basename(ofile_tmp)
+                            )
+                        )
+                    except OSError as exc:
+                        logging.error(
+                            "Could not remove temporary file {}: {}".format(
+                                ofile_tmp, exc
+                            )
+                        )
         else:
             logging.info(
                 "Compression disabled; moving {} as-is.".format(os.path.basename(wfile))

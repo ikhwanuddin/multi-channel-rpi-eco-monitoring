@@ -6,27 +6,44 @@ import sys
 from datetime import datetime
 
 
+def _default_state():
+    return {
+        "session_start": "",
+        "last_sync": "",
+        "files": {},
+        "upload_stats": {
+            "total_files": 0,
+            "completed": 0,
+            "pending": 0,
+            "uploading": 0,
+            "total_size_gb": 0.0,
+        },
+    }
+
+
 def load_state(state_file):
     if not os.path.exists(state_file):
-        return {
-            "session_start": "",
-            "last_sync": "",
-            "files": {},
-            "upload_stats": {
-                "total_files": 0,
-                "completed": 0,
-                "pending": 0,
-                "uploading": 0,
-                "total_size_gb": 0.0,
-            },
-        }
-    with open(state_file, "r") as f:
-        return json.load(f)
+        return _default_state()
+    try:
+        with open(state_file, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(
+            f"WARNING: State file corrupted or unreadable ({e}), resetting to empty state",
+            file=sys.stderr,
+        )
+        return _default_state()
 
 
 def save_state(state_file, state):
-    with open(state_file, "w") as f:
+    # Atomic write: write to temp file first, then rename.
+    # Prevents a truncated/corrupt state file if the process crashes mid-write.
+    tmp_file = state_file + ".tmp"
+    with open(tmp_file, "w") as f:
         json.dump(state, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_file, state_file)
 
 
 def init_scan_mark(data_dir, state_file):

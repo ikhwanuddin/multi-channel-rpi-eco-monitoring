@@ -276,7 +276,6 @@ Running `python_record.py` as a `systemd` service is the recommended way to ensu
     ```
 
 2.  **Paste the following configuration**:
-    *   **Note**: Be sure to update the `PI_ID` environment variable with your specific Raspberry Pi's unique ID.
 
     ```ini
     [Unit]
@@ -287,17 +286,49 @@ Running `python_record.py` as a `systemd` service is the recommended way to ensu
     [Service]
     User=pi
     WorkingDirectory=/home/pi/multi-channel-rpi-eco-monitoring
-    # Wait up to 60 seconds for NTP synchronization before starting
+
+    # ── 1. Time sync ──
+    # Wait up to 60 seconds for NTP synchronisation before starting
     ExecStartPre=/bin/bash -c 'for i in {1..60}; do if timedatectl status | grep -q "System clock synchronized: yes"; then echo "Time synced"; break; fi; echo "Waiting for time sync..."; sleep 1; done'
-    # Change the PI_ID below to match your device
-    Environment="PI_ID=RPiID-000000009c3f398b"
-    ExecStart=/usr/bin/python3 /home/pi/multi-channel-rpi-eco-monitoring/python_record.py /home/pi/multi-channel-rpi-eco-monitoring/config.json logfile.log
+
+    # ── 2. PI_ID dynamically from discover_serial.py ──
+    # No hardcoding — serial number is read automatically from the CPU
+    ExecStartPre=/bin/bash -c '/usr/bin/python3 /home/pi/multi-channel-rpi-eco-monitoring/discover_serial.py | sed "s/^/PI_ID=/" > /tmp/eco-monitor-pi-id.env'
+    EnvironmentFile=/tmp/eco-monitor-pi-id.env
+
+    # ── 3. Filesystem expansion (one-time) ──
+    # Check whether the root partition already uses >90% of the disk.
+    # If not, call raspi-config --expand-rootfs.
+    # Resize happens on the next reboot via the init script.
+    ExecStartPre=/bin/bash -c 'MARKER=/home/pi/.fs_expanded; if [ ! -f "$MARKER" ]; then ROOT_SIZE=$(df / | tail -1 | awk "{print \$2}"); DISK_SIZE=$(lsblk -b -o SIZE /dev/mmcblk0 2>/dev/null | head -2 | tail -1); if [ -n "$DISK_SIZE" ]; then DISK_SIZE_KB=$((DISK_SIZE / 1024)); if [ "$ROOT_SIZE" -lt $((DISK_SIZE_KB * 90 / 100)) ]; then sudo raspi-config --expand-rootfs 2>/dev/null; echo "FS expansion triggered (resize on next reboot)"; else echo "FS already expanded"; fi; else echo "Cannot determine disk size"; fi; touch "$MARKER"; fi'
+
+    # ── 4. Turn off Sipeed LEDs (power saving) ──
+    # Safe if Sipeed is not connected (prefix '-' = allow failure)
+    ExecStartPre=-/usr/bin/bash /home/pi/multi-channel-rpi-eco-monitoring/led_off.sh
+
+    # ── 5. Turn off ACT LED on the RPi board (power saving) ──
+    ExecStartPre=+/bin/bash -c 'for led in /sys/class/leds/ACT /sys/class/leds/led0; do if [ -d "$led" ]; then echo none > "$led/trigger" 2>/dev/null; echo 0 > "$led/brightness" 2>/dev/null; fi; done; exit 0'
+
+    # ── 6. Sync rclone.conf with Gist ──
+    # Requires gist.github_token & gist.gist_id in config.json.
+    # Non-critical — if it fails (offline / not configured) the service still runs.
+    ExecStartPre=-/bin/bash -c 'cd /home/pi/multi-channel-rpi-eco-monitoring && bash sync_rclone_config.sh /dev/null ./config.json 2>&1 || true'
+
+    # ── 7. Main: python_record.py ──
+    ExecStart=/usr/bin/python3 -u /home/pi/multi-channel-rpi-eco-monitoring/python_record.py /home/pi/multi-channel-rpi-eco-monitoring/config.json logfile.log logs
+
+    # Automatic restart on crash (replaces the while-true loop in bash)
     Restart=always
     RestartSec=5
 
     [Install]
     WantedBy=multi-user.target
     ```
+
+    **`ExecStartPre` prefix legend**:
+    - **No prefix**: runs as user `pi`.
+    - **Prefix `+`**: runs as `root` (required for `/sys/class/leds` access).
+    - **Prefix `-`**: failure is allowed — if Sipeed is not connected or there is no internet, the service continues.
 
 3.  **Enable and Start the Service**:
     ```bash
@@ -320,6 +351,26 @@ You can use the following commands to manage your monitoring service:
 
 ---
 > **Legacy Note**: The previous method using `recorder_startup_script.sh` in `/etc/profile` is now considered legacy and is **not recommended** for new deployments. Please migrate to the `systemd` service method described above for better stability.
+
+### Migration Checklist
+
+When switching from `/etc/profile` + `recorder_startup_script.sh` to systemd service:
+
+1. Remove the old `/etc/profile` lines:
+   ```bash
+   sudo nano /etc/profile
+   # Remove the 2 lines containing chmod +x ... and recorder_startup_script.sh
+   ```
+2. Create and enable the service (see setup above)
+3. Reboot to verify:
+   ```bash
+   sudo reboot
+   # After logging in, check status:
+   sudo systemctl status eco-monitor.service
+   ```
+4. **IMPORTANT**: Do **not** delete `recorder_startup_script.sh` — keep it in the repository as a reference/documentation of the startup logic, but it no longer runs automatically.
+
+---
 
 ### Log Prefix Contract
 

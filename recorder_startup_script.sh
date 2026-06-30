@@ -135,7 +135,7 @@ log_ffmpeg_timeout_event() {
 
     log_msg "FFMPEG_TIMEOUT event_id=$event_id ctx=$context_label timeout=${timeout_secs}s size=${size_bytes}B"
     log_msg "  file: $(basename "$wav_file") (kept for retry)"
-    log_msg "  hint: kirim baris ini + 30 baris sekitarnya ke developer (event_id=$event_id)"
+    log_msg "  hint: send this line + 30 surrounding lines to the developer (event_id=$event_id)"
 
     if [ -n "${logdir:-}" ]; then
         feedback_log="$logdir/ffmpeg_timeout_feedback.log"
@@ -174,7 +174,7 @@ log_ffmpeg_failure_event() {
     log_msg "FFMPEG_FAILED event_id=$event_id ctx=$context_label exit=$exit_code size=${size_bytes}B"
     log_msg "  file: $(basename "$wav_file")"
     log_msg "  stderr: $stderr_compact"
-    log_msg "  (kept for retry) hint: kirim baris ini + 30 baris sekitarnya ke developer (event_id=$event_id)"
+    log_msg "  (kept for retry) hint: send this line + 30 surrounding lines to the developer (event_id=$event_id)"
 
     if [ -n "${logdir:-}" ]; then
         feedback_log="$logdir/ffmpeg_timeout_feedback.log"

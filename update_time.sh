@@ -31,7 +31,7 @@ elif [ -n "${SSH_TIME_EPOCH:-}" ]; then
     SSH_EPOCH="$SSH_TIME_EPOCH"
 fi
 
-# Jika --epoch diberikan, langsung pakai epoch (mode offline) tanpa cek internet
+# If --epoch is provided, use the epoch directly (offline mode) without internet check
 if [ -n "$SSH_EPOCH" ]; then
     TIME_SYNC_MODE="ssh-epoch"
     TIME_SYNC_PHASE="validate-epoch"
@@ -55,7 +55,7 @@ if [ -n "$SSH_EPOCH" ]; then
 else
     TIME_SYNC_MODE="ntp"
     TIME_SYNC_PHASE="probe-internet"
-    # Tidak ada epoch, cek internet lalu sync NTP
+    # No epoch provided, check internet then sync NTP
     ONLINE=0
     if timeout 3s wget -q --spider http://google.com; then
         ONLINE=1

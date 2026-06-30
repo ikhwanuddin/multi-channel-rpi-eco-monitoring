@@ -46,18 +46,18 @@ def auto_update_repository():
         script_dir = os.path.dirname(os.path.abspath(__file__))
         logging.info("Memulai auto-update repository...")
 
-        # 1. Pastikan kita di branch master
+        # 1. Ensure we are on the master branch
         subprocess.call(["git", "-C", script_dir, "checkout", "master"], timeout=30)
 
-        # 2. Ambil data terbaru dari remote
+        # 2. Fetch latest data from remote
         subprocess.call(["git", "-C", script_dir, "fetch", "origin"], timeout=30)
 
-        # 3. FORCE RESET ke origin/master (INI AKAN MENGHAPUS SEMUA PERUBAHAN LOKAL DI RPI)
+        # 3. FORCE RESET to origin/master (THIS WILL DISCARD ALL LOCAL CHANGES ON THE RPI)
         subprocess.call(
             ["git", "-C", script_dir, "reset", "--hard", "origin/master"], timeout=60
         )
 
-        # 4. Bersihkan file yang tidak perlu
+        # 4. Clean up unnecessary files
         subprocess.call(
             [
                 "git",
@@ -73,9 +73,9 @@ def auto_update_repository():
             timeout=30,
         )
 
-        logging.info("Auto-update selesai.")
+        logging.info("Auto-update complete.")
     except Exception as e:
-        logging.warning("Auto-update gagal: {}".format(e))
+        logging.warning("Auto-update failed: {}".format(e))
 
 
 def gc_and_log_memory(caller_name):
@@ -587,19 +587,19 @@ def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die, sync_tr
     remote_base_path = rclone_config.get("remote_base_path", "monitoring_data")
 
     while not die.is_set():
-        # Menunggu trigger (instan) atau timeout (sync_interval)
+        # Wait for trigger (instant) or timeout (sync_interval)
         sync_trigger.wait(timeout=sync_interval)
         sync_trigger.clear()
 
         if die.is_set():
             break
 
-        # Cek internet & sinkronisasi
+        # Check internet & synchronise
         if is_internet_available():
             logging.info("Internet detected. Starting immediate upload sync.")
             subprocess.call("bash ./update_time.sh", shell=True)
 
-            # Persiapan file state & log
+            # Prepare state file & log
             state_file = os.path.join(
                 os.path.dirname(upload_dir_pi), "rclone_state.json"
             )
@@ -735,7 +735,7 @@ def continuous_recording(
             run_postprocess(sensor, upload_dir)
 
             # Check for internet to decide whether to record
-            # Perbaikan: Mengakses offline_mode dari root config (yang diteruskan sebagai sensor_config)
+            # Fix: Access offline_mode from root config (passed as sensor_config)
             force_record = sensor_config.get("offline_mode", 0) == 1
 
             # Check if sync is currently triggered

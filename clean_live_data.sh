@@ -56,7 +56,7 @@ esac
 
 # Remove only files (including hidden files) under live_data.
 # Keep all directories so folder structure remains unchanged.
-# Use sudo because files may be owned by root (python_record.py runs as sudo).
+# Use sudo because files may be owned by root (record.py runs as sudo).
 if sudo find "$TARGET_DIR" -mindepth 1 -print -quit | grep -q .; then
     echo "Cleaning recording files while preserving all folder structure in: $TARGET_DIR"
     if sudo find "$TARGET_DIR" -type f -delete; then

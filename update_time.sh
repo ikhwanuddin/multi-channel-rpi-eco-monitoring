@@ -62,10 +62,20 @@ else
     fi
 
     if [ "$ONLINE" -eq 1 ]; then
-        TIME_SYNC_PHASE="sync-ntp"
-        log_msg "Internet detected, syncing time via NTP"
-        sudo timedatectl set-ntp true
-        sleep 10
+        TIME_SYNC_PHASE="check-ntp"
+        # Avoid forcing NTP re-sync on every cycle. If the clock is already
+        # synchronised, timedatectl reports "System clock synchronized: yes"
+        # and we can skip the 10-second wait entirely. This keeps the upload
+        # loop fast and avoids unnecessary wake-ups on battery power.
+        if timedatectl status 2>/dev/null | grep -q "System clock synchronized: yes"; then
+            TIME_SYNC_PHASE="already-synced"
+            log_msg "Internet detected and clock already synced. Time not updated."
+        else
+            TIME_SYNC_PHASE="sync-ntp"
+            log_msg "Internet detected, syncing time via NTP"
+            sudo timedatectl set-ntp true
+            sleep 10
+        fi
     else
         TIME_SYNC_PHASE="offline-no-source"
         log_msg "No internet and no SSH epoch provided. Time not updated."

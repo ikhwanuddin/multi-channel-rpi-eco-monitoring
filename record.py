@@ -24,6 +24,29 @@ array_mic_button = 26  # Respeaker series
 # set a global name for a common logging for functions using this module
 LOG = "multi-channel-rpi-eco-monitoring"
 
+RECORDER_BANNER = r"""
+===================================================================
+
+    888b     d888        d8888        d8888 8888888b.  888     888
+    8888b   d8888       d88888       d88888 888   Y88b 888     888
+    88888b.d88888      d88P888      d88P888 888    888 888     888
+    888Y88888P888     d88P 888     d88P 888 888   d88P 888     888
+    888 Y888P 888    d88P  888    d88P  888 8888888P"  888     888
+    888  Y8P  888   d88P   888   d88P   888 888 T88b   888     888
+    888   "   888  d8888888888  d8888888888 888  T88b  Y88b. .d88P
+    888       888 d88P     888 d88P     888 888   T88b  "Y88888P"
+
+          Multichannel Autonomous Acoustic Recording Unit
+
+ ===================================================================
+"""
+
+
+def print_recorder_banner():
+    """Print the iconic MULTICHANNEL ASCII banner."""
+    for line in RECORDER_BANNER.strip().split("\n"):
+        logging.getLogger(LOG).info(line)
+
 
 def is_internet_available():
     """
@@ -78,32 +101,88 @@ def auto_update_repository():
         logging.warning("Auto-update failed: {}".format(e))
 
 
+# Module-level counter for adaptive gc_and_log_memory so we don't need
+# dynamic attributes on the function object.
+_gc_call_count = 0
+
+
 def gc_and_log_memory(caller_name):
     """
     Run garbage collection to reclaim memory and log current Python process
     and overall system RAM usage to diagnose and prevent memory leaks.
-    """
-    try:
-        # Run Garbage Collector
-        collected = gc.collect()
 
-        # Get process memory usage
+    Adaptive: collection only fires when process RSS exceeds a comfort
+    threshold, or every Nth call as a safety net. This avoids the predictable
+    GC pause that previously occurred on every recording cycle (which can
+    cause arecord underruns on the Pi Zero 2 W) while still bounding memory
+    growth over long deployments.
+    """
+    # Threshold in MB; trigger GC when process RSS grows past this.
+    GC_THRESHOLD_MB = 120
+    # Forced GC every Nth call regardless of RSS, as a leak safety net.
+    GC_FORCE_EVERY_N_CALLS = 12
+
+    # Use a module-level mutable counter instead of a function attribute so
+    # static type checkers don't complain about dynamic attributes.
+    global _gc_call_count
+    _gc_call_count += 1
+
+    try:
         process = psutil.Process(os.getpid())
         proc_mem_mb = process.memory_info().rss / (1024 * 1024)
 
-        # Get overall system memory usage
+        should_collect = proc_mem_mb >= GC_THRESHOLD_MB or (
+            _gc_call_count % GC_FORCE_EVERY_N_CALLS == 0
+        )
+        collected = gc.collect() if should_collect else 0
+
+        # Re-read RSS after collection for accurate reporting.
+        if should_collect:
+            proc_mem_mb = process.memory_info().rss / (1024 * 1024)
+
         sys_mem = psutil.virtual_memory()
         sys_avail_mb = sys_mem.available / (1024 * 1024)
         sys_total_mb = sys_mem.total / (1024 * 1024)
 
+        action = "gc" if should_collect else "skip-gc"
         logging.info(
-            "RAM: {:.0f} MB proc, {:.0f}/{:.0f} MB free/total, {} objects freed.".format(
-                proc_mem_mb, sys_avail_mb, sys_total_mb, collected
+            "RAM[{}]: {:.0f} MB proc, {:.0f}/{:.0f} MB free/total, {} objects freed ({}).".format(
+                action, proc_mem_mb, sys_avail_mb, sys_total_mb, collected, caller_name
             )
         )
     except Exception as e:
         logging.warning(
             "Failed to collect garbage or log memory in {}: {}".format(caller_name, e)
+        )
+
+
+def set_cpu_governor(mode):
+    """
+    Set the CPU scaling governor to save power on battery-powered deployments.
+
+    mode: 'powersave' (during idle/sleep between captures) or
+          'ondemand'  (during arecord/ffmpeg to allow short bursts).
+    Requires sudo and the governor sysfs interface. Silently no-ops on boards
+    where the interface is unavailable so it never breaks recording.
+    """
+    try:
+        subprocess.call(
+            [
+                "sudo",
+                "sh",
+                "-c",
+                "echo {} > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor".format(
+                    mode
+                ),
+            ],
+            timeout=5,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logging.getLogger(LOG).info("CPU governor set to {}".format(mode))
+    except Exception as e:
+        logging.getLogger(LOG).debug(
+            "Could not set CPU governor to {}: {}".format(mode, e)
         )
 
 
@@ -579,51 +658,79 @@ class StopMonitoring(Exception):
     pass
 
 
-def upload_server_sync(sync_interval, rclone_config, upload_dir_pi, die, sync_trigger):
+def upload_server_sync(
+    sync_interval, rclone_config, upload_dir_pi, die, sync_trigger, watchdog=None
+):
     logging.info("Function upload_server_sync has been called.")
 
     remote_name = rclone_config.get("remote_name", "mybox")
     config_path = rclone_config.get("config_path", "").strip()
     remote_base_path = rclone_config.get("remote_base_path", "monitoring_data")
 
+    # Heartbeat timestamp so a watchdog can detect if this thread dies.
+    # Updated at the top of every spin; if it ever stops advancing the main
+    # loop will log a warning (the systemd unit's Restart=already handles
+    # crashes, but a silent stall that never exits would otherwise go
+    # unnoticed and uploads would silently stop forever).
+    def beat():
+        if watchdog is not None:
+            watchdog["last_beat"] = time.time()
+
+    beat()
     while not die.is_set():
-        # Wait for trigger (instant) or timeout (sync_interval)
-        sync_trigger.wait(timeout=sync_interval)
-        sync_trigger.clear()
+        try:
+            # Wait for trigger (instant) or timeout (sync_interval)
+            sync_trigger.wait(timeout=sync_interval)
+            sync_trigger.clear()
 
-        if die.is_set():
-            break
+            if die.is_set():
+                break
 
-        # Check internet & synchronise
-        if is_internet_available():
-            logging.info("Internet detected. Starting immediate upload sync.")
-            subprocess.call("bash ./update_time.sh", shell=True)
+            # Check internet & synchronise
+            if is_internet_available():
+                logging.info("Internet detected. Starting immediate upload sync.")
+                subprocess.call("bash ./update_time.sh", shell=True)
 
-            # Prepare state file & log
-            state_file = os.path.join(
-                os.path.dirname(upload_dir_pi), "rclone_state.json"
+                # Prepare state file & log
+                state_file = os.path.join(
+                    os.path.dirname(upload_dir_pi), "rclone_state.json"
+                )
+                logfile = os.path.join(os.path.dirname(upload_dir_pi), "rclone.log")
+
+                exit_code = subprocess.call(
+                    [
+                        "bash",
+                        "./rclone_upload.sh",
+                        upload_dir_pi,
+                        remote_name,
+                        state_file,
+                        logfile,
+                        config_path,
+                        remote_base_path,
+                    ]
+                )
+
+                if exit_code != 0:
+                    logging.error(
+                        "Upload sync failed with exit code {}".format(exit_code)
+                    )
+            else:
+                logging.info("Internet not available. Skipping sync.")
+
+            gc_and_log_memory("upload_server_sync")
+            beat()
+        except Exception as e:
+            # Watchdog: never let the sync loop die silently. Log and keep
+            # looping so a transient error doesn't permanently stop uploads
+            # until the next full process restart.
+            logging.error(
+                "upload_server_sync: unhandled exception ({}): {}".format(
+                    time.strftime("%Y-%m-%d %H:%M:%S"), e
+                )
             )
-            logfile = os.path.join(os.path.dirname(upload_dir_pi), "rclone.log")
-
-            exit_code = subprocess.call(
-                [
-                    "bash",
-                    "./rclone_upload.sh",
-                    upload_dir_pi,
-                    remote_name,
-                    state_file,
-                    logfile,
-                    config_path,
-                    remote_base_path,
-                ]
-            )
-
-            if exit_code != 0:
-                logging.error("Upload sync failed with exit code {}".format(exit_code))
-        else:
-            logging.info("Internet not available. Skipping sync.")
-
-        gc_and_log_memory("upload_server_sync")
+            logging.error(traceback.format_exc())
+            beat()
+            time.sleep(15)
 
 
 def clean_dirs(working_dir, upload_dir, pre_upload_dir, clean_working_dir=True):
@@ -771,6 +878,8 @@ def continuous_recording(
             # between recordings rather than being blocked indefinitely.
             if recording_in_progress is not None:
                 recording_in_progress.set()
+            # Allow CPU to burst for arecord + ffmpeg during capture.
+            set_cpu_governor("ondemand")
             record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=False)
             if recording_in_progress is not None:
                 recording_in_progress.clear()
@@ -797,7 +906,14 @@ def continuous_recording(
             # Sleep between recordings with recording_in_progress cleared so
             # scheduled_reboot_monitor can trigger during the capture_delay.
             gc_and_log_memory("continuous_recording")
+            # Drop CPU to lowest frequency during the (usually long) idle gap
+            # between captures to conserve powerbank energy.
+            set_cpu_governor("powersave")
             sensor.sleep()
+            # Restore ondemand before the next capture in case sleep() returned
+            # early due to die being set; the capture path also resets it but
+            # this keeps the governor sane on the exception path.
+            set_cpu_governor("ondemand")
 
         except Exception as e:
             if recording_in_progress is not None:
@@ -854,6 +970,13 @@ def record(config_file, logfile_name, log_dir="logs"):
     hdlr = logging.FileHandler(filename=logfile)
     hdlr.setFormatter(minute_formatter)
     logging.getLogger().addHandler(hdlr)
+
+    # Print the iconic MULTICHANNEL banner (stdout + log file)
+    print_recorder_banner()
+
+    # Start in powersave; the recording loop will switch to ondemand during
+    # capture and back to powersave during the inter-capture sleep.
+    set_cpu_governor("powersave")
 
     # Load the cpu_serial from environment variable
     try:
@@ -1052,6 +1175,14 @@ def record(config_file, logfile_name, log_dir="logs"):
     sync_trigger = threading.Event()
     signal.signal(signal.SIGINT, exit_handler)
 
+    # Watchdog state for the upload sync thread. Updated via a dict so the
+    # sync thread can mutate it without needing extra locking around a
+    # single float. The main loop inspects last_beat periodically.
+    sync_watchdog = {"last_beat": time.time()}
+
+    # Pre-declare so it's always bound even when offline/test mode skips
+    # sync-thread creation; the join path then has a defined value.
+    sync_thread = None
     if not offline_mode and not test_mode:
         sync_thread = threading.Thread(
             target=upload_server_sync,
@@ -1061,6 +1192,7 @@ def record(config_file, logfile_name, log_dir="logs"):
                 upload_dir_pi,
                 die,
                 sync_trigger,
+                sync_watchdog,
             ),
         )
 
@@ -1117,20 +1249,46 @@ def record(config_file, logfile_name, log_dir="logs"):
         else:
             logging.info("DEBUG: Entering else block for sync_thread.")
             # Start sync thread immediately
-            sync_thread.start()
-            logging.info("Thread upload sync has started.")
-            logging.info(
-                "Starting upload server sync every {} seconds at {}".format(
-                    sensor.server_sync_interval,
-                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+            if sync_thread is not None:
+                sync_thread.start()
+                logging.info("Thread upload sync has started.")
+                logging.info(
+                    "Starting upload server sync every {} seconds at {}".format(
+                        sensor.server_sync_interval,
+                        datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    )
                 )
-            )
+            else:
+                logging.warning("sync_thread was not created; skipping start.")
 
         # now run a loop that will continue with a small grain until
         # an interrupt arrives, this is necessary to keep the program live
-        # and listening for interrupts
+        # and listening for interrupts. Also watches the sync thread's
+        # heartbeat so a silent stall is at least logged.
+        sync_watchdog_warned = False
+        SYNC_WATCHDOG_STALL_SECONDS = 3 * sensor.server_sync_interval + 300
         while True:
             time.sleep(1)
+            if not offline_mode and not test_mode and not die.is_set():
+                last_beat = sync_watchdog.get("last_beat", 0)
+                if (
+                    last_beat
+                    and (time.time() - last_beat) > SYNC_WATCHDOG_STALL_SECONDS
+                ):
+                    if not sync_watchdog_warned:
+                        logging.error(
+                            "WATCHDOG: upload sync thread has not reported a "
+                            "heartbeat in {:.0f}s; it may have stalled. "
+                            "Uploads may be silent until process restart.".format(
+                                time.time() - last_beat
+                            )
+                        )
+                        sync_watchdog_warned = True
+                elif (
+                    last_beat
+                    and (time.time() - last_beat) <= SYNC_WATCHDOG_STALL_SECONDS
+                ):
+                    sync_watchdog_warned = False
     except StopMonitoring:
         # We've had an interrupt signal, so tell the threads to shutdown,
         # wait for them to finish and then exit the program
@@ -1138,7 +1296,7 @@ def record(config_file, logfile_name, log_dir="logs"):
         record_thread.join()
         if reboot_thread is not None:
             reboot_thread.join()
-        if not offline_mode:
+        if not offline_mode and not test_mode and sync_thread is not None:
             sync_thread.join()
 
         logging.info(

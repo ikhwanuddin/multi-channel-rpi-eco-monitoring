@@ -4,6 +4,21 @@ This document contains additional setup instructions for specialized configurati
 
 > **Note**: For fundamental configuration of operational modes (Forest/Home/Test) and how to safely edit `config.json`, please refer to the [Configuration & Operational Scenarios](../README.md#configuration--operational-scenarios) section in the `README.md`.
 
+## GPIO Shutdown Button via the Installer (Recommended)
+
+The integrated installer (`installer.py`, menu option 3) is the recommended way to configure the GPIO shutdown button. It combines both the boot-config overlay and the `config.json` flag in a single step:
+
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+sudo python3 installer.py
+# Select menu option 3 (Configure GPIO shutdown button)
+sudo reboot
+```
+
+The installer detects the sensor type from `config.json` and suggests the appropriate default pin (GPIO 21 for Sipeed, GPIO 26 for Respeaker). It applies the `dtoverlay=gpio-shutdown` overlay and sets `sys.use_system_shutdown_button=1` automatically.
+
+The manual and helper-script methods below are still available as alternatives.
+
 ## Shutdown Button Setup for Sipeed 7-Mic Array
 
 ![GPIO Pin on Raspberry Pi Zero 2 W](https://i.sstatic.net/yHddo.png)
@@ -66,9 +81,9 @@ To avoid duplicate handling with the Python GPIO listener, set this in your `con
 }
 ```
 
-With `use_system_shutdown_button` enabled, `python_record.py` will skip registering the Python-side button callback for Respeaker sensors.
+With `use_system_shutdown_button` enabled, `record.py` will skip registering the Python-side button callback for Respeaker sensors.
 
-### One-command helper (recommended)
+### One-command helper (alternative to the installer)
 
 This repository provides `enable_system_shutdown_button.sh` to apply both changes automatically:
 
@@ -88,16 +103,16 @@ What it does:
 For long-term battery-powered monitoring deployments, you can reduce power consumption with these configurations:
 
 ### Disable HDMI Output
-* **Option 1: Run on startup** (add to `recorder_startup_script.sh`):
-  ```
-  # Disable HDMI to save power
-  tvservice -o
-  ```
-
-* **Option 2: Permanent configuration** (add to `/boot/config.txt`):
+* **Option 1: Permanent configuration** (add to `/boot/config.txt`, recommended):
   ```
   hdmi_blanking=1
   hdmi_force_hotplug=0
+  ```
+
+* **Option 2: Run on startup** (legacy `recorder_startup_script.sh` — only if still using the /etc/profile method):
+  ```
+  # Disable HDMI to save power
+  tvservice -o
   ```
 
 ### Disable Bluetooth
@@ -113,7 +128,7 @@ For long-term battery-powered monitoring deployments, you can reduce power consu
   dtparam=act_led_activelow=on
   ```
 
-* **Option 2: Run on startup** (add to `recorder_startup_script.sh`):
+* **Option 2: Run on startup** (legacy `recorder_startup_script.sh` — only if still using the /etc/profile method):
   ```
   # Disable activity LED to save power
   echo 0 > /sys/class/leds/led0/brightness
@@ -124,6 +139,145 @@ For long-term battery-powered monitoring deployments, you can reduce power consu
 * Disable unnecessary services: `sudo systemctl disable bluetooth.service`
 * Consider using Raspberry Pi Zero 2 W for lower power consumption
 * Monitor battery voltage if using battery power
+
+## Runtime Optimizations (Automatic)
+
+The following optimizations are applied automatically by the recorder at runtime — no manual configuration is required. They are tuned for the Raspberry Pi Zero 2 W running on a limited powerbank and are documented here so behavior is predictable during field debugging.
+
+### CPU Scaling Governor
+
+`record.py` switches the CPU scaling governor between two modes to balance capture reliability and idle power draw:
+
+| Phase | Governor | Reason |
+|---|---|---|
+| Boot and idle (between captures) | `powersave` | Lowest clock during long `capture_delay` gaps — biggest powerbank savings |
+| `arecord` + `ffmpeg` (capture/postprocess) | `ondemand` | Allows short frequency bursts to keep up with audio and avoid xruns |
+
+The switch is performed via `set_cpu_governor()` writing to
+`/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` using `sudo`. If the
+sysfs interface is unavailable (e.g. on a non-Pi host or in a container), the
+call silently no-ops at `DEBUG` log level — it never blocks recording.
+
+**Requirement:** the service user must be allowed to run
+`echo <mode> > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` via
+`sudo` without a password, or the service must run as root. If sudo requires a
+password, governor switching is skipped (logged at `DEBUG`) and the kernel's
+default governor is used.
+
+**Verification:**
+```bash
+cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+```
+Expect `powersave` while idle and `ondemand` during a recording cycle.
+
+### Adaptive Garbage Collection
+
+Previously `gc.collect()` ran on every recording cycle, causing a predictable
+Python pause that could trigger `arecord` underruns on the Pi Zero 2 W. The
+new `gc_and_log_memory()` is adaptive:
+
+* Runs `gc.collect()` only when process RSS exceeds **120 MB**, **or**
+* Once every **12 calls** as a leak safety net.
+
+Log lines now tag the action so you can confirm it is working:
+```
+RAM[gc]:      134 MB proc, 312/484 MB free/total, 5321 objects freed (continuous_recording).
+RAM[skip-gc]:  88 MB proc, 318/484 MB free/total, 0 objects freed (upload_server_sync).
+```
+
+No configuration is exposed — the thresholds are tuned for the Pi Zero 2 W
+(512 MB RAM). If you deploy on a higher-RAM Pi (3/4/5) and want more eager
+collection, edit `GC_THRESHOLD_MB` and `GC_FORCE_EVERY_N_CALLS` in
+`record.py`.
+
+### Upload Sync Thread Watchdog
+
+The `upload_server_sync` thread is now wrapped in a `try/except` per loop
+iteration so a transient exception no longer silently kills all future uploads
+until the next full process restart. Each iteration updates a heartbeat in
+`sync_watchdog["last_beat"]`.
+
+The main idle loop monitors this heartbeat and logs a `WATCHDOG` error if the
+sync thread has not reported in for longer than `3 * server_sync_interval + 300`
+seconds. This catches silent stalls that `systemd`'s `Restart=always` cannot
+detect (the process is still alive, just not syncing).
+
+**Filter watchdog events:**
+```bash
+grep -hE "WATCHDOG" logs/*.log
+```
+
+The watchdog only logs — it does not auto-restart the process. If you want a
+stall to trigger `safe_shutdown()` (and thus a `systemd` restart), wire that
+into the watchdog block in `record.py`.
+
+### Rclone Tuning for Pi Zero 2 W
+
+`rclone_upload.sh` now uses conservative concurrency tuned for 512 MB RAM:
+
+| Flag | Old | New | Reason |
+|---|---|---|---|
+| `--transfers` | 4 | 2 | Concurrent uploads × buffer = peak RAM |
+| `--checkers` | 8 | 4 | Fewer concurrent file stat calls |
+| `--buffer-size` | 16M | 4M | 2 × 4 MB = 8 MB peak vs 4 × 16 MB = 64 MB |
+
+This eliminates out-of-memory kills observed during large backlog uploads on
+the Pi Zero 2 W. On higher-RAM Pi models you can safely raise these values
+again in `rclone_upload.sh`.
+
+### Gist Config Push Throttle
+
+`_push_rclone_config_to_gist` in `rclone_upload.sh` is now throttled to **at
+most once per hour** to avoid hammering the GitHub Gist API on every sync
+cycle and to reduce network/power usage during frequent sync attempts.
+
+* Throttle state is stored in `${TMPDIR:-/tmp}/eco_monitor_gist_push_last`
+  (a Unix timestamp of the last successful push).
+* A failed push does **not** update the stamp, so the next cycle retries.
+* The stamp lives in `/tmp` and is cleared on reboot — meaning the first push
+  after each boot still runs, which is the desired behavior.
+* Throttled calls log:
+  ```
+  [upload:finalize] Skipping Gist push (throttled: last push 2400s ago, min interval 3600s)
+  ```
+
+To force an immediate push (e.g. after rotating the GitHub token), delete the
+stamp file:
+```bash
+rm -f /tmp/eco_monitor_gist_push_last
+```
+
+### Time Sync Short-Circuit
+
+`update_time.sh` now checks `timedatectl` before forcing an NTP re-sync. If
+the system clock is already synchronised (`System clock synchronized: yes`),
+it logs `already-synced` and returns immediately — skipping the previous
+fixed 10-second `sleep`. This keeps the upload loop fast and avoids
+unnecessary wake-ups on battery power.
+
+New phase values in the time-sync log contract:
+* `check-ntp` — about to inspect `timedatectl`
+* `already-synced` — clock already synchronized, no action taken
+* `sync-ntp` — NTP re-sync forced (previous behavior)
+
+**Filter:**
+```bash
+grep -hE "already-synced|sync-ntp" logs/*.log
+```
+
+### State Manager: WAV + FLAC Tracking
+
+`state_manager.py` previously only tracked `.flac` files, which meant
+deployments with `compress_data=false` silently never uploaded anything.
+It now tracks both `.flac` and `.wav` (case-insensitive) via
+`TRACKED_EXTENSIONS`. Failure marker files (`*_ERROR_audio-record-failed`)
+are still excluded automatically because they do not match either extension.
+
+No action is needed for existing deployments — the fix is transparent. To
+verify which files are queued for upload on a given Pi:
+```bash
+python3 state_manager.py init-scan-mark <data_dir> <state_file> | jq '.files_to_upload'
+```
 
 ## Troubleshooting PyAudio Installation
 
@@ -153,7 +307,29 @@ pip install --only-binary=all pyaudio
 ```bash
 python3 -c "import pyaudio; print('PyAudio installed successfully')"
 ```
-
+    
+## Useful Shell Shortcuts
+    
+Untuk mempercepat *debugging* dan monitoring saat terhubung via SSH, Anda dapat menggunakan *installer* untuk menambahkan *shortcut* ke file `.bashrc` Anda secara otomatis.
+    
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+sudo python3 installer.py
+# Pilih opsi menu 4 (Install 'monitor' shell alias)
+```
+    
+Ini akan menambahkan *function* berikut ke `/home/pi/.bashrc`:
+    
+```bash
+# Shortcut untuk memonitor service eco-monitor
+monitor() {
+    echo "--- Menampilkan log real-time: eco-monitor.service (Ctrl+C untuk keluar) ---"
+    sudo journalctl -u eco-monitor.service -f
+}
+```
+    
+Setelah *logout* dan masuk kembali (atau menjalankan `source ~/.bashrc`), Anda cukup mengetik **`monitor`** di terminal untuk langsung melihat status service yang sedang berjalan secara *real-time*.
+    
 ## Log Filter Examples (Prefix Contract)
 
 The runtime logs use structured prefixes such as:

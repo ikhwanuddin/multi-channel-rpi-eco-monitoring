@@ -79,7 +79,7 @@ def auto_update_repository():
     """
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        logging.info("Memulai auto-update repository...")
+        logging.info("Starting repository auto-update...")
 
         # 1. Ensure we are on the master branch
         subprocess.call(["git", "-C", script_dir, "checkout", "master"], timeout=30)

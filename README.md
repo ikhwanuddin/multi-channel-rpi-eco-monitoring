@@ -6,6 +6,20 @@ This is the code designed to run a MAARU (Multichannel Autonomous Acoustic Recor
 
 Code adapted by Rifqi Ikhwanuddin from Neel Le Penru, James Skinner, Becky Heath, and Sarab Sethi's work on Autonomous Ecosystem Monitoring. More information on that project and full details at: https://github.com/sarabsethi/rpi-eco-monitoring.
 
+## 📚 Documentation Guide
+
+**New to this project?** Start here:
+- 🚀 [QUICKSTART.md](QUICKSTART.md) - Get running in 5 minutes
+- ⚙️ [CONFIG.md](CONFIG.md) - Configuration reference (all options explained)
+- 🏗️ [ARCHITECTURE.md](ARCHITECTURE.md) - How the system works
+
+**Need help or have questions?**
+- ❓ [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common issues and solutions
+- 📖 [LOG_GUIDE.md](LOG_GUIDE.md) - Understanding logs and debugging
+- ☁️ [CLOUD_SETUP.md](CLOUD_SETUP.md) - Cloud upload configuration
+- 🔧 [advanced_configuration.md](advanced_configuration.md) - Power saving, shutdown buttons, etc.
+- 📄 [README.md](README.md) - Full technical documentation (this file)
+
 ## Hardware Paths
 
 This project now has two practical deployment paths, depending on which microphone array you want to use.

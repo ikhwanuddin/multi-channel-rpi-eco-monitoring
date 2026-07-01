@@ -1,3 +1,12 @@
+# ── Eco-monitor Shell Shortcuts Cheat Sheet ──
+# monitor    : Tail live logs (Ctrl+C to quit)
+# sizeeco    : Check disk usage of monitoring folders
+# statuseco  : Show systemd service status
+# restarteco : Restart service (daemon-reload & restart)
+# starteco   : Start systemd service
+# stopeco    : Stop systemd service
+# ──────────────────────────────────────────────
+
 [Unit]
 Description=Eco Monitoring Service
 After=network.target time-sync.target

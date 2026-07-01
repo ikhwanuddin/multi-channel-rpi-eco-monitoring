@@ -324,6 +324,6 @@ grep -i error logs/*.log
 
 ## Next Steps
 
-- **Recording test?** See [QUICKSTART.md](QUICKSTART.md)
-- **Setting up cloud upload?** See [CLOUD_SETUP.md](CLOUD_SETUP.md)
+- **Recording test?** See [quickstart.md](quickstart.md)
+- **Setting up cloud upload?** See [cloud_setup.md](cloud_setup.md)
 - **Advanced settings?** See [advanced_configuration.md](advanced_configuration.md)

@@ -5,14 +5,14 @@ Quick reference for all documentation in this project.
 ## 🚀 Getting Started (Pick One)
 
 ### If you're in a hurry (5 minutes)
-→ **[QUICKSTART.md](QUICKSTART.md)**
+→ **[quickstart.md](quickstart.md)**
 - Prebuilt image setup
 - Manual setup
 - Basic configuration
 - Verification steps
 
 ### If you want full details
-→ **[README.md](README.md)**
+→ **[readme.md](readme.md)**
 - Complete setup instructions
 - Hardware options (Sipeed vs Respeaker)
 - OS configuration
@@ -23,7 +23,7 @@ Quick reference for all documentation in this project.
 ## ⚙️ Configuration & Customization
 
 ### Understanding all config options
-→ **[CONFIG.md](CONFIG.md)**
+→ **[config.md](config.md)**
 - Complete reference for config.json
 - Recording parameters explained
 - Upload settings
@@ -31,7 +31,7 @@ Quick reference for all documentation in this project.
 - Best practices
 
 ### Setting up cloud uploads
-→ **[CLOUD_SETUP.md](CLOUD_SETUP.md)**
+→ **[cloud_setup.md](cloud_setup.md)**
 - Rclone configuration (Box, Google Drive, etc.)
 - Creating cloud storage paths
 - Testing uploads
@@ -51,7 +51,7 @@ Quick reference for all documentation in this project.
 ## 🏗️ Understanding the System
 
 ### How does it work?
-→ **[ARCHITECTURE.md](ARCHITECTURE.md)**
+→ **[architecture.md](architecture.md)**
 - System components diagram
 - Boot sequence
 - Recording workflow
@@ -61,7 +61,7 @@ Quick reference for all documentation in this project.
 - Deployment models
 
 ### Understanding log files
-→ **[LOG_GUIDE.md](LOG_GUIDE.md)**
+→ **[log_guide.md](log_guide.md)**
 - Log file locations
 - Structured log format
 - Component reference
@@ -75,7 +75,7 @@ Quick reference for all documentation in this project.
 ## ❓ Troubleshooting & Support
 
 ### Something not working?
-→ **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**
+→ **[troubleshooting.md](troubleshooting.md)**
 - Recording issues (silence, overrun errors, no files)
 - Upload problems (slow, failing, authentication)
 - Startup/shutdown issues
@@ -90,54 +90,54 @@ Quick reference for all documentation in this project.
 ## 📊 Documentation by Topic
 
 | Topic | Document | Key Sections |
-|-------|----------|--------------|
-| **First-time setup** | QUICKSTART.md | Prerequisites, 30-second setup, configuration |
-| **Configuration** | CONFIG.md | All options, examples, best practices |
-| **Cloud uploads** | CLOUD_SETUP.md | Rclone setup, testing, troubleshooting |
-| **System overview** | ARCHITECTURE.md | Components, workflows, performance |
-| **Log analysis** | LOG_GUIDE.md | Format, filtering, patterns, parsing |
-| **Debugging** | TROUBLESHOOTING.md | Common issues, diagnostics, recovery |
+|-------|----------|______________|
+| **First-time setup** | quickstart.md | Prerequisites, 30-second setup, configuration |
+| **Configuration** | config.md | All options, examples, best practices |
+| **Cloud uploads** | cloud_setup.md | Rclone setup, testing, troubleshooting |
+| **System overview** | architecture.md | Components, workflows, performance |
+| **Log analysis** | log_guide.md | Format, filtering, patterns, parsing |
+| **Debugging** | troubleshooting.md | Common issues, diagnostics, recovery |
 | **Advanced** | advanced_configuration.md | Buttons, power saving, disk images |
-| **Complete setup** | README.md | Hardware paths, manual setup, full details |
+| **Complete setup** | readme.md | Hardware paths, manual setup, full details |
 
 ---
 
 ## 💡 Common Tasks
 
 ### Task: I want to start recording locally
-1. [QUICKSTART.md](QUICKSTART.md) - Choose prebuilt image or manual setup
-2. [CONFIG.md](CONFIG.md) - Review recording parameters
-3. [ARCHITECTURE.md](ARCHITECTURE.md) - Understand what's happening
+1. [quickstart.md](quickstart.md) - Choose prebuilt image or manual setup
+2. [config.md](config.md) - Review recording parameters
+3. [architecture.md](architecture.md) - Understand what's happening
 
 ### Task: I want to upload to cloud storage
-1. [CLOUD_SETUP.md](CLOUD_SETUP.md) - Configure rclone
-2. [CONFIG.md](CONFIG.md) - Enable online mode
-3. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Verify and debug
+1. [cloud_setup.md](cloud_setup.md) - Configure rclone
+2. [config.md](config.md) - Enable online mode
+3. [troubleshooting.md](troubleshooting.md) - Verify and debug
 
 ### Task: My recording has no audio
-1. [TROUBLESHOOTING.md](TROUBLESHOOTING.md#recording-produces-silence-or-distorted-audio) - Solutions
-2. [LOG_GUIDE.md](LOG_GUIDE.md) - Check logs for errors
-3. [ARCHITECTURE.md](ARCHITECTURE.md#error-handling-strategy) - Understanding error recovery
+1. [troubleshooting.md](troubleshooting.md#recording-produces-silence-or-distorted-audio) - Solutions
+2. [log_guide.md](log_guide.md) - Check logs for errors
+3. [architecture.md](architecture.md#error-handling-strategy) - Understanding error recovery
 
 ### Task: I'm getting "overrun errors"
-1. [TROUBLESHOOTING.md](TROUBLESHOOTING.md#overrun-error-or-dead-channels) - Root cause explanation
-2. [CONFIG.md](CONFIG.md#recording-parameters-explained) - Check your settings
+1. [troubleshooting.md](troubleshooting.md#overrun-error-or-dead-channels) - Root cause explanation
+2. [config.md](config.md#recording-parameters-explained) - Check your settings
 3. [advanced_configuration.md](advanced_configuration.md) - Hardware optimization
 
 ### Task: I want to understand the logs
-1. [LOG_GUIDE.md](LOG_GUIDE.md) - Format and structure
+1. [log_guide.md](log_guide.md) - Format and structure
 2. [advanced_configuration.md](advanced_configuration.md#log-filter-examples-prefix-contract) - Filter examples
-3. [TROUBLESHOOTING.md](TROUBLESHOOTING.md#getting-help) - Debug information
+3. [troubleshooting.md](troubleshooting.md#getting-help) - Debug information
 
 ### Task: I want to save power for battery operation
 1. [advanced_configuration.md](advanced_configuration.md#power-saving-configuration) - Power saving options
-2. [CONFIG.md](CONFIG.md#recording-parameters-explained) - Optimize parameters
-3. [ARCHITECTURE.md](ARCHITECTURE.md#performance-characteristics) - Understand resource use
+2. [config.md](config.md#recording-parameters-explained) - Optimize parameters
+3. [architecture.md](architecture.md#performance-characteristics) - Understand resource use
 
 ### Task: I'm deploying multiple monitoring sites
-1. [CLOUD_SETUP.md](CLOUD_SETUP.md#multiple-deployment-sites) - Multi-device setup
-2. [CONFIG.md](CONFIG.md) - Configuration per site
-3. [LOG_GUIDE.md](LOG_GUIDE.md#monitor-disk-usage-during-recording) - Monitoring tips
+1. [cloud_setup.md](cloud_setup.md#multiple-deployment-sites) - Multi-device setup
+2. [config.md](config.md) - Configuration per site
+3. [log_guide.md](log_guide.md#monitor-disk-usage-during-recording) - Monitoring tips
 
 ---
 
@@ -146,15 +146,14 @@ Quick reference for all documentation in this project.
 ```
 multi-channel-rpi-eco-monitoring/
 ├── 📖 Documentation/
-│   ├── README.md                      (Main documentation)
-│   ├── QUICKSTART.md                  (Get started fast)
-│   ├── CONFIG.md                      (Configuration reference)
-│   ├── CLOUD_SETUP.md                 (Cloud uploads)
-│   ├── TROUBLESHOOTING.md             (Common issues)
-│   ├── LOG_GUIDE.md                   (Log reference)
-│   ├── ARCHITECTURE.md                (System design)
-│   ├── advanced_configuration.md      (Advanced options)
-│   └── INDEX.md                       (This file)
+│   ├── readme.md                 (Main documentation)
+│   ├── quickstart.md             (Get started fast)
+│   ├── config.md                 (Configuration reference)
+│   ├── cloud_setup.md            (Cloud uploads)
+│   ├── troubleshooting.md        (Common issues)
+│   ├── log_guide.md              (Log reference)
+│   ├── architecture.md           (System design)
+│   └── index.md                  (This file)
 │
 ├── 🐍 Python Scripts/
 │   ├── python_record.py               (Main recorder)
@@ -196,20 +195,20 @@ multi-channel-rpi-eco-monitoring/
 
 ### Level 1: Quick Reference
 Perfect for: "Just tell me what to do"
-- [QUICKSTART.md](QUICKSTART.md) - One-page quick start
-- [CONFIG.md](CONFIG.md) examples - Copy-paste configs
+- [quickstart.md](quickstart.md) - One-page quick start
+- [config.md](config.md) examples - Copy-paste configs
 
 ### Level 2: User Guides
 Perfect for: "I need to understand this"
-- [CLOUD_SETUP.md](CLOUD_SETUP.md) - Step-by-step cloud setup
-- [LOG_GUIDE.md](LOG_GUIDE.md) - Understanding logs
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Solving problems
+- [cloud_setup.md](cloud_setup.md) - Step-by-step cloud setup
+- [log_guide.md](log_guide.md) - Understanding logs
+- [troubleshooting.md](troubleshooting.md) - Solving problems
 
 ### Level 3: Technical Reference
 Perfect for: "How does this really work?"
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System design
+- [architecture.md](architecture.md) - System design
 - [advanced_configuration.md](advanced_configuration.md) - Advanced options
-- [README.md](README.md) - Complete technical details
+- [readme.md](readme.md) - Complete technical details
 
 ### Level 4: Source Code
 Perfect for: "I need to modify this"
@@ -223,35 +222,35 @@ Perfect for: "I need to modify this"
 ## ✅ Verification Checklist
 
 ### After initial setup
-- [ ] Reviewed [QUICKSTART.md](QUICKSTART.md)
-- [ ] Understood [ARCHITECTURE.md](ARCHITECTURE.md)
-- [ ] Created config.json using [CONFIG.md](CONFIG.md) reference
+- [ ] Reviewed [quickstart.md](quickstart.md)
+- [ ] Understood [architecture.md](architecture.md)
+- [ ] Created config.json using [config.md](config.md) reference
 
 ### Before first deployment
-- [ ] Recording test successful (see [QUICKSTART.md](QUICKSTART.md#check-its-working))
-- [ ] Reviewed log format ([LOG_GUIDE.md](LOG_GUIDE.md))
-- [ ] Confirmed SD card speed ([TROUBLESHOOTING.md](TROUBLESHOOTING.md#pi-very-slow-recording-stutters))
+- [ ] Recording test successful (see [quickstart.md](quickstart.md#check-its-working))
+- [ ] Reviewed log format ([log_guide.md](log_guide.md))
+- [ ] Confirmed SD card speed ([troubleshooting.md](troubleshooting.md#pi-very-slow-recording-stutters))
 
 ### If enabling cloud uploads
-- [ ] Configured rclone ([CLOUD_SETUP.md](CLOUD_SETUP.md#step-1-install-and-configure-rclone))
-- [ ] Tested upload manually ([CLOUD_SETUP.md](CLOUD_SETUP.md#step-4-test-upload))
-- [ ] Understood upload workflow ([CLOUD_SETUP.md](CLOUD_SETUP.md#how-uploads-work))
+- [ ] Configured rclone ([cloud_setup.md](cloud_setup.md#step-1-install-and-configure-rclone))
+- [ ] Tested upload manually ([cloud_setup.md](cloud_setup.md#step-4-test-upload))
+- [ ] Understood upload workflow ([cloud_setup.md](cloud_setup.md#how-uploads-work))
 
 ### For field deployments
 - [ ] Set up shutdown button ([advanced_configuration.md](advanced_configuration.md#shutdown-button-setup-for-sipeed-7-mic-array))
 - [ ] Enabled power saving if needed ([advanced_configuration.md](advanced_configuration.md#power-saving-configuration))
 - [ ] Made backup disk image ([advanced_configuration.md](advanced_configuration.md#make-a-new-disk-image))
-- [ ] Reviewed diagnostics collection ([TROUBLESHOOTING.md](TROUBLESHOOTING.md#collect-diagnostic-information))
+- [ ] Reviewed diagnostics collection ([troubleshooting.md](troubleshooting.md#collect-diagnostic-information))
 
 ---
 
 ## 📞 Need Help?
 
-1. **Check TROUBLESHOOTING.md** - 80% of issues are covered there
-2. **Search LOG_GUIDE.md** - Find your error message and filtering tips
-3. **Review ARCHITECTURE.md** - Understand how components interact
-4. **Check CONFIG.md** - Verify your settings are correct
-5. **Inspect logs** - Use patterns from LOG_GUIDE.md
+1. **Check troubleshooting.md** - 80% of issues are covered there
+2. **Search log_guide.md** - Find your error message and filtering tips
+3. **Review architecture.md** - Understand how components interact
+4. **Check config.md** - Verify your settings are correct
+5. **Inspect logs** - Use patterns from log_guide.md
 
 ---
 
@@ -266,4 +265,4 @@ Perfect for: "I need to modify this"
 
 **Last Updated**: 2024-07-01
 
-For questions or documentation improvements, refer to [README.md](README.md) for contributing guidelines.
+For questions or documentation improvements, refer to [readme.md](readme.md) for contributing guidelines.

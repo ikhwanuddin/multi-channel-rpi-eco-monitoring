@@ -52,7 +52,7 @@ This creates a `config.json` file with:
 
 ### Without Interactive Setup
 
-If you prefer manual configuration, edit `config.json` directly. See [CONFIG.md](CONFIG.md) for all options.
+If you prefer manual configuration, edit `config.json` directly. See [config.md](config.md) for all options.
 
 ## Run It
 
@@ -87,10 +87,10 @@ sudo reboot
 
 ## Next Steps
 
-- **Upload to cloud?** See [CLOUD_SETUP.md](CLOUD_SETUP.md)
-- **Troubleshooting?** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- **Upload to cloud?** See [cloud_setup.md](cloud_setup.md)
+- **Troubleshooting?** See [troubleshooting.md](troubleshooting.md)
 - **Advanced settings?** See [advanced_configuration.md](advanced_configuration.md)
-- **Understanding logs?** See [LOG_GUIDE.md](LOG_GUIDE.md)
+- **Understanding logs?** See [log_guide.md](log_guide.md)
 
 ## Check It's Working
 
@@ -112,4 +112,4 @@ tail -n 50 ~/logs/*.log
 
 ---
 
-**Need help?** Check [README.md](README.md) for full documentation or [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues.
+**Need help?** Check [readme.md](readme.md) for full documentation or [troubleshooting.md](troubleshooting.md) for common issues.

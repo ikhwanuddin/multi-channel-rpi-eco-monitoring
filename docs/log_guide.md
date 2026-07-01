@@ -195,7 +195,7 @@ grep "\[time-sync\]" ~/logs/*.log
 [14:35] [record][component=recording][phase=error] Recording aborted - audio buffer overrun
 ```
 
-**Fix**: SD card too slow (see [TROUBLESHOOTING.md](TROUBLESHOOTING.md))
+**Fix**: SD card too slow (see [troubleshooting.md](troubleshooting.md))
 
 ### Upload failure
 
@@ -400,6 +400,6 @@ grep -i "error" ~/logs/*.log
 
 ## See Also
 
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Interpreting error messages
+- [troubleshooting.md](troubleshooting.md) - Interpreting error messages
 - [advanced_configuration.md](advanced_configuration.md) - Log configuration options
-- [CONFIG.md](CONFIG.md) - `log_output_dir` setting
+- [config.md](config.md) - `log_output_dir` setting

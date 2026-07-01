@@ -510,6 +510,45 @@ def record_sensor(sensor, working_dir, upload_dir, sensor_config, sleep=True):
         sensor.sleep()
 
 
+def cleanup_orphaned_tmp_files(upload_dir):
+    """
+    Cleanup orphaned .tmp files left behind by interrupted ffmpeg compressions.
+
+    When the service is killed during compression (e.g., systemctl stop/restart),
+    the .tmp file being written by ffmpeg remains on disk. These files can never
+    be completed, so we remove them on startup to reclaim disk space.
+
+    The source WAV files are always safe because they are only deleted AFTER
+    successful compression and rename to the final .flac file.
+    """
+    if not os.path.exists(upload_dir):
+        return
+
+    tmp_count = 0
+    for root, _, files in os.walk(upload_dir):
+        for name in files:
+            if name.endswith(".tmp"):
+                tmp_path = os.path.join(root, name)
+                try:
+                    file_size = os.path.getsize(tmp_path)
+                    os.remove(tmp_path)
+                    tmp_count += 1
+                    logging.info(
+                        "Cleaned up orphaned .tmp file: {} ({:.1f} MB)".format(
+                            name, file_size / (1024 * 1024)
+                        )
+                    )
+                except OSError as exc:
+                    logging.error("Could not remove {}: {}".format(tmp_path, exc))
+
+    if tmp_count > 0:
+        logging.info(
+            "Cleaned up {} orphaned .tmp file(s) from upload directory".format(
+                tmp_count
+            )
+        )
+
+
 def _is_wav_file(path):
     """Return True if path begins with a RIFF/WAVE header (valid WAV magic bytes)."""
     try:
@@ -526,13 +565,15 @@ def run_postprocess(sensor, upload_dir):
     of recordings before the next recording cycle starts.
 
     Steps:
-      1. Recursively scan tmp_dir for files to stage into pre_upload_dir:
+      1. Cleanup any orphaned .tmp files from interrupted compressions
+         (left behind if service was killed mid-ffmpeg).
+      2. Recursively scan tmp_dir for files to stage into pre_upload_dir:
          - Files ending in .wav are moved as-is.
          - Files with no extension are validated via WAV magic bytes; valid
            ones are renamed to <name>.wav before moving. Invalid or too-small
            files are discarded.
-      2. Recursively scan pre_upload_dir for all .wav files.
-      3. For each WAV: discard if < MIN_VALID_BYTES, otherwise call
+      3. Recursively scan pre_upload_dir for all .wav files.
+      4. For each WAV: discard if < MIN_VALID_BYTES, otherwise call
          sensor.postprocess(). If postprocess returns False (compression
          failed) discard the WAV rather than leaving it to block future runs.
     """
@@ -540,7 +581,12 @@ def run_postprocess(sensor, upload_dir):
     tmp_dir = "/home/pi/tmp_dir"
     pre_upload_dir = "/home/pi/pre_upload_dir"
 
-    # 1. Recursively scan tmp_dir and stage files into pre_upload_dir.
+    # 1. Cleanup orphaned .tmp files from interrupted compressions.
+    # These are left behind if the service is killed while ffmpeg is running.
+    # They can never be completed, so remove them to avoid disk space waste.
+    cleanup_orphaned_tmp_files(upload_dir)
+
+    # 2. Recursively scan tmp_dir and stage files into pre_upload_dir.
     for root, _, files in os.walk(tmp_dir):
         for name in files:
             src = os.path.join(root, name)

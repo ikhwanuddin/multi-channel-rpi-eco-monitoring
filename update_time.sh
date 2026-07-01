@@ -78,7 +78,26 @@ else
         fi
     else
         TIME_SYNC_PHASE="offline-no-source"
-        log_msg "No internet and no SSH epoch provided. Time not updated."
+        log_msg "No internet and no SSH epoch provided."
+        log_msg "Attempting silent automatic offline time sync via Wi-Fi gateway..."
+
+        # Determine the directory of this script to find offline_time_sync.py
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+        if [ -f "$SCRIPT_DIR/offline_time_sync.py" ]; then
+            log_msg "Executing offline_time_sync.py..."
+            if sudo python3 "$SCRIPT_DIR/offline_time_sync.py"; then
+                TIME_SYNC_PHASE="completed"
+                log_msg "Offline automatic time sync completed successfully!"
+                log_msg "Current time after sync: $(date)"
+                exit 0
+            else
+                log_msg "Offline automatic time sync did not succeed."
+            fi
+        else
+            log_msg "Warning: offline_time_sync.py not found in $SCRIPT_DIR"
+        fi
+
         log_msg "Tip: ssh pi@$DEVICE_HOST_MDNS 'sudo bash ~/multi-channel-rpi-eco-monitoring/update_time.sh --epoch \$(date +%s)'"
         exit 1
     fi

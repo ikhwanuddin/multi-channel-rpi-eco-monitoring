@@ -44,8 +44,11 @@ RECORDER_BANNER = r"""
 
 def print_recorder_banner():
     """Print the iconic MULTICHANNEL ASCII banner."""
-    for line in RECORDER_BANNER.strip().split("\n"):
-        logging.getLogger(LOG).info(line)
+    # Print directly to stdout to avoid MinuteBoundaryFormatter adding
+    # timestamps to individual lines, which would break the ASCII art.
+    print(RECORDER_BANNER.strip())
+    # Also log as a single message to preserve formatting in log files
+    logging.getLogger(LOG).info(RECORDER_BANNER.strip())
 
 
 def is_internet_available():

@@ -10,6 +10,9 @@
 # Turn the 12 RGB LEDs on the Sipeed MicArray USB Board OFF via the
 # USB CDC ACM virtual serial port. No firmware flashing required.
 #
+# This script is ONLY for devices with Sipeed MicArray sensor connected.
+# It will safely exit if the device is not present.
+#
 # Tested on:
 #   • Raspberry Pi 3B+, 4B
 #   • Raspberry Pi OS (Bookworm / Bullseye)
@@ -29,11 +32,11 @@ LED_ON_CMD="E"                 # Turn LEDs ON
 
 # --------------------------- VALIDATION --------------------------------------
 # Check if the device node exists
+# If Sipeed MicArray is not connected, exit silently (this is expected for
+# deployments using other sensors like Respeaker)
 if [ ! -c "$DEVICE" ]; then
-    echo "ERROR: Device $DEVICE not found!" >&2
-    echo "  → Is the Sipeed MicArray plugged in?" >&2
-    echo "  → Run: ls /dev/ttyACM*" >&2
-    exit 1
+    # Silent exit - device not present, nothing to do
+    exit 0
 fi
 
 # Verify read/write permissions

@@ -38,7 +38,15 @@ RECORDER_BANNER = r"""
 
           Multichannel Autonomous Acoustic Recording Unit
 
- ===================================================================
+===================================================================
+   Useful Shell Shortcuts:
+   * monitor    : Tail live logs (Ctrl+C to quit)
+   * sizeeco    : Check disk usage of monitoring folders
+   * statuseco  : Show systemd service status
+   * restarteco : Restart service (daemon-reload & restart)
+   * starteco   : Start systemd service
+   * stopeco    : Stop systemd service
+===================================================================
 """
 
 

@@ -649,15 +649,10 @@ def install_shell_monitor_alias():
         else:
             return
 
-    marker = "# ── Eco-monitor shell shortcuts ──"
-    # Also detect the old standalone monitor marker for backward compatibility
-    old_marker = "monitor() {"
+    start_marker = "# ── Eco-monitor shell shortcuts ──"
+    end_marker = "# ── end eco-monitor shortcuts ──"
     with open(bashrc_path, "r") as f:
         content = f.read()
-
-    if marker in content:
-        print("Shell shortcuts are already present in {}.".format(bashrc_path))
-        return
 
     snippet = """
 # ── Eco-monitor shell shortcuts ──
@@ -666,9 +661,15 @@ def install_shell_monitor_alias():
 # statuseco : show service status
 # stopeco   : stop service
 # starteco  : start service
+# sizeeco   : check disk usage of monitoring data
 monitor() {
     echo "--- Menampilkan log real-time: eco-monitor.service (Ctrl+C untuk keluar) ---"
     sudo journalctl -u eco-monitor.service -f
+}
+
+sizeeco() {
+    echo "--- Ukuran direktori eco-monitor ---"
+    du -sh /home/pi/monitoring_data/live_data/ /home/pi/tmp_dir/ /home/pi/pre_upload_dir/ 2>/dev/null
 }
 
 alias restarteco='sudo systemctl daemon-reload && sudo systemctl restart eco-monitor.service'
@@ -677,13 +678,30 @@ alias stopeco='sudo systemctl stop eco-monitor.service'
 alias starteco='sudo systemctl start eco-monitor.service'
 # ── end eco-monitor shortcuts ──
 """
-    with open(bashrc_path, "a") as f:
-        f.write("\n" + snippet.strip() + "\n")
+
+    if start_marker in content:
+        if end_marker in content:
+            print("Updating existing shell shortcuts in {}...".format(bashrc_path))
+            start_idx = content.find(start_marker)
+            end_idx = content.find(end_marker) + len(end_marker)
+            new_content = content[:start_idx] + snippet.strip() + content[end_idx:]
+            with open(bashrc_path, "w") as f:
+                f.write(new_content)
+        else:
+            print("Shell shortcuts start marker found, but end marker is missing.")
+            print("Appending new shortcuts to {} instead.".format(bashrc_path))
+            with open(bashrc_path, "a") as f:
+                f.write("\n" + snippet.strip() + "\n")
+    else:
+        with open(bashrc_path, "a") as f:
+            f.write("\n" + snippet.strip() + "\n")
 
     fix_ownership(bashrc_path)
 
-    print("Successfully added shell shortcuts to {}".format(bashrc_path))
-    print("Shortcuts installed: monitor, restarteco, statuseco, stopeco, starteco")
+    print("Successfully installed/updated shell shortcuts in {}".format(bashrc_path))
+    print(
+        "Shortcuts installed: monitor, restarteco, statuseco, stopeco, starteco, sizeeco"
+    )
     print("To use them immediately, run: source {}".format(bashrc_path))
     print("Or simply log out and log back in.")
 

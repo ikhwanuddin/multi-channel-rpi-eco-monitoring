@@ -340,7 +340,7 @@ This enables:
 - **Component isolation**: `grep "\[upload\]"`
 - **Timeline reconstruction**: `grep "202407011423"`
 
-See [LOG_GUIDE.md](LOG_GUIDE.md) for details.
+See [log_guide.md](log_guide.md) for details.
 
 ---
 
@@ -452,13 +452,13 @@ df -h
 top -b -n 1
 ```
 
-See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for diagnostic scripts.
+See [troubleshooting.md](troubleshooting.md) for diagnostic scripts.
 
 ---
 
 ## See Also
 
-- [README.md](README.md) - Setup instructions
-- [CONFIG.md](CONFIG.md) - Configuration options
-- [LOG_GUIDE.md](LOG_GUIDE.md) - Log format reference
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common issues
+- [readme.md](readme.md) - Setup instructions
+- [config.md](config.md) - Configuration options
+- [log_guide.md](log_guide.md) - Log format reference
+- [troubleshooting.md](troubleshooting.md) - Common issues

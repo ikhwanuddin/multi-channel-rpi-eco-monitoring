@@ -293,6 +293,6 @@ Yes, rclone uploads don't lock files. You can download or analyze while upload i
 
 ## Next Steps
 
-- **Review logs?** See [LOG_GUIDE.md](LOG_GUIDE.md)
+- **Review logs?** See [log_guide.md](log_guide.md)
 - **Advanced settings?** See [advanced_configuration.md](advanced_configuration.md)
-- **Troubleshooting?** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- **Troubleshooting?** See [troubleshooting.md](troubleshooting.md)

@@ -508,7 +508,7 @@ tail -f ~/logs/*.log | grep -i error
 
 Check:
 1. [advanced_configuration.md](advanced_configuration.md) - Advanced options
-2. [CONFIG.md](CONFIG.md) - All configuration options
-3. [CLOUD_SETUP.md](CLOUD_SETUP.md) - Upload troubleshooting
-4. [LOG_GUIDE.md](LOG_GUIDE.md) - Understanding log format
-5. [README.md](README.md) - Full project documentation
+2. [config.md](config.md) - All configuration options
+3. [cloud_setup.md](cloud_setup.md) - Upload troubleshooting
+4. [log_guide.md](log_guide.md) - Understanding log format
+5. [readme.md](readme.md) - Full project documentation

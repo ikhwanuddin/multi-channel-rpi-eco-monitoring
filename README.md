@@ -48,7 +48,8 @@ Key changes include:
   10. Improved subprocess calls to suppress unnecessary output and enhance error handling.
   11. Removed the legacy setup.py file; repository metadata now lives in pyproject.toml.
   12. Added support for Sipeed 7-Mic Array sensor (Sipeed7Mic.py).
-  13. Separated interactive configuration logic into setup_config.py for modularity and ease of use.
+    13. Separated interactive configuration logic into a dedicated installer (`installer.py`, formerly `setup_config.py`) for modularity and ease of use.
+  14. Integrated systemd service installation (`eco-monitor.service`) and GPIO shutdown-button configuration into the installer under a single menu-driven umbrella. The installer now requires root (`sudo python3 installer.py`) and ships a committed `eco-monitor.service` template for reproducible deployments.
 
 ### Configuration & Operational Scenarios
 
@@ -70,7 +71,7 @@ The system behavior is controlled primarily via `config.json`.
 - Ensure all keys and string values are enclosed in **double quotes** (`"`).
 - **NO trailing commas** after the last item in a dictionary or list.
 
-The system will fail to start (`JSONDecodeError`) if these rules are broken. It is recommended to use `python setup_config.py` for generating the file instead of manual editing whenever possible.
+The system will fail to start (`JSONDecodeError`) if these rules are broken. It is recommended to use `sudo python3 installer.py` (menu option 1) for generating the file instead of manual editing whenever possible.
 
 NOTE! SD card should have sufficiently fast read/write speed (Class 10, **minimum 150 mb/s**), otherwise you will get overrun errors during recording. This means data won't record properly - you may see dead channels with no data.
 
@@ -205,34 +206,19 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
     - Enter the authorization code when prompted
     - Confirm the remote is configured correctly
   * This sets up rclone to upload files to your Box account under the remote name "mybox"
-* To configure the system:
-  * Run and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). (Note: setup_config.py is the interactive configuration script.)
+* To configure the system and install the service:
+  * Run the installer and follow the prompts. The recommended path is menu option **4 (Full setup)**, which generates ``config.json``, installs the systemd service, and configures the GPIO shutdown button in one guided flow. Alternatively, use individual menu options (1, 2, 3) for step-by-step control.
     ```
-    python setup_config.py
+    sudo python3 installer.py
     ``` 
-  * The setup now supports one or two daily reboot times. The primary reboot defaults to ``02:00`` and the second reboot time is optional.
-  * For Respeaker deployments, setup now includes ``sys.use_system_shutdown_button``. Keep this at ``1`` if you enabled ``dtoverlay=gpio-shutdown`` in boot config.
-* Make sure all the scripts in the repository are executable, and that ``recorder_startup_script.sh`` runs on startup...
-  * Open a new terminal and type this from the root directory:
-    ```
-    sudo nano /etc/profile
-    ``` 
-  * Add the following 2 lines to the end of the file:
-    ```
-    chmod +x ~/multi-channel-rpi-eco-monitoring/*;
-    sudo -u pi ~/multi-channel-rpi-eco-monitoring/recorder_startup_script.sh;
-    ```
-* Make sure Pi boots to command line upon login (without login required)...
-  * Open new terminal and type:
-    ```
-    sudo raspi-config
-    ```
-  * _3 Boot Options_ -> _B1 Desktop / CLI_ -> _B2 Console Autologin_
-  * Press ``Esc`` when this is complete -> Say No to reboot
-  * Shutdown with 
-    ```
-    sudo shutdown -h now
-    ```
+  * The setup supports one or two daily reboot times. The primary reboot defaults to ``02:00`` and the second reboot time is optional.
+  * GPIO shutdown button configuration is integrated into the installer (menu option 3). It applies the ``dtoverlay=gpio-shutdown`` overlay to the boot config and sets ``sys.use_system_shutdown_button=1`` automatically, using the sensor-appropriate default pin (GPIO 21 for Sipeed, GPIO 26 for Respeaker).
+* The installer (menu option 2) installs the ``eco-monitor.service`` systemd unit, which starts the monitoring automatically on boot — no ``/etc/profile`` edits or console autologin are required.
+* If you are migrating from the older ``/etc/profile`` + ``recorder_startup_script.sh`` method, use the installer's menu option **5 (Migrate from legacy /etc/profile startup)** to remove the old lines, then reboot.
+* Shutdown with 
+  ```
+  sudo shutdown -h now
+  ```
 
 ### Raspberry Pi Configuration
 
@@ -247,11 +233,11 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
     ```
     cd ~/multi-channel-rpi-eco-monitoring
     ```
-  * Run 
+    * Run 
     ```
-    python setup_config.py
+    sudo python3 installer.py
     ``` 
-    and follow the prompts. This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). The config file can be created manually, or imported from external storage without running ``setup_config.py`` if preferred
+    and follow the prompts (menu option 4 for full setup, or individual options). This will create a ``config.json`` file which contains the sensor type, its configuration and the rclone cloud storage details (e.g., for Box or other providers). The config file can be created manually, or imported from external storage without running ``installer.py`` if preferred
   * Make sure the timezone is set correctly. Check by typing 
     ```
     sudo dpkg-reconfigure tzdata
@@ -266,76 +252,87 @@ After that point, keep the deployment frozen. Do not remove the kernel hold and 
 
 ## Service Management (Recommended)
 
-Running `python_record.py` as a `systemd` service is the recommended way to ensure your monitoring unit runs reliably. This method provides automatic restarts on failure, native logging, and better system integration.
+Running `record.py` as a `systemd` service is the recommended way to ensure your monitoring unit runs reliably. This method provides automatic restarts on failure, native logging, and better system integration.
 
 ### Setup Instructions
 
-1.  **Create the Service Unit File**:
-    ```bash
-    sudo nano /etc/systemd/system/eco-monitor.service
-    ```
+The recommended way to install the service is via the installer (menu option 2):
 
-2.  **Paste the following configuration**:
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+sudo python3 installer.py
+# Select menu option 2 (Install systemd service)
+```
 
-    ```ini
-    [Unit]
-    Description=Eco Monitoring Service
-    After=network.target time-sync.target
-    Wants=time-sync.target
+The installer reads the `eco-monitor.service` template from the repository, substitutes the correct repo path and service user, writes it to `/etc/systemd/system/eco-monitor.service`, reloads the systemd daemon, and enables the service to start on boot. It can also start the service immediately if you choose.
 
-    [Service]
-    User=pi
-    WorkingDirectory=/home/pi/multi-channel-rpi-eco-monitoring
+For a full guided deployment (config + service + GPIO in one flow), use menu option **4 (Full setup)** instead.
 
-    # ── 1. Time sync ──
-    # Wait up to 60 seconds for NTP synchronisation before starting
-    ExecStartPre=/bin/bash -c 'for i in {1..60}; do if timedatectl status | grep -q "System clock synchronized: yes"; then echo "Time synced"; break; fi; echo "Waiting for time sync..."; sleep 1; done'
+**Reference: service unit file** (`eco-monitor.service` in the repository)
 
-    # ── 2. PI_ID dynamically from discover_serial.py ──
-    # No hardcoding — serial number is read automatically from the CPU
-    ExecStartPre=/bin/bash -c '/usr/bin/python3 /home/pi/multi-channel-rpi-eco-monitoring/discover_serial.py | sed "s/^/PI_ID=/" > /tmp/eco-monitor-pi-id.env'
-    EnvironmentFile=/tmp/eco-monitor-pi-id.env
+The template below is what the installer installs. Placeholders `__REPO_DIR__` and `__SERVICE_USER__` are substituted automatically:
 
-    # ── 3. Filesystem expansion (one-time) ──
-    # Check whether the root partition already uses >90% of the disk.
-    # If not, call raspi-config --expand-rootfs.
-    # Resize happens on the next reboot via the init script.
-    ExecStartPre=/bin/bash -c 'MARKER=/home/pi/.fs_expanded; if [ ! -f "$MARKER" ]; then ROOT_SIZE=$(df / | tail -1 | awk "{print \$2}"); DISK_SIZE=$(lsblk -b -o SIZE /dev/mmcblk0 2>/dev/null | head -2 | tail -1); if [ -n "$DISK_SIZE" ]; then DISK_SIZE_KB=$((DISK_SIZE / 1024)); if [ "$ROOT_SIZE" -lt $((DISK_SIZE_KB * 90 / 100)) ]; then sudo raspi-config --expand-rootfs 2>/dev/null; echo "FS expansion triggered (resize on next reboot)"; else echo "FS already expanded"; fi; else echo "Cannot determine disk size"; fi; touch "$MARKER"; fi'
+```ini
+[Unit]
+Description=Eco Monitoring Service
+After=network.target time-sync.target
+Wants=time-sync.target
 
-    # ── 4. Turn off Sipeed LEDs (power saving) ──
-    # Safe if Sipeed is not connected (prefix '-' = allow failure)
-    ExecStartPre=-/usr/bin/bash /home/pi/multi-channel-rpi-eco-monitoring/led_off.sh
+[Service]
+User=__SERVICE_USER__
+WorkingDirectory=__REPO_DIR__
 
-    # ── 5. Turn off ACT LED on the RPi board (power saving) ──
-    ExecStartPre=+/bin/bash -c 'for led in /sys/class/leds/ACT /sys/class/leds/led0; do if [ -d "$led" ]; then echo none > "$led/trigger" 2>/dev/null; echo 0 > "$led/brightness" 2>/dev/null; fi; done; exit 0'
+# ── 1. Time sync ──
+# Wait up to 60 seconds for NTP synchronisation before starting
+ExecStartPre=/bin/bash -c 'for i in {1..60}; do if timedatectl status | grep -q "System clock synchronized: yes"; then echo "Time synced"; break; fi; echo "Waiting for time sync..."; sleep 1; done'
 
-    # ── 6. Sync rclone.conf with Gist ──
-    # Requires gist.github_token & gist.gist_id in config.json.
-    # Non-critical — if it fails (offline / not configured) the service still runs.
-    ExecStartPre=-/bin/bash -c 'cd /home/pi/multi-channel-rpi-eco-monitoring && bash sync_rclone_config.sh /dev/null ./config.json 2>&1 || true'
+# ── 2. PI_ID dynamically from discover_serial.py ──
+# No hardcoding — serial number is read automatically from the CPU
+ExecStartPre=/bin/bash -c '/usr/bin/python3 __REPO_DIR__/discover_serial.py | sed "s/^/PI_ID=/" > /tmp/eco-monitor-pi-id.env'
+EnvironmentFile=/tmp/eco-monitor-pi-id.env
 
-    # ── 7. Main: python_record.py ──
-    ExecStart=/usr/bin/python3 -u /home/pi/multi-channel-rpi-eco-monitoring/python_record.py /home/pi/multi-channel-rpi-eco-monitoring/config.json logfile.log logs
+# ── 3. Filesystem expansion (one-time) ──
+# Check whether the root partition already uses >90% of the disk.
+# If not, call raspi-config --expand-rootfs.
+# Resize happens on the next reboot via the init script.
+ExecStartPre=/bin/bash -c 'MARKER=/home/pi/.fs_expanded; if [ ! -f "$MARKER" ]; then ROOT_SIZE=$(df / | tail -1 | awk "{print \$2}"); DISK_SIZE=$(lsblk -b -o SIZE /dev/mmcblk0 2>/dev/null | head -2 | tail -1); if [ -n "$DISK_SIZE" ]; then DISK_SIZE_KB=$((DISK_SIZE / 1024)); if [ "$ROOT_SIZE" -lt $((DISK_SIZE_KB * 90 / 100)) ]; then sudo raspi-config --expand-rootfs 2>/dev/null; echo "FS expansion triggered (resize on next reboot)"; else echo "FS already expanded"; fi; else echo "Cannot determine disk size"; fi; touch "$MARKER"; fi'
 
-    # Automatic restart on crash (replaces the while-true loop in bash)
-    Restart=always
-    RestartSec=5
+# ── 4. Turn off Sipeed LEDs (power saving) ──
+# Safe if Sipeed is not connected (prefix '-' = allow failure)
+ExecStartPre=-/usr/bin/bash __REPO_DIR__/led_off.sh
 
-    [Install]
-    WantedBy=multi-user.target
-    ```
+# ── 5. Turn off ACT LED on the RPi board (power saving) ──
+ExecStartPre=+/bin/bash -c 'for led in /sys/class/leds/ACT /sys/class/leds/led0; do if [ -d "$led" ]; then echo none > "$led/trigger" 2>/dev/null; echo 0 > "$led/brightness" 2>/dev/null; fi; done; exit 0'
 
-    **`ExecStartPre` prefix legend**:
-    - **No prefix**: runs as user `pi`.
-    - **Prefix `+`**: runs as `root` (required for `/sys/class/leds` access).
-    - **Prefix `-`**: failure is allowed — if Sipeed is not connected or there is no internet, the service continues.
+# ── 6. Sync rclone.conf with Gist ──
+# Requires gist.github_token & gist.gist_id in config.json.
+# Non-critical — if it fails (offline / not configured) the service still runs.
+ExecStartPre=-/bin/bash -c 'cd __REPO_DIR__ && bash sync_rclone_config.sh /dev/null ./config.json 2>&1 || true'
 
-3.  **Enable and Start the Service**:
-    ```bash
-    sudo systemctl daemon-reload
-    sudo systemctl enable eco-monitor.service
-    sudo systemctl start eco-monitor.service
-    ```
+# ── 7. Main: record.py ──
+ExecStart=/usr/bin/python3 -u __REPO_DIR__/record.py __REPO_DIR__/config.json logfile.log logs
+
+# Automatic restart on crash (replaces the while-true loop in bash)
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**`ExecStartPre` prefix legend**:
+- **No prefix**: runs as the service user (default `pi`).
+- **Prefix `+`**: runs as `root` (required for `/sys/class/leds` access).
+- **Prefix `-`**: failure is allowed — if Sipeed is not connected or there is no internet, the service continues.
+
+**Manual installation** (if not using the installer):
+```bash
+sudo cp eco-monitor.service /etc/systemd/system/eco-monitor.service
+# Edit the file to replace __REPO_DIR__ and __SERVICE_USER__ with your values
+sudo systemctl daemon-reload
+sudo systemctl enable eco-monitor.service
+sudo systemctl start eco-monitor.service
+```
 
 ### Service Commands
 
@@ -356,6 +353,20 @@ You can use the following commands to manage your monitoring service:
 
 When switching from `/etc/profile` + `recorder_startup_script.sh` to systemd service:
 
+**Recommended: via the installer (menu option 5)**
+
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+sudo python3 installer.py
+# Select menu option 5 (Migrate from legacy /etc/profile startup)
+# Then select menu option 2 (Install systemd service)
+sudo reboot
+```
+
+The installer automatically removes the two legacy lines (`chmod +x ...` and `recorder_startup_script.sh`) from `/etc/profile`, then installs and enables the systemd service.
+
+**Manual migration** (if not using the installer):
+
 1. Remove the old `/etc/profile` lines:
    ```bash
    sudo nano /etc/profile
@@ -368,7 +379,7 @@ When switching from `/etc/profile` + `recorder_startup_script.sh` to systemd ser
    # After logging in, check status:
    sudo systemctl status eco-monitor.service
    ```
-4. **IMPORTANT**: Do **not** delete `recorder_startup_script.sh` — keep it in the repository as a reference/documentation of the startup logic, but it no longer runs automatically.
+4. **Note**: `recorder_startup_script.sh` has been removed from the repository — its functionality has been replaced by the systemd service (`eco-monitor.service`). The script can still be found in git history for reference.
 
 ---
 
@@ -420,11 +431,24 @@ For ready-to-use grep filters based on this contract, see [advanced_configuratio
 
 ### System-Wide Shutdown Button (Recommended)
 
-Use system-wide shutdown handling so the button still works even if recorder Python process is not running.
+Use system-wide shutdown handling so the button still works even if the recorder Python process is not running.
+
+**Recommended: via the installer (menu option 3)**
+
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+sudo python3 installer.py
+# Select menu option 3 (Configure GPIO shutdown button)
+sudo reboot
+```
+
+The installer detects the sensor type from `config.json` and suggests the appropriate default pin (GPIO 21 for Sipeed, GPIO 26 for Respeaker). It applies the `dtoverlay=gpio-shutdown` overlay to the boot config and sets `sys.use_system_shutdown_button=1` in `config.json` automatically.
+
+**Manual method (alternative): using the helper script**
 
 1. Choose GPIO pin by sensor:
-  - Respeaker: use GPIO 26 (default)
-  - Sipeed: use your wired shutdown pin (for example GPIO 21)
+   - Respeaker: use GPIO 26 (default)
+   - Sipeed: use your wired shutdown pin (for example GPIO 21)
 2. Run helper script from repository root:
 
 ```bash
@@ -435,17 +459,17 @@ sudo reboot
 ```
 
 3. What this command does:
-  - Adds/replaces `dtoverlay=gpio-shutdown,...` in boot config (`/boot/config.txt` or `/boot/firmware/config.txt`)
-  - Sets `sys.use_system_shutdown_button=1` in `config.json`
+   - Adds/replaces `dtoverlay=gpio-shutdown,...` in boot config (`/boot/config.txt` or `/boot/firmware/config.txt`)
+   - Sets `sys.use_system_shutdown_button=1` in `config.json`
 
 4. Verify after reboot:
-  - Check overlay line exists:
+   - Check overlay line exists:
 
 ```bash
 grep -n "dtoverlay=gpio-shutdown" /boot/config.txt /boot/firmware/config.txt 2>/dev/null
 ```
 
-  - Check config flag:
+   - Check config flag:
 
 ```bash
 python3 -c "import json; print(json.load(open('config.json'))['sys'].get('use_system_shutdown_button'))"
@@ -454,7 +478,8 @@ python3 -c "import json; print(json.load(open('config.json'))['sys'].get('use_sy
 For detailed wiring examples and sensor-specific notes, see [advanced_configuration.md](advanced_configuration.md).
 
 ## To Do
-- [x] Add configuration option to always delete recorded data clean or always keep the files in ```setup_config.py```.
+- [x] Add configuration option to always delete recorded data clean or always keep the files in ```installer.py```.
+- [x] Integrate systemd service installation and GPIO shutdown-button configuration into `installer.py` under a single menu.
 
 ## Authors
 This is a cross disciplinary research project based at Imperial College London, across the Faculties of Engineering, Natural Sciences and Life Sciences.

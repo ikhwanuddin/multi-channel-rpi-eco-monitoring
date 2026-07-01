@@ -214,15 +214,19 @@ log_msg "Starting rclone copy process..."
 rclone_logfile=$(mktemp "${TMPDIR:-/tmp}/rclone.XXXXXX.log") || rclone_logfile="${TMPDIR:-/tmp}/rclone_$(date +%s).log"
 
 # Define rclone args
+# Tuned for Raspberry Pi Zero 2 W (512 MB RAM):
+#   --transfers 2   : limit concurrent uploads to avoid RAM pressure
+#   --checkers 4    : limit concurrent file checks
+#   --buffer-size 4M: 2 transfers * 4 MB = 8 MB total, stable on low-RAM Pi
 rclone_args=(
     copy "$data_dir" "$remote_target"
     --log-level INFO
     --stats 30s
     --stats-one-line
     --files-from -  # Read from stdin
-    --transfers 4
-    --checkers 8
-    --buffer-size 16M
+    --transfers 2
+    --checkers 4
+    --buffer-size 4M
 )
 if [ -n "$config_path" ]; then
     rclone_args+=(--config "$config_path")
@@ -230,11 +234,27 @@ fi
 
 # Push rclone.conf to Gist — token may have been refreshed
 # Called regardless of upload success/failure.
+# Throttled to at most once per hour to avoid hammering the Gist API on the
+# Pi Zero 2 W and to keep network/power usage low during frequent sync cycles.
+GIST_PUSH_THROTTLE_FILE="${TMPDIR:-/tmp}/eco_monitor_gist_push_last"
+GIST_PUSH_MIN_INTERVAL_SECONDS=3600  # 1 hour
+
 _push_rclone_config_to_gist() {
     if declare -f _read_gist_config > /dev/null 2>&1; then
         local cf="$SCRIPT_DIR/config.json"
         [ -f "$cf" ] || cf="./config.json"
         if [ -f "$cf" ]; then
+            # Throttle: skip if we already pushed within the last hour.
+            local now_ts last_ts diff
+            now_ts=$(date +%s)
+            last_ts=0
+            [ -f "$GIST_PUSH_THROTTLE_FILE" ] && last_ts=$(cat "$GIST_PUSH_THROTTLE_FILE" 2>/dev/null || echo 0)
+            diff=$(( now_ts - last_ts ))
+            if [ "$diff" -lt "$GIST_PUSH_MIN_INTERVAL_SECONDS" ]; then
+                log_msg "Skipping Gist push (throttled: last push ${diff}s ago, min interval ${GIST_PUSH_MIN_INTERVAL_SECONDS}s)"
+                return 0
+            fi
+
             log_msg "Pushing updated rclone.conf to Gist (token may have refreshed)..."
             if _read_gist_config "$cf"; then
                 if [ -n "$config_path" ]; then
@@ -242,6 +262,12 @@ _push_rclone_config_to_gist() {
                 else
                     _push_to_gist "$logfile"
                 fi
+                local push_rc=$?
+                if [ "$push_rc" -eq 0 ]; then
+                    # Record successful push timestamp for throttling.
+                    echo "$now_ts" > "$GIST_PUSH_THROTTLE_FILE" 2>/dev/null || true
+                fi
+                return $push_rc
             fi
         fi
     else

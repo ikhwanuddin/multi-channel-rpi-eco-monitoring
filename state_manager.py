@@ -5,6 +5,12 @@ import subprocess
 import sys
 from datetime import datetime
 
+# Extensions tracked by the uploader. Both .flac (compressed) and .wav
+# (compressed_data=false) recordings must be eligible for upload, otherwise
+# uncompressed deployments silently never upload anything.
+# Marker files emitted on capture failure are intentionally excluded.
+TRACKED_EXTENSIONS = (".flac", ".wav")
+
 
 def _default_state():
     return {
@@ -53,7 +59,7 @@ def init_scan_mark(data_dir, state_file):
 
     for root, _, files in os.walk(data_dir):
         for file in files:
-            if file.endswith(".flac"):
+            if file.lower().endswith(TRACKED_EXTENSIONS):
                 file_path = os.path.join(root, file)
                 file_size = os.path.getsize(file_path)
                 total_size += file_size

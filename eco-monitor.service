@@ -14,17 +14,18 @@ ExecStartPre=/bin/bash -c 'for i in {1..60}; do if timedatectl status | grep -q 
 # ── 2. PI_ID dynamically from discover_serial.py ──
 # No hardcoding — serial number is read automatically from the CPU
 ExecStartPre=/bin/bash -c '/usr/bin/python3 __REPO_DIR__/discover_serial.py | sed "s/^/PI_ID=/" > /tmp/eco-monitor-pi-id.env'
-EnvironmentFile=/tmp/eco-monitor-pi-id.env
+# Prefix '-' makes this optional: if the env file doesn't exist, continue anyway
+EnvironmentFile=-/tmp/eco-monitor-pi-id.env
 
 # ── 3. Filesystem expansion (one-time) ──
 # Check whether the root partition already uses >90% of the disk.
 # If not, call raspi-config --expand-rootfs.
 # Resize happens on the next reboot via the init script.
-ExecStartPre=/bin/bash -c 'MARKER=/home/pi/.fs_expanded; if [ ! -f "$MARKER" ]; then ROOT_SIZE=$(df / | tail -1 | awk "{print \$2}"); DISK_SIZE=$(lsblk -b -o SIZE /dev/mmcblk0 2>/dev/null | head -2 | tail -1); if [ -n "$DISK_SIZE" ]; then DISK_SIZE_KB=$((DISK_SIZE / 1024)); if [ "$ROOT_SIZE" -lt $((DISK_SIZE_KB * 90 / 100)) ]; then sudo raspi-config --expand-rootfs 2>/dev/null; echo "FS expansion triggered (resize on next reboot)"; else echo "FS already expanded"; fi; else echo "Cannot determine disk size"; fi; touch "$MARKER"; fi'
+ExecStartPre=__REPO_DIR__/check_fs_expanded.sh
 
 # ── 4. Turn off Sipeed LEDs (power saving) ──
 # Safe if Sipeed is not connected (prefix '-' = allow failure)
-ExecStartPre=-/usr/bin/bash __REPO_DIR__/led_off.sh
+ExecStartPre=-__REPO_DIR__/led_off.sh
 
 # ── 5. Turn off ACT LED on the RPi board (power saving) ──
 ExecStartPre=+/bin/bash -c 'for led in /sys/class/leds/ACT /sys/class/leds/led0; do if [ -d "$led" ]; then echo none > "$led/trigger" 2>/dev/null; echo 0 > "$led/brightness" 2>/dev/null; fi; done; exit 0'

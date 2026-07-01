@@ -283,8 +283,9 @@ User=__SERVICE_USER__
 WorkingDirectory=__REPO_DIR__
 
 # ── 1. Time sync ──
-# Wait up to 60 seconds for NTP synchronisation before starting
-ExecStartPre=/bin/bash -c 'for i in {1..60}; do if timedatectl status | grep -q "System clock synchronized: yes"; then echo "Time synced"; break; fi; echo "Waiting for time sync..."; sleep 1; done'
+# Run update_time.sh to sync time via internet (NTP) or silently via offline gateway (Wi-Fi router)
+# The '-' prefix makes it optional so the service starts even if no time source is found.
+ExecStartPre=-/bin/bash -c 'cd __REPO_DIR__ && bash ./update_time.sh'
 
 # ── 2. PI_ID dynamically from discover_serial.py ──
 # No hardcoding — serial number is read automatically from the CPU

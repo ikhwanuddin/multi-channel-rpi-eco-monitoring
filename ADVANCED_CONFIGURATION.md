@@ -265,6 +265,34 @@ New phase values in the time-sync log contract:
 grep -hE "already-synced|sync-ntp" logs/*.log
 ```
 
+### Automated Offline Time Synchronization (Zero-Touch)
+
+For forest/field deployments where no public internet is available, the system incorporates a 100% automated, zero-touch background time synchronization mechanism. This is fully integrated into the systemd boot flow via `eco-monitor.service` (using `ExecStartPre`).
+
+When the Raspberry Pi boots up in the forest, if it is configured to connect to a local Wi-Fi router (such as a battery-powered travel router or field access point) or a mobile hotspot, it immediately detects the gateway IP and executes a silent, multi-layered synchronization query in the background before starting the main recording loop.
+
+#### How it Works (Background Flow)
+
+The automated system executes two sequential background probes against the local network gateway (the router or host device):
+
+1. **Local NTP Query (Port 123)**:
+   The RPi attempts a lightweight, standard NTP protocol request directly to the gateway's IP address. If the router or local AP runs an NTP server daemon (which is extremely common in OpenWRT or travel routers), the RPi parses the timestamp, sets the system clock, and writes the time to the Hardware Clock (RTC).
+   
+2. **Gateway HTTP Date Header Harvesting (Ports 80, 443, 8080, 8081)**:
+   If the gateway does not respond to NTP, the RPi sends a rapid HTTP `HEAD` request to common web-admin ports of the gateway IP. Almost all local routers run a web configuration panel on port 80 or 443. The RPi captures the HTTP response's standard `Date` header, extracts the accurate calendar time, synchronizes the system clock, and writes it to the RTC.
+
+If either of the probes succeeds, the clock is instantly updated within 2 seconds. If both probes fail (e.g., if there is no local Wi-Fi gateway or the router is offline), the system bypasses time sync gracefully without blocking or crashing, and starts recording using the current system time.
+
+#### Operator Workflow (Zero-Touch)
+
+The field operator does not need to perform any manual intervention:
+
+1. Turn on the local field Wi-Fi router (which has its own clock set or was synchronized).
+2. Power on the Raspberry Pi (MAARU).
+3. The RPi connects to the Wi-Fi network, silently synchronizes its system time from the router in less than 2 seconds, and automatically launches `record.py` with the correct system time.
+
+*No mobile web browser, terminal typing, SSH connection, or manual operator instructions are required.*
+
 ### State Manager: WAV + FLAC Tracking
 
 `state_manager.py` previously only tracked `.flac` files, which meant

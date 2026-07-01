@@ -131,13 +131,13 @@ multi-channel-rpi-eco-monitoring/
 
 ## 💡 Key Features
 
-✅ **7-channel recording** with structured logging
-✅ **Multiple cloud services** via rclone (Box, Drive, Dropbox, S3, etc.)
-✅ **Auto-start on boot** - no manual intervention needed
-✅ **Graceful shutdown** - with optional GPIO button
-✅ **State tracking** - resume uploads after reboot
-✅ **Power saving** - HDMI, Bluetooth, LED disable options
-✅ **Configurable parameters** - sample rate, bit depth, duration, codec
+- ✅ **7-channel recording** with structured logging
+- ✅ **Multiple cloud services** via rclone (Box, Drive, Dropbox, S3, etc.)
+- ✅ **Auto-start on boot** - no manual intervention needed
+- ✅ **Graceful shutdown** - with optional GPIO button
+- ✅ **State tracking** - resume uploads after reboot
+- ✅ **Power saving** - HDMI, Bluetooth, LED disable options
+- ✅ **Configurable parameters** - sample rate, bit depth, duration, codec
 
 ---
 

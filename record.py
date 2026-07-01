@@ -42,13 +42,22 @@ RECORDER_BANNER = r"""
 """
 
 
-def print_recorder_banner():
+def print_recorder_banner(logfile_path=None):
     """Print the iconic MULTICHANNEL ASCII banner."""
     # Print directly to stdout to avoid MinuteBoundaryFormatter adding
-    # timestamps to individual lines, which would break the ASCII art.
-    print(RECORDER_BANNER.strip())
-    # Also log as a single message to preserve formatting in log files
-    logging.getLogger(LOG).info(RECORDER_BANNER.strip())
+    # timestamps to individual lines in the console.
+    banner_text = RECORDER_BANNER.strip()
+    print(banner_text)
+
+    # Write directly to the log file (if provided) to bypass the logging formatters
+    # and keep the file logs clean of timestamps on the banner.
+    if logfile_path and os.path.exists(logfile_path):
+        try:
+            with open(logfile_path, "a") as f:
+                f.write("\n" + banner_text + "\n\n")
+        except Exception as e:
+            # Fallback silently or print debug if writing fails
+            pass
 
 
 def is_internet_available():
@@ -1021,7 +1030,7 @@ def record(config_file, logfile_name, log_dir="logs"):
     logging.getLogger().addHandler(hdlr)
 
     # Print the iconic MULTICHANNEL banner (stdout + log file)
-    print_recorder_banner()
+    print_recorder_banner(logfile)
 
     # Start in powersave; the recording loop will switch to ondemand during
     # capture and back to powersave during the inter-capture sleep.

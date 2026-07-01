@@ -51,7 +51,11 @@ MENU_ITEMS = [
     ("1", "Configure sensor & generate config.json", "configure_sensor_and_config"),
     ("2", "Install systemd service (eco-monitor.service)", "install_service"),
     ("3", "Configure GPIO shutdown button", "configure_gpio"),
-    ("4", "Install 'monitor' shell alias", "install_shell_monitor_alias"),
+    (
+        "4",
+        "Install shell shortcuts (monitor, restarteco, ...)",
+        "install_shell_monitor_alias",
+    ),
     ("5", "Full setup (1 -> 2 -> 3 -> 4, recommended)", "full_setup"),
     ("6", "Migrate from legacy /etc/profile startup", "migrate_legacy_profile"),
     ("7", "Show current status", "show_status"),
@@ -645,28 +649,42 @@ def install_shell_monitor_alias():
         else:
             return
 
-    marker = "monitor() {"
+    marker = "# ── Eco-monitor shell shortcuts ──"
+    # Also detect the old standalone monitor marker for backward compatibility
+    old_marker = "monitor() {"
     with open(bashrc_path, "r") as f:
         content = f.read()
 
     if marker in content:
-        print("The 'monitor' function is already present in {}.".format(bashrc_path))
+        print("Shell shortcuts are already present in {}.".format(bashrc_path))
         return
 
     snippet = """
-# Shortcut untuk memonitor service eco-monitor
+# ── Eco-monitor shell shortcuts ──
+# monitor   : tail live logs (Ctrl+C to quit)
+# restarteco: daemon-reload + restart service
+# statuseco : show service status
+# stopeco   : stop service
+# starteco  : start service
 monitor() {
     echo "--- Menampilkan log real-time: eco-monitor.service (Ctrl+C untuk keluar) ---"
     sudo journalctl -u eco-monitor.service -f
 }
+
+alias restarteco='sudo systemctl daemon-reload && sudo systemctl restart eco-monitor.service'
+alias statuseco='sudo systemctl status eco-monitor.service'
+alias stopeco='sudo systemctl stop eco-monitor.service'
+alias starteco='sudo systemctl start eco-monitor.service'
+# ── end eco-monitor shortcuts ──
 """
     with open(bashrc_path, "a") as f:
         f.write("\n" + snippet.strip() + "\n")
 
     fix_ownership(bashrc_path)
 
-    print("Successfully added 'monitor' function to {}".format(bashrc_path))
-    print("To use it immediately, run: source {}".format(bashrc_path))
+    print("Successfully added shell shortcuts to {}".format(bashrc_path))
+    print("Shortcuts installed: monitor, restarteco, statuseco, stopeco, starteco")
+    print("To use them immediately, run: source {}".format(bashrc_path))
     print("Or simply log out and log back in.")
 
 
@@ -691,11 +709,13 @@ def full_setup():
     else:
         print("Skipping GPIO configuration. You can do it later via menu option 3.")
 
-    print("\n--- Step 4 of 4: Install 'monitor' shell alias ---")
-    if ask_yes_no("Install 'monitor' shortcut to .bashrc?", "y"):
+    print("\n--- Step 4 of 4: Install shell shortcuts ---")
+    if ask_yes_no(
+        "Install shell shortcuts (monitor, restarteco, ...) to .bashrc?", "y"
+    ):
         install_shell_monitor_alias()
     else:
-        print("Skipping monitor shortcut installation.")
+        print("Skipping shell shortcuts installation.")
 
     print("\n" + "=" * 60)
     print("  Full setup complete!")

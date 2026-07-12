@@ -1,0 +1,242 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 570" width="100%" height="100%" style="background-color: #ffffff;">
+
+  <!-- ==================== DEFS ==================== -->
+  <defs>
+    <pattern id="dotGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#e2e8f0" />
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 2 L 10 5 L 0 8 z" fill="#64748b" />
+    </marker>
+    <marker id="arrow-emerald" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 2 L 10 5 L 0 8 z" fill="#059669" />
+    </marker>
+  </defs>
+
+  <!-- Background Dot Grid -->
+  <rect x="0" y="0" width="860" height="570" fill="url(#dotGrid)" />
+
+  <!-- ==================== TITLE ==================== -->
+  <text x="430" y="22" fill="#0f172a" font-size="16" font-weight="700" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">MAARU Physical Hardware Setup</text>
+  <text x="430" y="40" fill="#64748b" font-size="11" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">Multi-Channel Raspberry Pi Ecosystem Monitor — Hardware Architecture</text>
+
+  <!-- ==================== REGIONS ==================== -->
+
+  <!-- PLASTIC ROOF / WATERPROOF ENCLOSURE: x=45 y=52 w=580 h=282 -->
+  <rect x="45" y="52" width="580" height="282" rx="12" fill="#fffbeb" stroke="#d97706" stroke-width="1.5" stroke-dasharray="6 3" />
+  <text x="57" y="70" fill="#d97706" font-size="10" font-weight="700" font-family="system-ui, -apple-system, sans-serif">PLASTIC ROOF / WATERPROOF ENCLOSURE</text>
+
+  <!-- DRY BAG / POWER PROTECTION: x=245 y=352 w=368 h=138 -->
+  <rect x="245" y="352" width="368" height="138" rx="8" fill="#fff1f2" stroke="#e11d48" stroke-width="1.5" stroke-dasharray="6 3" />
+  <text x="257" y="370" fill="#e11d48" font-size="10" font-weight="700" font-family="system-ui, -apple-system, sans-serif">DRY BAG / POWER PROTECTION</text>
+
+  <!-- ==================== CONNECTION PATHS ==================== -->
+
+  <!-- 1. Mic Array → Raspberry Pi (GPIO / USB) -->
+  <path d="M 202 112 L 248 112" stroke="#059669" stroke-width="2" fill="none" marker-end="url(#arrow-emerald)" />
+
+  <!-- 2. WiFi Adapter → Raspberry Pi (USB Port) -->
+  <path d="M 455 112 L 408 112" stroke="#059669" stroke-width="2" fill="none" marker-end="url(#arrow-emerald)" />
+
+  <!-- 3. WiFi Adapter → Cloud Storage (WiFi Data) -->
+  <path d="M 603 112 L 685 112" stroke="#059669" stroke-width="2" fill="none" marker-end="url(#arrow-emerald)" />
+
+  <!-- 4. Raspberry Pi → Micro SD Card (SD Slot) -->
+  <path d="M 328 144 L 328 244" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrow)" />
+
+  <!-- 5. Silica Gel ⇢ Raspberry Pi (Humidity Control) dashed -->
+  <path d="M 195 250 L 258 144" stroke="#64748b" stroke-width="1.8" stroke-dasharray="5 3" fill="none" marker-end="url(#arrow)" />
+
+  <!-- 6. Powerbank → Raspberry Pi (Micro USB Power) -->
+  <path d="M 348 374 L 348 144" stroke="#059669" stroke-width="2" fill="none" marker-end="url(#arrow-emerald)" />
+
+  <!-- 7. Powerbank → USB Cable (Power Out) -->
+  <path d="M 400 406 L 455 406" stroke="#059669" stroke-width="2" fill="none" marker-end="url(#arrow-emerald)" />
+
+  <!-- 8. WiFi Adapter → Network (SSH Access) curved -->
+  <path d="M 603 135 L 645 135 Q 660 135 660 152 L 660 268 Q 660 282 672 282 L 685 282" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrow)" />
+
+  <!-- 9. Rope &amp; Rubber ⇢ Enclosure (Physical Mount) dashed -->
+  <path d="M 115 400 L 115 334" stroke="#64748b" stroke-width="1.8" stroke-dasharray="5 3" fill="none" marker-end="url(#arrow)" />
+
+  <!-- ==================== EDGE LABELS ==================== -->
+
+  <!-- GPIO / USB -->
+  <g transform="translate(225, 104)">
+    <rect x="-34" y="-9" width="68" height="18" rx="4" fill="#ffffff" stroke="#a7f3d0" stroke-width="1" />
+    <text x="0" y="4" fill="#047857" font-size="9" font-weight="600" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">GPIO / USB</text>
+  </g>
+
+  <!-- USB Port -->
+  <g transform="translate(431, 104)">
+    <rect x="-28" y="-9" width="56" height="18" rx="4" fill="#ffffff" stroke="#a7f3d0" stroke-width="1" />
+    <text x="0" y="4" fill="#047857" font-size="9" font-weight="600" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">USB Port</text>
+  </g>
+
+  <!-- WiFi Data -->
+  <g transform="translate(644, 104)">
+    <rect x="-30" y="-9" width="60" height="18" rx="4" fill="#ffffff" stroke="#a7f3d0" stroke-width="1" />
+    <text x="0" y="4" fill="#047857" font-size="9" font-weight="600" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">WiFi Data</text>
+  </g>
+
+  <!-- SD Slot -->
+  <g transform="translate(346, 194)">
+    <rect x="-22" y="-9" width="44" height="18" rx="4" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+    <text x="0" y="4" fill="#475569" font-size="9" font-weight="600" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">SD Slot</text>
+  </g>
+
+  <!-- Humidity Control -->
+  <g transform="translate(213, 200)">
+    <rect x="-46" y="-9" width="92" height="18" rx="4" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+    <text x="0" y="4" fill="#475569" font-size="9" font-weight="600" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">Humidity Control</text>
+  </g>
+
+  <!-- Micro USB Power — sits in gap between regions -->
+  <g transform="translate(370, 343)">
+    <rect x="-52" y="-9" width="104" height="18" rx="4" fill="#ffffff" stroke="#a7f3d0" stroke-width="1" />
+    <text x="0" y="4" fill="#047857" font-size="9" font-weight="600" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">Micro USB Power</text>
+  </g>
+
+  <!-- Power Out -->
+  <g transform="translate(427, 398)">
+    <rect x="-30" y="-9" width="60" height="18" rx="4" fill="#ffffff" stroke="#a7f3d0" stroke-width="1" />
+    <text x="0" y="4" fill="#047857" font-size="9" font-weight="600" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">Power Out</text>
+  </g>
+
+  <!-- SSH Access -->
+  <g transform="translate(668, 213)">
+    <rect x="-36" y="-9" width="72" height="18" rx="4" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+    <text x="0" y="4" fill="#475569" font-size="9" font-weight="600" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">SSH Access</text>
+  </g>
+
+  <!-- Physical Mount -->
+  <g transform="translate(115, 367)">
+    <rect x="-44" y="-9" width="88" height="18" rx="4" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+    <text x="0" y="4" fill="#475569" font-size="9" font-weight="600" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif">Physical Mount</text>
+  </g>
+
+  <!-- ==================== COMPONENT NODES ==================== -->
+
+  <!-- Mic Array (External / Slate) x=62 y=80 w=140 h=64 -->
+  <g>
+    <rect x="62" y="80" width="140" height="64" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2" />
+    <svg x="72" y="100" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#0f172a">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+    </svg>
+    <text x="104" y="108" fill="#0f172a" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Mic Array</text>
+    <text x="104" y="124" fill="#475569" font-size="9" font-family="system-ui, -apple-system, sans-serif">ReSpeaker 6 / Sipeed 7</text>
+  </g>
+
+  <!-- Raspberry Pi (Backend / Emerald — Primary Core) x=248 y=80 w=160 h=64 -->
+  <g>
+    <rect x="248" y="80" width="160" height="64" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="2.5" />
+    <svg x="258" y="100" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#064e3b">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
+    </svg>
+    <text x="290" y="108" fill="#064e3b" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Raspberry Pi</text>
+    <text x="290" y="124" fill="#047857" font-size="9" font-family="system-ui, -apple-system, sans-serif">3B / Zero 2W · Core</text>
+  </g>
+
+  <!-- WiFi Adapter (External / Slate) x=455 y=80 w=148 h=64 -->
+  <g>
+    <rect x="455" y="80" width="148" height="64" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2" />
+    <svg x="465" y="100" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#0f172a">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z" />
+    </svg>
+    <text x="497" y="108" fill="#0f172a" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">WiFi Adapter</text>
+    <text x="497" y="124" fill="#475569" font-size="9" font-family="system-ui, -apple-system, sans-serif">USB Network</text>
+  </g>
+
+  <!-- Silica Gel (External / Slate) x=62 y=244 w=140 h=64 -->
+  <g>
+    <rect x="62" y="244" width="140" height="64" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2" />
+    <!-- Silica bead icon: 2×3 grid of dots -->
+    <circle cx="76" cy="267" r="3" fill="#64748b" />
+    <circle cx="84" cy="267" r="3" fill="#64748b" />
+    <circle cx="92" cy="267" r="3" fill="#64748b" />
+    <circle cx="76" cy="277" r="3" fill="#64748b" />
+    <circle cx="84" cy="277" r="3" fill="#64748b" />
+    <circle cx="92" cy="277" r="3" fill="#64748b" />
+    <text x="104" y="272" fill="#0f172a" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Silica Gel</text>
+    <text x="104" y="288" fill="#475569" font-size="9" font-family="system-ui, -apple-system, sans-serif">Humidity Absorber</text>
+  </g>
+
+  <!-- Micro SD Card (Database / Violet) x=248 y=244 w=160 h=64 -->
+  <g>
+    <rect x="248" y="244" width="160" height="64" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="2" />
+    <svg x="258" y="264" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#4c1d95">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+    </svg>
+    <text x="290" y="272" fill="#4c1d95" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Micro SD Card</text>
+    <text x="290" y="288" fill="#6d28d9" font-size="9" font-family="system-ui, -apple-system, sans-serif">128 GB Storage</text>
+  </g>
+
+  <!-- Cloud Storage (Cloud / Amber) x=685 y=80 w=148 h=64 -->
+  <g>
+    <rect x="685" y="80" width="148" height="64" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="2" />
+    <svg x="695" y="100" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#78350f">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" />
+    </svg>
+    <text x="727" y="108" fill="#78350f" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Cloud Storage</text>
+    <text x="727" y="124" fill="#b45309" font-size="9" font-family="system-ui, -apple-system, sans-serif">Box / Remote</text>
+  </g>
+
+  <!-- Network (Cloud / Amber) x=685 y=248 w=148 h=64 -->
+  <g>
+    <rect x="685" y="248" width="148" height="64" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="2" />
+    <svg x="695" y="268" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#78350f">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0H3" />
+    </svg>
+    <text x="727" y="276" fill="#78350f" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Network</text>
+    <text x="727" y="292" fill="#b45309" font-size="9" font-family="system-ui, -apple-system, sans-serif">WiFi SSH</text>
+  </g>
+
+  <!-- Powerbank (Backend / Emerald) x=260 y=374 w=140 h=64 -->
+  <g>
+    <rect x="260" y="374" width="140" height="64" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="2" />
+    <svg x="270" y="394" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#064e3b">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M21 10.5h.375a.375.375 0 0 1 .375.375v2.25a.375.375 0 0 1-.375.375H21M3.75 18h15A2.25 2.25 0 0 0 21 15.75v-6a2.25 2.25 0 0 0-2.25-2.25h-15A2.25 2.25 0 0 0 1.5 9.75v6A2.25 2.25 0 0 0 3.75 18Z" />
+    </svg>
+    <text x="302" y="402" fill="#064e3b" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Powerbank</text>
+    <text x="302" y="418" fill="#047857" font-size="9" font-family="system-ui, -apple-system, sans-serif">10–20K mAh</text>
+  </g>
+
+  <!-- USB Cable (External / Slate) x=455 y=374 w=130 h=64 -->
+  <g>
+    <rect x="455" y="374" width="130" height="64" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2" />
+    <svg x="465" y="394" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#0f172a">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+    </svg>
+    <text x="497" y="402" fill="#0f172a" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">USB Cable</text>
+    <text x="497" y="418" fill="#475569" font-size="9" font-family="system-ui, -apple-system, sans-serif">A to Micro-USB</text>
+  </g>
+
+  <!-- Rope &amp; Rubber (External / Slate) x=45 y=400 w=140 h=64 -->
+  <g>
+    <rect x="45" y="400" width="140" height="64" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2" />
+    <svg x="55" y="420" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#0f172a">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+    </svg>
+    <text x="87" y="428" fill="#0f172a" font-size="12" font-weight="700" font-family="system-ui, -apple-system, sans-serif">Rope &amp; Rubber</text>
+    <text x="87" y="444" fill="#475569" font-size="9" font-family="system-ui, -apple-system, sans-serif">Tree Mount</text>
+  </g>
+
+  <!-- ==================== LEGEND ==================== -->
+  <g>
+    <rect x="45" y="505" width="248" height="50" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+    <text x="57" y="521" fill="#64748b" font-size="9" font-weight="700" font-family="system-ui, -apple-system, sans-serif">LEGEND</text>
+    <!-- External -->
+    <rect x="57" y="528" width="12" height="10" rx="2" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5" />
+    <text x="73" y="537" fill="#475569" font-size="9" font-weight="600" font-family="system-ui, -apple-system, sans-serif">External</text>
+    <!-- Core / Backend -->
+    <rect x="120" y="528" width="12" height="10" rx="2" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" />
+    <text x="136" y="537" fill="#047857" font-size="9" font-weight="600" font-family="system-ui, -apple-system, sans-serif">Core / Backend</text>
+    <!-- Database -->
+    <rect x="57" y="543" width="12" height="10" rx="2" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5" />
+    <text x="73" y="552" fill="#6d28d9" font-size="9" font-weight="600" font-family="system-ui, -apple-system, sans-serif">Database</text>
+    <!-- Cloud / Remote -->
+    <rect x="120" y="543" width="12" height="10" rx="2" fill="#fffbeb" stroke="#d97706" stroke-width="1.5" />
+    <text x="136" y="552" fill="#b45309" font-size="9" font-weight="600" font-family="system-ui, -apple-system, sans-serif">Cloud / Remote</text>
+  </g>
+
+</svg>

@@ -2,7 +2,97 @@
 
 Overview of how the multi-channel ecosystem monitoring system works.
 
-## System Components
+## Physical Hardware Setup
+
+MAARU (Multi-Channel Acoustic Recording Unit) is a rugged ecosystem monitoring system built for tropical rainforest environments. The diagram below shows the physical hardware layout, weatherproofing layers, and how components connect to each other.
+
+![MAARU Physical Setup Diagram](./maaru-physical-setup.svg)
+
+> **Tip**: The diagram scales with the page width. For an interactive version with theme toggle and export options, open [maaru-physical-setup.html](../../maaru-physical-setup.html).
+
+### Nested Architecture Layers
+
+#### **Layer 1: Waterproof Roof**
+- **Function**: Protects against direct rainfall over the main enclosure
+- **Material**: Recycled plastic container
+- **Protection**: Water runoff to sides, extends enclosure lifespan
+
+#### **Layer 2: Main Enclosure (Food Container)**
+Core components protected from direct weather:
+
+- **Raspberry Pi 2B or Zero 2W**
+  - Compute core for the system
+  - Pi 2B: Recommended (more stable, better performance)
+  - Pi Zero 2W: Minimum (lower power, cheaper)
+
+- **Microphone Array Sensor** (choose one)
+  - **ReSpeaker 6-Mic Array** → connected via **GPIO pins**
+    - 6 channel simultaneous recording
+    - Lower power consumption (~0.5A)
+    - Direct I2S connection
+  - **Sipeed 7-Mic Array** → connected via **USB port**
+    - 7 channel simultaneous recording
+    - Self-powered via USB
+    - Better for modularity
+
+- **Micro SD Card**
+  - Local storage for audio files (.FLAC)
+  - Typical: Class 10, 200+ MB/s speed
+  - Capacity: 64GB-256GB (depends on retention policy)
+
+- **USB WiFi Adapter**
+  - Wireless network connectivity
+  - For SSH access from mobile/computer
+  - For cloud storage upload (optional)
+  - Powered from Pi USB port
+
+- **Silica Gel**
+  - Absorbs ambient moisture in tropical rainforest environment
+  - Essential for preventing condensation inside enclosure
+  - Replace every 1-2 weeks or when saturated
+
+- **IP68 Acoustic Membrane**
+  - Specialized layer at microphone holes
+  - Water-resistant (IP68 rated)
+  - Maintains acoustic transparency
+
+- **Silicon Sealant**
+  - Seals all cable holes
+  - Prevents water ingress
+
+#### **Layer 3: Dry Bag (Power Protection)**
+- **Function**: Protects powerbank from moisture and water damage
+- **Location**: Outside main enclosure, within plastic roof
+- **Contents**: Powerbank supplying power to Pi
+- **Connection**: USB Cable (USB-A to Micro-USB) to Pi power port
+
+### Physical Connections & Power Flow
+
+| Component | Connected to | Interface | Power (A) | Notes |
+|-----------|-------------|-----------|----------|-------|
+| **Mic Sensor** | Raspberry Pi | GPIO (ReSpeaker) or USB (Sipeed) | 0.3-0.8 | Choose one |
+| **USB WiFi** | Raspberry Pi | USB Port | 0.2-0.5 | Optional, for network |
+| **Micro SD** | Raspberry Pi | SD Card Slot | 0.1 | Local storage |
+| **Powerbank** | Raspberry Pi | Micro USB Power | Vout=5V | Primary power supply |
+| **Silica Gel** | Environment | Humidity control | N/A | Passive, absorbs moisture |
+
+### Mounting & Environmental Protection
+
+- **Rope & Rubber**: Tethered to tree for stability and fall prevention
+- **Food Container + Plastic Roof**: Protection from extreme weather (rain, UV, insects)
+- **Silica Gel**: Humidity control in tropical rainforest environment
+- **IP68 Membrane**: Protects acoustic holes from water ingress
+
+### External & Cloud
+
+- **Cloud Storage (Box)**: Destination for audio files uploaded via rclone
+- **Network Access**: SSH via USB WiFi adapter (if connected)
+
+---
+
+## System Components (Software)
+
+This section describes the software components running on MAARU:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -15,7 +105,7 @@ Overview of how the multi-channel ecosystem monitoring system works.
 │  │   Array)     │      │              │   │              │  │
 │  └──────────────┘      └──────────────┘   └──────────────┘  │
 │        │                      │                    │          │
-│        USB                    │               Network         │
+│        USB/GPIO               │               Network         │
 │                         Local Storage            (optional)   │
 │                         .FLAC files                           │
 │                                                               │
@@ -27,7 +117,7 @@ Overview of how the multi-channel ecosystem monitoring system works.
 │                                                               │
 └─────────────────────────────────────────────────────────────┘
          │
-         ├─→ Local Files: ~/multichannel_audio/
+         ├─→ Local Files: ~/monitoring_data/
          ├─→ Config: ~/multi-channel-rpi-eco-monitoring/config.json
          └─→ Logs: ~/logs/
 ```
@@ -56,6 +146,10 @@ When the Raspberry Pi starts:
 ---
 
 ## Recording Workflow
+
+### Workflow Overview
+
+![System Workflow](./workflow.svg)
 
 ### Offline Mode (Default)
 
@@ -202,7 +296,7 @@ When the Raspberry Pi starts:
 ### File Naming Convention
 
 ```
-~/multichannel_audio/
+~/monitoring_data/
 ├── 20240701_142300.flac    # YYYYMMDD_HHMMSS
 ├── 20240701_143000.flac
 ├── 20240701_143700.flac
@@ -440,7 +534,7 @@ Check system regularly:
 
 ```bash
 # Is recording happening?
-ls -lt ~/multichannel_audio/ | head -1
+ls -lt ~/monitoring_data/ | head -1
 
 # Recent errors?
 grep "\[phase=error\]" ~/logs/*.log | tail -5
@@ -459,6 +553,8 @@ See [troubleshooting.md](troubleshooting.md) for diagnostic scripts.
 ## See Also
 
 - [readme.md](readme.md) - Setup instructions
+- [physical-setup.md](physical-setup.md) - **Hardware components & protection details** (start here for "orang umum")
 - [config.md](config.md) - Configuration options
 - [log_guide.md](log_guide.md) - Log format reference
 - [troubleshooting.md](troubleshooting.md) - Common issues
+- [MAARU Physical Setup Diagram](../../maaru-physical-setup.html) - Interactive SVG visualization

@@ -337,26 +337,26 @@ python3 -c "import pyaudio; print('PyAudio installed successfully')"
 ```
     
 ## Useful Shell Shortcuts
-    
-Untuk mempercepat *debugging* dan monitoring saat terhubung via SSH, Anda dapat menggunakan *installer* untuk menambahkan *shortcut* ke file `.bashrc` Anda secara otomatis.
-    
+
+To speed up *debugging* and monitoring when connected via SSH, you can use the *installer* to automatically add *shortcuts* to your `.bashrc` file.
+
 ```bash
 cd ~/multi-channel-rpi-eco-monitoring
 sudo python3 installer.py
-# Pilih opsi menu 4 (Install 'monitor' shell alias)
+# Select menu option 4 (Install 'monitor' shell alias)
 ```
-    
-Ini akan menambahkan *function* berikut ke `/home/pi/.bashrc`:
-    
+
+This will add the following *function* to `/home/pi/.bashrc`:
+
 ```bash
-# Shortcut untuk memonitor service eco-monitor
+# Shortcut to monitor eco-monitor service
 monitor() {
-    echo "--- Menampilkan log real-time: eco-monitor.service (Ctrl+C untuk keluar) ---"
+    echo "--- Displaying real-time logs: eco-monitor.service (Ctrl+C to exit) ---"
     sudo journalctl -u eco-monitor.service -f
 }
 ```
-    
-Setelah *logout* dan masuk kembali (atau menjalankan `source ~/.bashrc`), Anda cukup mengetik **`monitor`** di terminal untuk langsung melihat status service yang sedang berjalan secara *real-time*.
+
+After *logout* and login again (or running `source ~/.bashrc`), you can simply type **`monitor`** in the terminal to immediately view the status of the running service in *real-time*.
     
 ## Log Filter Examples (Prefix Contract)
 
@@ -420,9 +420,9 @@ tail -n 200 logs/*.log | grep -E "\[phase=(error|finalize|shutdown)\]"
 
 ## Side Notes
 
-* Be careful not to pull the power cable from the Pi (or pull the plug out the socket) - this has been known to corrupt the SD card, and requires a fresh install.
+* Be careful not to pull the power cable from the Pi (or pull the plug from the socket) - this has been known to corrupt the SD card, and requires a fresh install.
 * Using a battery bank is a safe option - if it runs out of power, the Pi tends to shutdown safely.
-* To safely power off, use the appropriate method for your sensor (e.g., button on Respeaker 6-Mic array or software shutdown), and wait for the green light (on the Pi) to stop flashing.
+* To safely power off, use the appropriate method for your sensor (e.g. button on Respeaker 6-Mic array or software shutdown), and wait for the green light (on the Pi) to stop flashing.
 
 ## Make a new disk image
 

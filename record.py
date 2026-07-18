@@ -908,14 +908,15 @@ def continuous_recording(
             run_postprocess(sensor, upload_dir)
 
             # Check for internet to decide whether to record
-            # Fix: Access offline_mode from root config (passed as sensor_config)
-            force_record = sensor_config.get("offline_mode", 0) == 1
+            # upload_enabled: if True, pause recording when internet is
+            # available so the upload sync thread can use the bandwidth.
+            upload_enabled = sensor_config.get("upload_enabled", False)
 
             # Check if sync is currently triggered
             is_syncing = sync_trigger.is_set()
 
             if (
-                not force_record
+                upload_enabled
                 and (is_internet_available() or is_syncing)
                 and not test_mode
             ):
@@ -1082,7 +1083,7 @@ def record(config_file, logfile_name, log_dir="logs"):
         sys_config = config["sys"]
         rclone_config = config["rclone"]
         sensor_config = config["sensor"]
-        offline_mode = config["offline_mode"]
+        upload_enabled = config.get("upload_enabled", True)
         test_mode = config.get("test_mode", 0) == 1
         force_offline_mode = str(
             os.environ.get("FORCE_OFFLINE_MODE", "0")
@@ -1098,7 +1099,7 @@ def record(config_file, logfile_name, log_dir="logs"):
             sys_config.get("use_system_shutdown_button", 0)
         ).strip().lower() in ["1", "true", "yes", "on"]
         if force_offline_mode:
-            offline_mode = 1
+            upload_enabled = False
             logging.info(
                 "FORCE_OFFLINE_MODE detected: upload synchronisation disabled for this run"
             )
@@ -1109,7 +1110,7 @@ def record(config_file, logfile_name, log_dir="logs"):
 
     # Setup GPIO for sensors that have a button
     logging.info(
-        f"DEBUG: Setup starting. offline_mode={offline_mode}, test_mode={test_mode}"
+        f"DEBUG: Setup starting. upload_enabled={upload_enabled}, test_mode={test_mode}"
     )
     GPIO.setmode(GPIO.BCM)
 
@@ -1249,7 +1250,7 @@ def record(config_file, logfile_name, log_dir="logs"):
     # Pre-declare so it's always bound even when offline/test mode skips
     # sync-thread creation; the join path then has a defined value.
     sync_thread = None
-    if not offline_mode and not test_mode:
+    if upload_enabled and not test_mode:
         sync_thread = threading.Thread(
             target=upload_server_sync,
             args=(
@@ -1308,8 +1309,8 @@ def record(config_file, logfile_name, log_dir="logs"):
         if reboot_thread is not None:
             reboot_thread.start()
 
-        if offline_mode:
-            logging.info("Running in offline mode - no upload synchronisation")
+        if upload_enabled:
+            logging.info("Running with upload enabled - upload sync thread active")
         elif test_mode:
             logging.info("Running in test mode - upload synchronisation disabled")
         else:
@@ -1335,7 +1336,7 @@ def record(config_file, logfile_name, log_dir="logs"):
         SYNC_WATCHDOG_STALL_SECONDS = 3 * sensor.server_sync_interval + 300
         while True:
             time.sleep(1)
-            if not offline_mode and not test_mode and not die.is_set():
+            if upload_enabled and not test_mode and not die.is_set():
                 last_beat = sync_watchdog.get("last_beat", 0)
                 if (
                     last_beat
@@ -1362,7 +1363,7 @@ def record(config_file, logfile_name, log_dir="logs"):
         record_thread.join()
         if reboot_thread is not None:
             reboot_thread.join()
-        if not offline_mode and not test_mode and sync_thread is not None:
+        if upload_enabled and not test_mode and sync_thread is not None:
             sync_thread.join()
 
         logging.info(

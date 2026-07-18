@@ -16,8 +16,16 @@ Wants=time-sync.target
 User=__SERVICE_USER__
 WorkingDirectory=__REPO_DIR__
 
+# ── 0. Restore saved time from fake-hwclock (baseline fallback before any sync) ──
+# Reads the last saved timestamp from /etc/fake-hwclock.data and sets the system
+# clock so subsequent steps (NTP, gateway sync, record.py folder naming) start from
+# the best available approximation rather than epoch or a wildly wrong clock.
+# The '-' prefix ensures the service still starts if the data file is missing.
+ExecStartPre=-/bin/bash -c 'FAKE="/etc/fake-hwclock.data"; if [ -f "$FAKE" ]; then SAVED=$(cat "$FAKE"); if [ -n "$SAVED" ]; then sudo timedatectl set-ntp false 2>/dev/null || true; sudo date -s "$SAVED" >/dev/null 2>&1 && echo "[fake-hwclock] Restored system time: $SAVED" || echo "[fake-hwclock] WARNING: failed to restore time from $SAVED"; fi; else echo "[fake-hwclock] No data file at $FAKE, skipping restore."; fi'
+
 # ── 1. Time sync ──
 # Run update_time.sh to sync time via internet (NTP) or silently via offline gateway (Wi-Fi router)
+# If a better time source becomes available, it will overwrite the fake-hwclock baseline.
 # The '-' prefix makes it optional so the service starts even if no time source is found.
 ExecStartPre=-/bin/bash -c 'cd __REPO_DIR__ && bash ./update_time.sh'
 

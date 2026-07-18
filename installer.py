@@ -58,8 +58,9 @@ MENU_ITEMS = [
     ),
     ("5", "Full setup (1 -> 2 -> 3 -> 4, recommended)", "full_setup"),
     ("6", "Migrate from legacy /etc/profile startup", "migrate_legacy_profile"),
-    ("7", "Show current status", "show_status"),
-    ("8", "Exit", None),
+    ("7", "Migrate config.json to latest schema (remove has_internet, rename offline_mode)", "migrate_config_json"),
+    ("8", "Show current status", "show_status"),
+    ("9", "Exit", None),
 ]
 
 
@@ -306,23 +307,12 @@ def configure_sensor_and_config():
     for option in sensor_config_options:
         config_parse(option, sensor_config)
 
-    # offline_mode is always 1; online upload is handled at runtime by
-    # internet-detection logic in record.py.
-    offline_config = {"offline_mode": 1}
+    # upload_enabled is True by default.
+    # Record() will create an upload sync thread when True;
+    # actual upload fires only when internet is reachable at runtime.
+    upload_config = {"upload_enabled": True}
 
     deployment_info_options = [
-        {
-            "name": "has_internet",
-            "type": int,
-            "prompt": (
-                "Deployment note: is internet sometimes available at this site?\n"
-                "1 = Sometimes available (startup can enter upload mode when internet is reachable)\n"
-                "0 = Typically no internet (startup will usually stay in recording mode)\n"
-                "This value is informational and does not force runtime mode."
-            ),
-            "default": 1,
-            "valid": [0, 1],
-        },
         {
             "name": "test_mode",
             "type": int,
@@ -340,10 +330,10 @@ def configure_sensor_and_config():
     for option in deployment_info_options:
         config_parse(option, deployment_config)
 
-    _configure_cloud_and_system(sensor_config, offline_config, deployment_config)
+    _configure_cloud_and_system(sensor_config, upload_config, deployment_config)
 
 
-def _configure_cloud_and_system(sensor_config, offline_config, deployment_config):
+def _configure_cloud_and_system(sensor_config, upload_config, deployment_config):
     """Collect rclone, gist, and system config, then save config.json."""
 
     # rclone config
@@ -484,8 +474,7 @@ def _configure_cloud_and_system(sensor_config, offline_config, deployment_config
     config = {
         "rclone": rclone_config,
         "gist": gist_config,
-        "offline_mode": offline_config["offline_mode"],
-        "has_internet": deployment_config["has_internet"],
+        "upload_enabled": upload_config["upload_enabled"],
         "test_mode": deployment_config["test_mode"],
         "sensor": sensor_config,
         "sys": sys_config,
@@ -794,8 +783,64 @@ def migrate_legacy_profile():
 
 
 # ---------------------------------------------------------------------------
-# Menu action 6: show current status
+# Menu action 7: migrate config.json to latest schema
 # ---------------------------------------------------------------------------
+def migrate_config_json():
+    """
+    Migrate config.json from the legacy schema to the current one.
+
+    Changes applied:
+      1. Remove the dead 'has_internet' key if present.
+      2. Rename 'offline_mode' (int 0/1) to 'upload_enabled' (bool).
+      3. Log a summary of what was changed.
+    """
+    config = load_config()
+    if config is None:
+        print("No valid config.json found at {}. Nothing to migrate.".format(CONFIG_FILE))
+        return
+
+    changes = []
+
+    # 1. Remove has_internet (dead code)
+    if "has_internet" in config:
+        del config["has_internet"]
+        changes.append("removed 'has_internet' (dead key)")
+
+    # 2. Rename offline_mode -> upload_enabled (invert + convert to bool)
+    if "offline_mode" in config:
+        old_val = config.pop("offline_mode")
+        # offline_mode=1 meant "upload disabled", upload_enabled=True means "upload enabled"
+        new_val = old_val == 0
+        config["upload_enabled"] = new_val
+        changes.append(
+            "renamed 'offline_mode' ({}) -> 'upload_enabled' ({})".format(
+                old_val, new_val
+            )
+        )
+
+    # 3. Also check inside the sensor config (passed to continuous_recording)
+    sensor = config.get("sensor", {})
+    if "offline_mode" in sensor:
+        old_val = sensor.pop("offline_mode")
+        new_val = old_val == 0
+        sensor["upload_enabled"] = new_val
+        changes.append(
+            "renamed sensor.offline_mode ({}) -> sensor.upload_enabled ({})".format(
+                old_val, new_val
+            )
+        )
+
+    if not changes:
+        print("config.json already matches the latest schema. Nothing to do.")
+        return
+
+    save_config(config)
+    print("config.json migrated. Changes applied:")
+    for c in changes:
+        print("  - {}".format(c))
+    print("\nYou can verify the result with menu option 8 (Show current status).")
+
+
 def show_status():
     """Print a summary of config.json, the systemd service, and GPIO overlay."""
 
@@ -810,12 +855,12 @@ def show_status():
         print("  NOT FOUND: {}".format(CONFIG_FILE))
     else:
         sensor_type = config.get("sensor", {}).get("sensor_type", "(unset)")
-        offline = config.get("offline_mode", "(unset)")
+        upload_enabled = config.get("upload_enabled", "(unset)")
         test = config.get("test_mode", "(unset)")
         use_btn = config.get("sys", {}).get("use_system_shutdown_button", 0)
         print("  Path:               {}".format(CONFIG_FILE))
         print("  Sensor type:        {}".format(sensor_type))
-        print("  offline_mode:       {}".format(offline))
+        print("  upload_enabled:     {}".format(upload_enabled))
         print("  test_mode:          {}".format(test))
         print("  shutdown button:    {} (1 = system-wide dtoverlay)".format(use_btn))
 

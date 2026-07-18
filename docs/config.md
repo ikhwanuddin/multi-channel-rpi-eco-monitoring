@@ -7,7 +7,7 @@ Complete reference for all `config.json` options.
 The `config.json` file controls how your monitoring system behaves. Generate it interactively with:
 
 ```bash
-python setup_config.py
+python installer.py
 ```
 
 Or manually edit the file following this guide.
@@ -16,28 +16,68 @@ Or manually edit the file following this guide.
 
 ```json
 {
-  "record": { /* Recording settings */ },
-  "upload": { /* Cloud upload settings */ },
+  "rclone": { /* Cloud upload settings */ },
+  "gist": { /* GitHub Gist sync settings */ },
+  "upload_enabled": true,
+  "test_mode": 0,
+  "sensor": { /* Sensor-specific options */ },
   "sys": { /* System-level settings */ }
 }
 ```
 
 ---
 
-## Recording Settings (`record` section)
+## `upload_enabled`
 
-### `sensor`
+**Type**: Boolean (`true` / `false`)  
+**Default**: `true`
+
+Controls whether the upload sync thread is started at runtime:
+
+- `true` — Upload sync thread runs in background. Recording pauses when internet is detected so upload can use bandwidth. Recording resumes when upload completes or internet is unavailable.
+- `false` — Murni recording lokal. Upload sync thread tidak dibuat.
+
+Penentuan upload vs. recording dilakukan secara **runtime** oleh `is_internet_available()` — config ini hanya menentukan apakah thread upload diaktifkan.
+
+```json
+"upload_enabled": true
+```
+
+---
+
+## `test_mode`
+
+**Type**: Integer (0 or 1)  
+**Default**: `0`
+
+- `1` — Forces recording, skips all uploads (useful for testing).
+- `0` — Standard behavior (upload if enabled and internet available).
+
+```json
+"test_mode": 0
+```
+
+---
+
+## `sensor`
+
+Root-level object containing sensor type and its specific options.
+
+### `sensor_type`
+
 **Type**: String  
-**Options**: `"sipeed7mic"`, `"respeaker4mic"`, `"respeaker6mic"`  
-**Default**: `"sipeed7mic"`
+**Options**: `"Sipeed7Mic"`, `"Respeaker6Mic"`, `"Respeaker4Mic"`, `"Respeaker_Custom"`  
 
 Which microphone array to use.
 
 ```json
-"sensor": "sipeed7mic"
+"sensor": {
+  "sensor_type": "Sipeed7Mic"
+}
 ```
 
 ### `device_index`
+
 **Type**: Integer  
 **Default**: `0`
 
@@ -48,6 +88,7 @@ python discover_serial.py
 ```
 
 ### `record_duration_s`
+
 **Type**: Integer  
 **Default**: `1200` (20 minutes)  
 **Unit**: Seconds
@@ -59,199 +100,208 @@ How long to record in each interval.
 ```
 
 ### `channels`
+
 **Type**: Integer  
 **Options**: `6` (Respeaker), `7` (Sipeed)  
 **Default**: `7`
 
 Number of microphone channels to record.
 
-```json
-"channels": 7
-```
-
 ### `bit_depth`
+
 **Type**: Integer  
 **Options**: `16`, `24`, `32`  
 **Default**: `16`
 
 Bits per sample. Higher = better quality but larger files.
 
-```json
-"bit_depth": 16
-```
-
 ### `sample_rate`
+
 **Type**: Integer  
 **Options**: `16000`, `44100`, `48000`  
 **Default**: `16000`
 
 Samples per second (Hz). Standard for acoustic ecology: 16 kHz.
 
-```json
-"sample_rate": 16000
-```
-
 ### `codec`
+
 **Type**: String  
 **Options**: `"flac"`, `"wav"`  
 **Default**: `"flac"`
 
 Audio format. FLAC is recommended (lossless + compressed).
 
-```json
-"codec": "flac"
-```
+### `server_sync_interval`
 
-### `monitoring_mode`
-**Type**: String  
-**Options**: `"offline"`, `"online"`  
-**Default**: `"offline"`
+**Type**: Integer  
+**Default**: `900` (15 minutes)  
+**Unit**: Seconds
 
-- **offline**: Records locally, no uploads
-- **online**: Records and uploads after each session
-
-```json
-"monitoring_mode": "offline"
-```
-
-### `keep_recorded_data`
-**Type**: Boolean  
-**Default**: `false`
-
-- `true`: Keep local files after upload
-- `false`: Delete after successful upload
-
-```json
-"keep_recorded_data": false
-```
-
-### `log_output_dir`
-**Type**: String  
-**Default**: `"logs"`
-
-Directory for log files (created if doesn't exist).
-
-```json
-"log_output_dir": "logs"
-```
+How often the upload sync thread checks for new files to upload.
 
 ---
 
-## Upload Settings (`upload` section)
-
-**Note**: Only required if `monitoring_mode` is `"online"`
+## Rclone Settings (`rclone` section)
 
 ### `remote_name`
+
 **Type**: String  
 **Default**: `"mybox"`
 
 Rclone remote name configured in `~/.config/rclone/rclone.conf`.
 
 ```json
-"remote_name": "mybox"
+"rclone": {
+  "remote_name": "mybox",
+  "config_path": "/home/pi/.config/rclone/rclone.conf",
+  "remote_base_path": "monitoring_data",
+  "target_path": "monitoring_data"
+}
 ```
 
+### `config_path`
+
+**Type**: String  
+**Default**: `"/home/pi/.config/rclone/rclone.conf"`
+
+Full path to rclone configuration file.
+
+### `remote_base_path`
+
+**Type**: String  
+**Default**: `"monitoring_data"`
+
+Base path on remote storage where files are uploaded. The device serial is appended: `{remote_base_path}/{cpu_serial}`.
+
 ### `target_path`
+
+(Deprecated alias for `remote_base_path`, kept for backwards compatibility.)
+
+---
+
+## Gist Settings (`gist` section)
+
+Optional. Syncs `rclone.conf` across multiple Raspberry Pis via a private GitHub Gist.
+
+### `enabled`
+
+**Type**: Integer (0 or 1)  
+**Default**: `1`
+
+### `github_token`
+
 **Type**: String  
 **Default**: `""`
 
-Path on cloud storage where files are uploaded.
+GitHub personal access token with Gist scope.
 
-```json
-"target_path": "ecosystem_monitoring/site_01/"
-```
+### `gist_id`
 
-### `rclone_config_path`
 **Type**: String  
-**Default**: `"~/.config/rclone/rclone.conf"`
+**Default**: `""`
 
-Path to rclone configuration file.
+The Gist ID (from URL) that stores the shared `rclone.conf`.
 
-```json
-"rclone_config_path": "~/.config/rclone/rclone.conf"
-```
+### `filename`
+
+**Type**: String  
+**Default**: `"rclone.conf"`
+
+Filename inside the Gist.
 
 ---
 
 ## System Settings (`sys` section)
 
-### `use_system_shutdown_button`
-**Type**: Integer (0 or 1)  
-**Default**: `0`
+### `working_dir`
 
-- `1`: Use GPIO shutdown button (Respeaker 6-Mic with device tree overlay)
+**Type**: String  
+**Default**: `"/home/pi/tmp_dir"`
+
+Temporary directory for active recordings.
+
+### `upload_dir`
+
+**Type**: String  
+**Default**: `"/home/pi/monitoring_data"`
+
+Root directory for processed FLAC files ready for upload.
+
+### `reboot_time`
+
+**Type**: String  
+**Default**: `"02:00"`
+
+Primary daily reboot time in 24-hour HH:MM format.
+
+### `reboot_time_2`
+
+**Type**: String  
+**Default**: `""`
+
+Optional second daily reboot time. Leave blank to disable.
+
+### `use_system_shutdown_button`
+
+**Type**: Integer (0 or 1)  
+**Default**: `1`
+
+- `1`: Use system-wide GPIO shutdown overlay (dtoverlay gpio-shutdown)
 - `0`: Use Python GPIO listener
 
-Only relevant for Respeaker deployments. See [advanced_configuration.md](advanced_configuration.md).
+### `min_free_storage_gb`
 
-```json
-"use_system_shutdown_button": 1
-```
+**Type**: Float  
+**Default**: `1.0`
 
-### `timezone`
-**Type**: String  
-**Default**: `"UTC"`
+Minimum free storage in GB. System shuts down below this threshold.
 
-IANA timezone identifier. Examples: `"Europe/London"`, `"America/New_York"`, `"Asia/Shanghai"`
+### `warn_free_storage_gb`
 
-```json
-"timezone": "Europe/London"
-```
+**Type**: Float  
+**Default**: `4.0`
+
+Warn when free storage falls below this threshold.
 
 ---
 
-## Complete Example: Offline Recording
+## Complete Example
 
 ```json
 {
-  "record": {
-    "sensor": "sipeed7mic",
-    "device_index": 0,
-    "record_duration_s": 1200,
-    "channels": 7,
-    "bit_depth": 16,
-    "sample_rate": 16000,
-    "codec": "flac",
-    "monitoring_mode": "offline",
-    "keep_recorded_data": true,
-    "log_output_dir": "logs"
-  },
-  "upload": {
-    "remote_name": "",
-    "target_path": "",
-    "rclone_config_path": ""
-  },
-  "sys": {
-    "use_system_shutdown_button": 0,
-    "timezone": "UTC"
-  }
-}
-```
-
-## Complete Example: Online Upload
-
-```json
-{
-  "record": {
-    "sensor": "sipeed7mic",
-    "device_index": 0,
-    "record_duration_s": 900,
-    "channels": 7,
-    "bit_depth": 16,
-    "sample_rate": 16000,
-    "codec": "flac",
-    "monitoring_mode": "online",
-    "keep_recorded_data": false,
-    "log_output_dir": "logs"
-  },
-  "upload": {
+  "rclone": {
     "remote_name": "mybox",
-    "target_path": "ecosound_data/deployment_01/",
-    "rclone_config_path": "~/.config/rclone/rclone.conf"
+    "config_path": "/home/pi/.config/rclone/rclone.conf",
+    "remote_base_path": "monitoring_data",
+    "target_path": "monitoring_data"
+  },
+  "gist": {
+    "enabled": 1,
+    "github_token": "",
+    "gist_id": "",
+    "filename": "rclone.conf"
+  },
+  "upload_enabled": true,
+  "test_mode": 0,
+  "sensor": {
+    "sensor_type": "Sipeed7Mic",
+    "device_index": 0,
+    "record_duration_s": 360,
+    "channels": 7,
+    "bit_depth": 32,
+    "sample_rate": 16000,
+    "codec": "flac",
+    "server_sync_interval": 900,
+    "sleep_duration_s": 300
   },
   "sys": {
-    "use_system_shutdown_button": 0,
-    "timezone": "Europe/London"
+    "working_dir": "/home/pi/tmp_dir",
+    "upload_dir": "/home/pi/monitoring_data",
+    "reboot_time": "02:00",
+    "reboot_time_2": "",
+    "use_system_shutdown_button": 1,
+    "min_free_storage_gb": 1.0,
+    "warn_free_storage_gb": 4.0
   }
 }
 ```
@@ -298,21 +348,22 @@ FLAC is recommended: similar quality, half the storage, slightly more CPU used (
 
 Create it:
 ```bash
-python setup_config.py
+python installer.py
 ```
 
 ### "Invalid sensor specified"
 
 Check spelling. Valid values:
-- `sipeed7mic`
-- `respeaker6mic`
-- `respeaker4mic`
+- `Sipeed7Mic`
+- `Respeaker6Mic`
+- `Respeaker4Mic`
+- `Respeaker_Custom`
 
 ### Upload fails but no error message
 
 Enable verbose logging in `config.json`:
 ```json
-"log_output_dir": "logs"
+"upload_enabled": true
 ```
 
 Then inspect logs:

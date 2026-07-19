@@ -742,6 +742,8 @@ def upload_server_sync(
         if watchdog is not None:
             watchdog["last_beat"] = time.time()
 
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
     beat()
     while not die.is_set():
         try:
@@ -755,7 +757,10 @@ def upload_server_sync(
             # Check internet & synchronise
             if is_internet_available():
                 logging.info("Internet detected. Starting immediate upload sync.")
-                subprocess.call("bash ./update_time.sh", shell=True)
+
+                # Sync time via absolute path to update_time.sh
+                update_time_script = os.path.join(script_dir, "update_time.sh")
+                subprocess.call(["bash", update_time_script])
 
                 # Prepare state file & log
                 state_file = os.path.join(
@@ -763,23 +768,38 @@ def upload_server_sync(
                 )
                 logfile = os.path.join(os.path.dirname(upload_dir_pi), "rclone.log")
 
-                exit_code = subprocess.call(
+                rclone_upload_script = os.path.join(script_dir, "rclone_upload.sh")
+                logging.info("[upload] Launching rclone_upload.sh...")
+
+                # Use Popen to stream stdout/stderr line-by-line to journal
+                # so progress is visible in real-time via journalctl.
+                proc = subprocess.Popen(
                     [
                         "bash",
-                        "./rclone_upload.sh",
+                        rclone_upload_script,
                         upload_dir_pi,
                         remote_name,
                         state_file,
                         logfile,
                         config_path,
                         remote_base_path,
-                    ]
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True,
                 )
+                for line in proc.stdout:
+                    line = line.rstrip("\n")
+                    if line:
+                        logging.info("[upload] {}".format(line))
+                exit_code = proc.wait()
 
                 if exit_code != 0:
                     logging.error(
                         "Upload sync failed with exit code {}".format(exit_code)
                     )
+                else:
+                    logging.info("Upload sync completed successfully.")
             else:
                 logging.info("Internet not available. Skipping sync.")
 
@@ -1311,11 +1331,6 @@ def record(config_file, logfile_name, log_dir="logs"):
 
         if upload_enabled:
             logging.info("Running with upload enabled - upload sync thread active")
-        elif test_mode:
-            logging.info("Running in test mode - upload synchronisation disabled")
-        else:
-            logging.info("DEBUG: Entering else block for sync_thread.")
-            # Start sync thread immediately
             if sync_thread is not None:
                 sync_thread.start()
                 logging.info("Thread upload sync has started.")
@@ -1327,6 +1342,8 @@ def record(config_file, logfile_name, log_dir="logs"):
                 )
             else:
                 logging.warning("sync_thread was not created; skipping start.")
+        elif test_mode:
+            logging.info("Running in test mode - upload synchronisation disabled")
 
         # now run a loop that will continue with a small grain until
         # an interrupt arrives, this is necessary to keep the program live

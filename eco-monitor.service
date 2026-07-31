@@ -1,10 +1,12 @@
 # ── Eco-monitor Shell Shortcuts Cheat Sheet ──
-# monitor    : Tail live logs (Ctrl+C to quit)
+# monitor    : Health dashboard + live logs (Ctrl+C to quit)
+# healtheco  : Health only (WiFi, under-voltage/throttle, services, disk)
 # sizeeco    : Check disk usage of monitoring folders
-# statuseco  : Show systemd service status
+# statuseco  : Show systemd service status (eco-monitor + wifi timer)
 # restarteco : Restart service (daemon-reload & restart)
 # starteco   : Start systemd service
 # stopeco    : Stop systemd service
+# (Re-install shortcuts: sudo python3 installer.py → menu 4)
 # ──────────────────────────────────────────────
 
 [Unit]

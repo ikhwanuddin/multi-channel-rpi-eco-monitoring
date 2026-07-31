@@ -139,6 +139,80 @@ For long-term battery-powered monitoring deployments, you can reduce power consu
 * Disable unnecessary services: `sudo systemctl disable bluetooth.service`
 * Consider using Raspberry Pi Zero 2 W for lower power consumption
 * Monitor battery voltage if using battery power
+* For field deployments with a USB WiFi dongle, enable the **field WiFi timer** below so the radio is not scanning all day
+
+## Field WiFi Timer (20 min after boot, then sleep until reboot)
+
+USB WiFi dongles draw significant current even with **no internet** (scan/reconnect). On power-limited units (e.g. Pi 2B + powerbank) this can contribute to under-voltage and short recordings.
+
+`wifi_field_timer.sh` + `wifi-field-timer.service` implement a simple duty cycle:
+
+| Phase | Behaviour |
+|-------|-----------|
+| Boot | WiFi **ON** (rfkill unblock + `wlan*` up) |
+| First **20 min** max (`MAX_ON_SECONDS=1200`) | Stays on if a **network link** appears (wlan has IPv4 / default route via wlan) |
+| No link within 15 min | WiFi **sleeps early** (typical forest: no SSID) |
+| After 20 min | WiFi **forced sleep** even if still linked |
+| Rest of uptime | WiFi stays off |
+| Turn WiFi on again | **Reboot** the Pi (only supported method) |
+
+### Install on the Pi (recommended)
+
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+sudo python3 installer.py
+# Select: Enable / manage field WiFi timer
+```
+
+Manual install (same effect as the installer menu):
+
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+sudo chmod +x wifi_field_timer.sh
+sudo cp wifi-field-timer.service /etc/systemd/system/
+sudo sed -i "s|__REPO_DIR__|$(pwd)|g" /etc/systemd/system/wifi-field-timer.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now wifi-field-timer.service
+```
+
+### Verify
+
+```bash
+systemctl status wifi-field-timer
+journalctl -u wifi-field-timer -f
+# or
+tail -f /var/log/wifi-field-timer.log
+
+# After sleep:
+rfkill list
+ip -br link | grep wlan
+```
+
+### Tuning
+
+Defaults are baked into the unit and script (`MAX_ON_SECONDS=1200`). Override via the systemd unit:
+
+```ini
+# /etc/systemd/system/wifi-field-timer.service  (under [Service])
+Environment=MAX_ON_SECONDS=1200
+Environment=NO_LINK_GRACE_SECONDS=900
+Environment=CHECK_INTERVAL=30
+```
+
+Examples:
+
+* Longer base upload window: `MAX_ON_SECONDS=1800` (30 min)
+* Forest: fail faster if no AP: `NO_LINK_GRACE_SECONDS=300`
+* Keep radio on the full window even without link (not recommended): set grace ≥ max
+
+Then: `sudo systemctl daemon-reload && sudo systemctl restart wifi-field-timer`
+
+### Notes
+
+* Independent of `eco-monitor.service` — does **not** delay recording.
+* Does not change `config.json` / `upload_enabled`; it only controls the radio.
+* After WiFi sleeps, uploads wait until the next reboot window (or you upload at base after reboot).
+* To disable: installer menu **Disable field WiFi timer**, or `sudo systemctl disable --now wifi-field-timer.service` and optionally `sudo rfkill unblock wifi`.
 
 ## Runtime Optimizations (Automatic)
 
@@ -338,26 +412,35 @@ python3 -c "import pyaudio; print('PyAudio installed successfully')"
     
 ## Useful Shell Shortcuts
 
-To speed up *debugging* and monitoring when connected via SSH, you can use the *installer* to automatically add *shortcuts* to your `.bashrc` file.
+To speed up *debugging* and monitoring when connected via SSH, install shell shortcuts via the installer (re-run menu **4** after updating the repo so `monitor` picks up new checks):
 
 ```bash
 cd ~/multi-channel-rpi-eco-monitoring
 sudo python3 installer.py
-# Select menu option 4 (Install 'monitor' shell alias)
+# Select menu option 4 (Install shell shortcuts)
+source ~/.bashrc
 ```
 
-This will add the following *function* to `/home/pi/.bashrc`:
+| Shortcut | What it does |
+|----------|----------------|
+| **`monitor`** | **Health dashboard** then live logs (`eco-monitor` + `wifi-field-timer`). Ctrl+C quits the log follow. |
+| **`healtheco`** | Health dashboard only (no log follow) — quick SSH check. |
+| `statuseco` | `systemctl status` for eco-monitor + wifi-field-timer |
+| `sizeeco` | Disk usage of monitoring folders |
+| `restarteco` / `starteco` / `stopeco` | Restart / start / stop eco-monitor |
 
-```bash
-# Shortcut to monitor eco-monitor service
-monitor() {
-    echo "--- Displaying real-time logs: eco-monitor.service (Ctrl+C to exit) ---"
-    sudo journalctl -u eco-monitor.service -f
-}
-```
+**`monitor` / `healtheco` dashboard includes:**
 
-After *logout* and login again (or running `source ~/.bashrc`), you can simply type **`monitor`** in the terminal to immediately view the status of the running service in *real-time*.
-    
+* Host model, uptime, load
+* Service state: `eco-monitor.service`, `wifi-field-timer.service`
+* WiFi: `rfkill`, each `wlan*` operstate + IPv4, default route, probe to 8.8.8.8
+* Power: `vcgencmd get_throttled` **decoded** (under-voltage / throttle NOW vs since boot), volts, temp
+* Disk free + `live_data` / `tmp_dir` / `pre_upload_dir` sizes
+* Recent `dmesg` under-voltage / USB / I/O lines
+* Recent journal warnings from both services
+
+After install, type **`monitor`** or **`healtheco`** in the shell.
+
 ## Log Filter Examples (Prefix Contract)
 
 The runtime logs use structured prefixes such as:

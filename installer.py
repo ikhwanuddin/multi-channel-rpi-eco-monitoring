@@ -13,9 +13,11 @@ Capabilities (menu):
   1. Generate config.json  (sensor + system + cloud settings)
   2. Install the systemd service (eco-monitor.service)
   3. Configure the GPIO shutdown button (dtoverlay gpio-shutdown)
-  4. Full guided setup (1 -> 2 -> 3, recommended for new deployments)
-  5. Migrate away from the legacy /etc/profile startup
-  6. Show current status (config / service / GPIO overlay)
+  4. Install shell shortcuts
+  5. Full guided setup
+  6-7. Migrations
+  8. Show current status
+  9. Enable / manage field WiFi timer (power saving)
 
 Run with root privileges -- file-system changes (writing to
 /etc/systemd/system/, /boot/config.txt, /etc/profile) require it:
@@ -47,6 +49,17 @@ SERVICE_TEMPLATE = os.path.join(REPO_DIR, SERVICE_NAME)
 SERVICE_TARGET = os.path.join("/etc/systemd/system", SERVICE_NAME)
 DEFAULT_SERVICE_USER = "pi"
 
+# Field WiFi timer — radio on briefly after boot, then sleep until reboot.
+WIFI_TIMER_SERVICE_NAME = "wifi-field-timer.service"
+WIFI_TIMER_SCRIPT = os.path.join(REPO_DIR, "wifi_field_timer.sh")
+WIFI_TIMER_TEMPLATE = os.path.join(REPO_DIR, WIFI_TIMER_SERVICE_NAME)
+WIFI_TIMER_TARGET = os.path.join("/etc/systemd/system", WIFI_TIMER_SERVICE_NAME)
+# Default max WiFi-on window after boot (seconds). Keep short to limit
+# power draw from USB dongles on field units (e.g. Pi 2B + powerbank).
+WIFI_TIMER_MAX_ON_SECONDS = 1200
+WIFI_TIMER_NO_LINK_GRACE_SECONDS = 900
+WIFI_TIMER_CHECK_INTERVAL = 30
+
 MENU_ITEMS = [
     ("1", "Configure sensor & generate config.json", "configure_sensor_and_config"),
     ("2", "Install systemd service (eco-monitor.service)", "install_service"),
@@ -58,9 +71,20 @@ MENU_ITEMS = [
     ),
     ("5", "Full setup (1 -> 2 -> 3 -> 4, recommended)", "full_setup"),
     ("6", "Migrate from legacy /etc/profile startup", "migrate_legacy_profile"),
-    ("7", "Migrate config.json to latest schema (remove has_internet, rename offline_mode)", "migrate_config_json"),
+    (
+        "7",
+        "Migrate config.json to latest schema (remove has_internet, rename offline_mode)",
+        "migrate_config_json",
+    ),
     ("8", "Show current status", "show_status"),
-    ("9", "Exit", None),
+    (
+        "9",
+        "Enable / manage field WiFi timer (on {}s after boot, then sleep)".format(
+            WIFI_TIMER_MAX_ON_SECONDS
+        ),
+        "manage_wifi_field_timer",
+    ),
+    ("10", "Exit", None),
 ]
 
 
@@ -643,17 +667,167 @@ def install_shell_monitor_alias():
     with open(bashrc_path, "r") as f:
         content = f.read()
 
-    snippet = """
+    # NOTE: This snippet is written verbatim into .bashrc. Do not use
+    # str.format / f-strings here — bash `{` `}` would break substitution.
+    snippet = r"""
 # ── Eco-monitor shell shortcuts ──
-# monitor   : tail live logs (Ctrl+C to quit)
-# restarteco: daemon-reload + restart service
-# statuseco : show service status
-# stopeco   : stop service
-# starteco  : start service
-# sizeeco   : check disk usage of monitoring data
+# monitor   : health dashboard + live logs (Ctrl+C to quit)
+# healtheco : health dashboard only (no log follow)
+# restarteco: daemon-reload + restart eco-monitor
+# statuseco : systemctl status eco-monitor
+# stopeco   : stop eco-monitor
+# starteco  : start eco-monitor
+# sizeeco   : disk usage of monitoring folders
+#
+# Decode vcgencmd get_throttled (hex bitmask):
+#   bit 0  (0x1)      under-voltage NOW
+#   bit 1  (0x2)      frequency capped NOW
+#   bit 2  (0x4)      throttled NOW
+#   bit 3  (0x8)      soft temp limit NOW
+#   bit 16 (0x10000)  under-voltage has occurred
+#   bit 17 (0x20000)  frequency capping has occurred
+#   bit 18 (0x40000)  throttling has occurred
+#   bit 19 (0x80000)  soft temp limit has occurred
+
+_eco_svc_line() {
+    # $1 = unit name
+    local u="$1" en act
+    en=$(systemctl is-enabled "$u" 2>/dev/null || echo "n/a")
+    act=$(systemctl is-active "$u" 2>/dev/null || echo "n/a")
+    printf "  %-28s enabled=%-12s active=%s\n" "$u" "$en" "$act"
+}
+
+_eco_decode_throttled() {
+    # $1 = raw hex from vcgencmd (e.g. throttled=0x50005)
+    local raw="$1" hex val
+    hex=$(echo "$raw" | sed -n 's/.*throttled=\(0x[0-9a-fA-F]*\).*/\1/p')
+    [ -z "$hex" ] && hex=$(echo "$raw" | grep -oE '0x[0-9a-fA-F]+' | head -1)
+    [ -z "$hex" ] && { echo "  (could not parse throttled value: $raw)"; return; }
+    # shellcheck disable=SC2003
+    val=$((hex))
+    printf "  raw: %s (%s)\n" "$hex" "$raw"
+    if [ "$val" -eq 0 ]; then
+        echo "  OK — no under-voltage / throttle flags"
+        return
+    fi
+    echo "  FLAGS (NOW / history):"
+    [ $((val & 0x1)) -ne 0 ]      && echo "    !! UNDER-VOLTAGE right now"
+    [ $((val & 0x2)) -ne 0 ]      && echo "    !! ARM frequency capped right now"
+    [ $((val & 0x4)) -ne 0 ]      && echo "    !! throttled right now"
+    [ $((val & 0x8)) -ne 0 ]      && echo "    !! soft temp limit right now"
+    [ $((val & 0x10000)) -ne 0 ]  && echo "    -- under-voltage HAS occurred since boot"
+    [ $((val & 0x20000)) -ne 0 ]  && echo "    -- frequency capping HAS occurred since boot"
+    [ $((val & 0x40000)) -ne 0 ]  && echo "    -- throttling HAS occurred since boot"
+    [ $((val & 0x80000)) -ne 0 ]  && echo "    -- soft temp limit HAS occurred since boot"
+}
+
+healtheco() {
+    echo "============================================================"
+    echo "  MAARU health snapshot  $(date '+%Y-%m-%d %H:%M:%S %Z')"
+    echo "============================================================"
+
+    echo ""
+    echo "--- Host ---"
+    if [ -r /proc/device-tree/model ]; then
+        printf "  Model:  "; tr -d '\0' </proc/device-tree/model; echo
+    fi
+    printf "  Uptime: "; uptime -p 2>/dev/null || uptime
+    printf "  Load:   "; cut -d' ' -f1-3 /proc/loadavg 2>/dev/null; echo
+
+    echo ""
+    echo "--- Services ---"
+    _eco_svc_line eco-monitor.service
+    _eco_svc_line wifi-field-timer.service
+
+    echo ""
+    echo "--- WiFi / radio ---"
+    if command -v rfkill >/dev/null 2>&1; then
+        rfkill list 2>/dev/null | sed 's/^/  /' || echo "  rfkill: (none)"
+    else
+        echo "  rfkill: not installed"
+    fi
+    local w found=0
+    for w in /sys/class/net/wlan*; do
+        [ -e "$w" ] || continue
+        found=1
+        local name state
+        name=$(basename "$w")
+        state=$(cat "$w/operstate" 2>/dev/null || echo "?")
+        printf "  %s: operstate=%s" "$name" "$state"
+        ip -4 -o addr show dev "$name" scope global 2>/dev/null \
+            | awk '{print "  ip="$4}' | tr '\n' ' '
+        echo
+    done
+    if [ "$found" -eq 0 ]; then
+        echo "  No wlan* interface (dongle missing, driver down, or rfkill blocked)"
+    fi
+    if ip route show default 2>/dev/null | grep -q .; then
+        echo "  Default route:"
+        ip route show default 2>/dev/null | sed 's/^/    /'
+    else
+        echo "  Default route: (none)"
+    fi
+    if command -v ping >/dev/null 2>&1; then
+        if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+            echo "  Internet probe 8.8.8.8: OK"
+        else
+            echo "  Internet probe 8.8.8.8: FAIL (offline or blocked)"
+        fi
+    fi
+
+    echo ""
+    echo "--- Power / throttle (vcgencmd) ---"
+    if command -v vcgencmd >/dev/null 2>&1; then
+        local thr
+        thr=$(vcgencmd get_throttled 2>/dev/null || echo "error")
+        _eco_decode_throttled "$thr"
+        # Extra sensors when available
+        vcgencmd measure_volts 2>/dev/null | sed 's/^/  /' || true
+        vcgencmd measure_temp 2>/dev/null | sed 's/^/  /' || true
+    else
+        echo "  vcgencmd not found (not a Pi firmware image?)"
+    fi
+
+    echo ""
+    echo "--- Disk ---"
+    df -h / /home 2>/dev/null | sed 's/^/  /' || df -h / | sed 's/^/  /'
+    du -sh /home/pi/monitoring_data/live_data/ /home/pi/tmp_dir/ /home/pi/pre_upload_dir/ 2>/dev/null \
+        | sed 's/^/  /' || true
+
+    echo ""
+    echo "--- Recent kernel issues (dmesg, last matches) ---"
+    if dmesg -T 2>/dev/null | grep -iE 'under-voltage|throttl|Over-voltage|Voltage' | tail -n 8 | sed 's/^/  /' | grep -q .; then
+        dmesg -T 2>/dev/null | grep -iE 'under-voltage|throttl|Over-voltage|Voltage' | tail -n 8 | sed 's/^/  /'
+    else
+        # BusyBox / old dmesg without -T
+        if dmesg 2>/dev/null | grep -iE 'under-voltage|throttl' | tail -n 8 | sed 's/^/  /' | grep -q .; then
+            dmesg 2>/dev/null | grep -iE 'under-voltage|throttl' | tail -n 8 | sed 's/^/  /'
+        else
+            echo "  (no under-voltage/throttle lines in dmesg ring buffer)"
+        fi
+    fi
+    echo "  USB / storage (last matches):"
+    if dmesg -T 2>/dev/null | grep -iE 'usb .*disconnect|USB disconnect|I/O error|mmcblk|Buffer I/O|reset SuperSpeed|error -71|error -32' | tail -n 6 | sed 's/^/  /' | grep -q .; then
+        dmesg -T 2>/dev/null | grep -iE 'usb .*disconnect|USB disconnect|I/O error|mmcblk|Buffer I/O|reset SuperSpeed|error -71|error -32' | tail -n 6 | sed 's/^/    /'
+    else
+        dmesg 2>/dev/null | grep -iE 'usb .*disconnect|USB disconnect|I/O error|mmcblk|Buffer I/O' | tail -n 6 | sed 's/^/    /' \
+            || echo "    (none)"
+    fi
+
+    echo ""
+    echo "--- Recent service log errors (eco-monitor + wifi-field-timer) ---"
+    journalctl -u eco-monitor.service -u wifi-field-timer.service -p warning..alert -n 12 --no-pager 2>/dev/null \
+        | sed 's/^/  /' || echo "  (journalctl unavailable)"
+
+    echo "============================================================"
+}
+
 monitor() {
-    echo "--- Menampilkan log real-time: eco-monitor.service (Ctrl+C untuk keluar) ---"
-    sudo journalctl -u eco-monitor.service -f
+    healtheco
+    echo ""
+    echo "--- Live logs: eco-monitor + wifi-field-timer (Ctrl+C to quit) ---"
+    echo "    (health snapshot above; logs follow below)"
+    sudo journalctl -u eco-monitor.service -u wifi-field-timer.service -f --no-hostname
 }
 
 sizeeco() {
@@ -662,7 +836,7 @@ sizeeco() {
 }
 
 alias restarteco='sudo systemctl daemon-reload && sudo systemctl restart eco-monitor.service'
-alias statuseco='sudo systemctl status eco-monitor.service'
+alias statuseco='sudo systemctl status eco-monitor.service wifi-field-timer.service'
 alias stopeco='sudo systemctl stop eco-monitor.service'
 alias starteco='sudo systemctl start eco-monitor.service'
 # ── end eco-monitor shortcuts ──
@@ -689,8 +863,11 @@ alias starteco='sudo systemctl start eco-monitor.service'
 
     print("Successfully installed/updated shell shortcuts in {}".format(bashrc_path))
     print(
-        "Shortcuts installed: monitor, restarteco, statuseco, stopeco, starteco, sizeeco"
+        "Shortcuts installed: monitor, healtheco, restarteco, statuseco, "
+        "stopeco, starteco, sizeeco"
     )
+    print("  monitor   = health dashboard (WiFi, throttle, services, disk) + live logs")
+    print("  healtheco = health dashboard only (no log follow)")
     print("To use them immediately, run: source {}".format(bashrc_path))
     print("Or simply log out and log back in.")
 
@@ -704,25 +881,39 @@ def full_setup():
     print("  FULL GUIDED SETUP")
     print("=" * 60)
 
-    print("\n--- Step 1 of 4: Configure sensor & generate config.json ---")
+    print("\n--- Step 1 of 5: Configure sensor & generate config.json ---")
     configure_sensor_and_config()
 
-    print("\n--- Step 2 of 4: Install systemd service ---")
+    print("\n--- Step 2 of 5: Install systemd service ---")
     install_service()
 
-    print("\n--- Step 3 of 4: Configure GPIO shutdown button ---")
+    print("\n--- Step 3 of 5: Configure GPIO shutdown button ---")
     if ask_yes_no("Configure the GPIO shutdown button now?", "y"):
         configure_gpio()
     else:
         print("Skipping GPIO configuration. You can do it later via menu option 3.")
 
-    print("\n--- Step 4 of 4: Install shell shortcuts ---")
+    print("\n--- Step 4 of 5: Install shell shortcuts ---")
     if ask_yes_no(
         "Install shell shortcuts (monitor, restarteco, ...) to .bashrc?", "y"
     ):
         install_shell_monitor_alias()
     else:
         print("Skipping shell shortcuts installation.")
+
+    print("\n--- Step 5 of 5: Field WiFi timer (power saving) ---")
+    print(
+        "Keeps USB WiFi on for only {}s after boot, then sleeps until reboot.".format(
+            WIFI_TIMER_MAX_ON_SECONDS
+        )
+    )
+    if ask_yes_no(
+        "Enable field WiFi timer now? (recommended for battery / forest units)",
+        "y",
+    ):
+        enable_wifi_field_timer()
+    else:
+        print("Skipping WiFi timer. Enable later via menu option 9.")
 
     print("\n" + "=" * 60)
     print("  Full setup complete!")
@@ -733,6 +924,8 @@ def full_setup():
     print("  2. After reboot, check the service:")
     print("       sudo systemctl status {}".format(SERVICE_NAME))
     print("     Or simply type `monitor` if you installed the shortcut.")
+    print("  3. If WiFi timer enabled, after reboot WiFi is on briefly then sleeps:")
+    print("       sudo systemctl status {}".format(WIFI_TIMER_SERVICE_NAME))
 
 
 # ---------------------------------------------------------------------------
@@ -841,6 +1034,237 @@ def migrate_config_json():
     print("\nYou can verify the result with menu option 8 (Show current status).")
 
 
+# ---------------------------------------------------------------------------
+# Menu action 9: field WiFi timer (power saving)
+# ---------------------------------------------------------------------------
+def _wifi_timer_status_lines():
+    """Return human-readable status lines for the field WiFi timer unit."""
+    lines = []
+    installed = os.path.isfile(WIFI_TIMER_TARGET)
+    lines.append("  Unit file installed: {}".format("yes" if installed else "no"))
+    if installed:
+        lines.append("    Path: {}".format(WIFI_TIMER_TARGET))
+        r = run_cmd(
+            ["systemctl", "is-enabled", WIFI_TIMER_SERVICE_NAME],
+            capture=True,
+            timeout=5,
+        )
+        enabled = r.stdout.strip() if r and r.stdout else "unknown"
+        lines.append("  Enabled:             {}".format(enabled))
+        r = run_cmd(
+            ["systemctl", "is-active", WIFI_TIMER_SERVICE_NAME],
+            capture=True,
+            timeout=5,
+        )
+        active = r.stdout.strip() if r and r.stdout else "unknown"
+        lines.append("  Active:              {}".format(active))
+        # Surface the configured max-on window if present in the unit file.
+        try:
+            with open(WIFI_TIMER_TARGET, "r") as f:
+                for ln in f:
+                    if "MAX_ON_SECONDS=" in ln and not ln.strip().startswith("#"):
+                        lines.append("  Config line:         {}".format(ln.strip()))
+                        break
+        except OSError:
+            pass
+    script_ok = os.path.isfile(WIFI_TIMER_SCRIPT)
+    lines.append(
+        "  Script present:      {} ({})".format(
+            "yes" if script_ok else "no", WIFI_TIMER_SCRIPT
+        )
+    )
+    return lines
+
+
+def enable_wifi_field_timer():
+    """Install unit, enable on boot, and start the field WiFi timer now."""
+    if not os.path.isfile(WIFI_TIMER_TEMPLATE):
+        print("ERROR: service template not found: {}".format(WIFI_TIMER_TEMPLATE))
+        return False
+    if not os.path.isfile(WIFI_TIMER_SCRIPT):
+        print("ERROR: timer script not found: {}".format(WIFI_TIMER_SCRIPT))
+        return False
+
+    # Ensure the script is executable for the service ExecStart.
+    try:
+        mode = os.stat(WIFI_TIMER_SCRIPT).st_mode
+        os.chmod(WIFI_TIMER_SCRIPT, mode | 0o111)
+    except OSError as e:
+        print("WARNING: could not chmod +x on {}: {}".format(WIFI_TIMER_SCRIPT, e))
+
+    with open(WIFI_TIMER_TEMPLATE, "r") as f:
+        content = f.read()
+
+    content = content.replace("__REPO_DIR__", REPO_DIR)
+    # Always pin the field defaults when writing from the installer so older
+    # templates without Environment= still get the short on-window.
+    env_block = (
+        "Environment=MAX_ON_SECONDS={}\n"
+        "Environment=NO_LINK_GRACE_SECONDS={}\n"
+        "Environment=CHECK_INTERVAL={}\n".format(
+            WIFI_TIMER_MAX_ON_SECONDS,
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS,
+            WIFI_TIMER_CHECK_INTERVAL,
+        )
+    )
+    if "Environment=MAX_ON_SECONDS=" in content:
+        # Rewrite any existing MAX_ON / grace / interval lines to installer defaults.
+        new_lines = []
+        for ln in content.splitlines(True):
+            stripped = ln.strip()
+            if stripped.startswith("Environment=MAX_ON_SECONDS="):
+                new_lines.append(
+                    "Environment=MAX_ON_SECONDS={}\n".format(WIFI_TIMER_MAX_ON_SECONDS)
+                )
+            elif stripped.startswith("Environment=NO_LINK_GRACE_SECONDS="):
+                new_lines.append(
+                    "Environment=NO_LINK_GRACE_SECONDS={}\n".format(
+                        WIFI_TIMER_NO_LINK_GRACE_SECONDS
+                    )
+                )
+            elif stripped.startswith("Environment=CHECK_INTERVAL="):
+                new_lines.append(
+                    "Environment=CHECK_INTERVAL={}\n".format(WIFI_TIMER_CHECK_INTERVAL)
+                )
+            else:
+                new_lines.append(ln)
+        content = "".join(new_lines)
+    else:
+        content = content.replace(
+            "ExecStart=",
+            env_block + "ExecStart=",
+            1,
+        )
+
+    with open(WIFI_TIMER_TARGET, "w") as f:
+        f.write(content)
+    print("Service unit written to {}".format(WIFI_TIMER_TARGET))
+    print(
+        "  MAX_ON_SECONDS={} ({} min WiFi window after boot)".format(
+            WIFI_TIMER_MAX_ON_SECONDS, WIFI_TIMER_MAX_ON_SECONDS // 60
+        )
+    )
+    print(
+        "  NO_LINK_GRACE_SECONDS={} (sleep early if no network)".format(
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS
+        )
+    )
+
+    print("Reloading systemd daemon...")
+    run_cmd(["systemctl", "daemon-reload"], check=True)
+
+    print("Enabling {} (start on boot)...".format(WIFI_TIMER_SERVICE_NAME))
+    run_cmd(["systemctl", "enable", WIFI_TIMER_SERVICE_NAME], check=True)
+
+    print("Starting {} ...".format(WIFI_TIMER_SERVICE_NAME))
+    run_cmd(["systemctl", "restart", WIFI_TIMER_SERVICE_NAME], check=True)
+    r = run_cmd(
+        ["systemctl", "is-active", WIFI_TIMER_SERVICE_NAME], capture=True, timeout=5
+    )
+    status = r.stdout.strip() if r and r.stdout else "unknown"
+    print("Service status: {}".format(status))
+
+    print("\nPolicy:")
+    print(
+        "  • WiFi ON for up to {}s after boot (or until link grace expires)".format(
+            WIFI_TIMER_MAX_ON_SECONDS
+        )
+    )
+    print("  • Then WiFi sleeps until the next reboot")
+    print("  • Forest with no AP: usually sleeps after no-link grace")
+    print("\nUseful commands:")
+    print("  sudo systemctl status {}".format(WIFI_TIMER_SERVICE_NAME))
+    print("  sudo journalctl -u {} -f".format(WIFI_TIMER_SERVICE_NAME))
+    return True
+
+
+def disable_wifi_field_timer():
+    """Stop and disable the field WiFi timer; optionally wake WiFi again."""
+    if not os.path.isfile(WIFI_TIMER_TARGET):
+        print("Field WiFi timer unit is not installed ({}).".format(WIFI_TIMER_TARGET))
+        return
+
+    print("Stopping and disabling {} ...".format(WIFI_TIMER_SERVICE_NAME))
+    run_cmd(["systemctl", "stop", WIFI_TIMER_SERVICE_NAME], check=False)
+    run_cmd(["systemctl", "disable", WIFI_TIMER_SERVICE_NAME], check=False)
+
+    if ask_yes_no(
+        "Remove unit file from /etc/systemd/system/ as well?",
+        "y",
+    ):
+        try:
+            os.remove(WIFI_TIMER_TARGET)
+            print("Removed {}".format(WIFI_TIMER_TARGET))
+            run_cmd(["systemctl", "daemon-reload"], check=False)
+        except OSError as e:
+            print("WARNING: could not remove unit file: {}".format(e))
+
+    if ask_yes_no(
+        "Unblock WiFi now (rfkill unblock) so the radio works until next policy?",
+        "y",
+    ):
+        run_cmd(["rfkill", "unblock", "wifi"], check=False)
+        # Best-effort bring-up of any wlan interfaces.
+        try:
+            for name in os.listdir("/sys/class/net"):
+                if name.startswith("wlan"):
+                    run_cmd(["ip", "link", "set", name, "up"], check=False)
+        except OSError:
+            pass
+        print("WiFi unblock requested.")
+
+    print("Field WiFi timer disabled.")
+
+
+def manage_wifi_field_timer():
+    """
+    Menu entry: enable (install+start) or disable the field WiFi timer.
+
+    Default policy: WiFi may stay on only for WIFI_TIMER_MAX_ON_SECONDS after
+    each boot; then it sleeps until reboot. See wifi_field_timer.sh.
+    """
+    print("=" * 60)
+    print("  FIELD WiFi TIMER (power saving)")
+    print("=" * 60)
+    print(
+        "WiFi stays on for up to {}s ({} min) after boot, then sleeps until reboot.".format(
+            WIFI_TIMER_MAX_ON_SECONDS, WIFI_TIMER_MAX_ON_SECONDS // 60
+        )
+    )
+    print(
+        "If no network is joined within {}s, WiFi sleeps early (forest-friendly).".format(
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS
+        )
+    )
+    print()
+    print("Current status:")
+    for line in _wifi_timer_status_lines():
+        print(line)
+    print()
+
+    print("  1) Enable / reinstall field WiFi timer (recommended for field units)")
+    print("  2) Disable field WiFi timer")
+    print("  3) Cancel")
+    choice = {}
+    config_parse(
+        {
+            "prompt": "Select an action",
+            "type": int,
+            "name": "wifi_timer_action",
+            "valid": [1, 2, 3],
+            "default": 1,
+        },
+        choice,
+    )
+    action = choice["wifi_timer_action"]
+    if action == 1:
+        enable_wifi_field_timer()
+    elif action == 2:
+        disable_wifi_field_timer()
+    else:
+        print("Cancelled.")
+
+
 def show_status():
     """Print a summary of config.json, the systemd service, and GPIO overlay."""
 
@@ -876,6 +1300,11 @@ def show_status():
         r = run_cmd(["systemctl", "is-active", SERVICE_NAME], capture=True, timeout=5)
         active = r.stdout.strip() if r and r.stdout else "unknown"
         print("  Active:              {}".format(active))
+
+    # --- Field WiFi timer ---
+    print("\n--- field WiFi timer ({}) ---".format(WIFI_TIMER_SERVICE_NAME))
+    for line in _wifi_timer_status_lines():
+        print(line)
 
     # --- GPIO overlay ---
     print("\n--- GPIO shutdown overlay ---")

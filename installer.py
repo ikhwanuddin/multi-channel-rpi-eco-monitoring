@@ -49,15 +49,13 @@ SERVICE_TEMPLATE = os.path.join(REPO_DIR, SERVICE_NAME)
 SERVICE_TARGET = os.path.join("/etc/systemd/system", SERVICE_NAME)
 DEFAULT_SERVICE_USER = "pi"
 
-# Field WiFi timer — radio on briefly after boot, then sleep until reboot.
+# Field WiFi timer — keep-alive while wlan linked; soft-sleep after no-link grace.
 WIFI_TIMER_SERVICE_NAME = "wifi-field-timer.service"
 WIFI_TIMER_SCRIPT = os.path.join(REPO_DIR, "wifi_field_timer.sh")
 WIFI_TIMER_TEMPLATE = os.path.join(REPO_DIR, WIFI_TIMER_SERVICE_NAME)
 WIFI_TIMER_TARGET = os.path.join("/etc/systemd/system", WIFI_TIMER_SERVICE_NAME)
-# Default max WiFi-on window after boot (seconds). Keep short to limit
-# power draw from USB dongles on field units (e.g. Pi 2B + powerbank).
-WIFI_TIMER_MAX_ON_SECONDS = 1200
-WIFI_TIMER_NO_LINK_GRACE_SECONDS = 900
+# Seconds without wlan link before soft-sleep (from boot, or after link drops).
+WIFI_TIMER_NO_LINK_GRACE_SECONDS = 1200
 WIFI_TIMER_CHECK_INTERVAL = 30
 
 MENU_ITEMS = [
@@ -79,8 +77,8 @@ MENU_ITEMS = [
     ("8", "Show current status", "show_status"),
     (
         "9",
-        "Enable / manage field WiFi timer (on {}s after boot, then sleep)".format(
-            WIFI_TIMER_MAX_ON_SECONDS
+        "Enable / manage field WiFi timer (sleep {}s after wlan lost)".format(
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS
         ),
         "manage_wifi_field_timer",
     ),
@@ -902,11 +900,14 @@ def full_setup():
         print("Skipping shell shortcuts installation.")
 
     print("\n--- Step 5 of 5: Field WiFi timer (power saving) ---")
+    print("WiFi stays on while wlan is linked (home/remote OK).")
     print(
-        "Keeps USB WiFi on for only {}s after boot, then sleeps until reboot.".format(
-            WIFI_TIMER_MAX_ON_SECONDS
+        "After wlan is gone for {}s ({} min), soft-sleep until reboot.".format(
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS,
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS // 60,
         )
     )
+    print("(wlan down only — no persistent rfkill / nmcli radio off).")
     if ask_yes_no(
         "Enable field WiFi timer now? (recommended for battery / forest units)",
         "y",
@@ -924,7 +925,9 @@ def full_setup():
     print("  2. After reboot, check the service:")
     print("       sudo systemctl status {}".format(SERVICE_NAME))
     print("     Or simply type `monitor` if you installed the shortcut.")
-    print("  3. If WiFi timer enabled, after reboot WiFi is on briefly then sleeps:")
+    print("  3. If WiFi timer enabled: stays on while linked; sleeps {}s after wlan lost:".format(
+        WIFI_TIMER_NO_LINK_GRACE_SECONDS
+    ))
     print("       sudo systemctl status {}".format(WIFI_TIMER_SERVICE_NAME))
 
 
@@ -1058,11 +1061,11 @@ def _wifi_timer_status_lines():
         )
         active = r.stdout.strip() if r and r.stdout else "unknown"
         lines.append("  Active:              {}".format(active))
-        # Surface the configured max-on window if present in the unit file.
+        # Surface the configured no-link grace if present in the unit file.
         try:
             with open(WIFI_TIMER_TARGET, "r") as f:
                 for ln in f:
-                    if "MAX_ON_SECONDS=" in ln and not ln.strip().startswith("#"):
+                    if "NO_LINK_GRACE_SECONDS=" in ln and not ln.strip().startswith("#"):
                         lines.append("  Config line:         {}".format(ln.strip()))
                         break
         except OSError:
@@ -1096,27 +1099,28 @@ def enable_wifi_field_timer():
         content = f.read()
 
     content = content.replace("__REPO_DIR__", REPO_DIR)
-    # Always pin the field defaults when writing from the installer so older
-    # templates without Environment= still get the short on-window.
+    # Pin installer defaults; drop legacy MAX_ON_SECONDS (old forced-off-while-linked).
     env_block = (
-        "Environment=MAX_ON_SECONDS={}\n"
         "Environment=NO_LINK_GRACE_SECONDS={}\n"
         "Environment=CHECK_INTERVAL={}\n".format(
-            WIFI_TIMER_MAX_ON_SECONDS,
             WIFI_TIMER_NO_LINK_GRACE_SECONDS,
             WIFI_TIMER_CHECK_INTERVAL,
         )
     )
-    if "Environment=MAX_ON_SECONDS=" in content:
-        # Rewrite any existing MAX_ON / grace / interval lines to installer defaults.
+    if (
+        "Environment=NO_LINK_GRACE_SECONDS=" in content
+        or "Environment=MAX_ON_SECONDS=" in content
+        or "Environment=CHECK_INTERVAL=" in content
+    ):
         new_lines = []
+        skipped_legacy_max_on = False
         for ln in content.splitlines(True):
             stripped = ln.strip()
             if stripped.startswith("Environment=MAX_ON_SECONDS="):
-                new_lines.append(
-                    "Environment=MAX_ON_SECONDS={}\n".format(WIFI_TIMER_MAX_ON_SECONDS)
-                )
-            elif stripped.startswith("Environment=NO_LINK_GRACE_SECONDS="):
+                # Removed from policy — do not write it back.
+                skipped_legacy_max_on = True
+                continue
+            if stripped.startswith("Environment=NO_LINK_GRACE_SECONDS="):
                 new_lines.append(
                     "Environment=NO_LINK_GRACE_SECONDS={}\n".format(
                         WIFI_TIMER_NO_LINK_GRACE_SECONDS
@@ -1129,6 +1133,10 @@ def enable_wifi_field_timer():
             else:
                 new_lines.append(ln)
         content = "".join(new_lines)
+        if "Environment=NO_LINK_GRACE_SECONDS=" not in content:
+            content = content.replace("ExecStart=", env_block + "ExecStart=", 1)
+        if skipped_legacy_max_on:
+            print("Note: removed legacy MAX_ON_SECONDS from unit (no longer used).")
     else:
         content = content.replace(
             "ExecStart=",
@@ -1140,13 +1148,9 @@ def enable_wifi_field_timer():
         f.write(content)
     print("Service unit written to {}".format(WIFI_TIMER_TARGET))
     print(
-        "  MAX_ON_SECONDS={} ({} min WiFi window after boot)".format(
-            WIFI_TIMER_MAX_ON_SECONDS, WIFI_TIMER_MAX_ON_SECONDS // 60
-        )
-    )
-    print(
-        "  NO_LINK_GRACE_SECONDS={} (sleep early if no network)".format(
-            WIFI_TIMER_NO_LINK_GRACE_SECONDS
+        "  NO_LINK_GRACE_SECONDS={} ({} min without wlan link → soft-sleep)".format(
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS,
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS // 60,
         )
     )
 
@@ -1165,77 +1169,90 @@ def enable_wifi_field_timer():
     print("Service status: {}".format(status))
 
     print("\nPolicy:")
+    print("  • While wlan is linked: WiFi stays ON (no time limit)")
     print(
-        "  • WiFi ON for up to {}s after boot (or until link grace expires)".format(
-            WIFI_TIMER_MAX_ON_SECONDS
+        "  • After wlan is gone for {}s ({} min): soft-sleep until reboot".format(
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS,
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS // 60,
         )
     )
-    print("  • Then WiFi sleeps until the next reboot")
-    print("  • Forest with no AP: usually sleeps after no-link grace")
+    print("  • Link returns during countdown: timer cancelled, stays ON")
+    print("  • Soft sleep only (no rfkill block / no nmcli radio off)")
     print("\nUseful commands:")
     print("  sudo systemctl status {}".format(WIFI_TIMER_SERVICE_NAME))
     print("  sudo journalctl -u {} -f".format(WIFI_TIMER_SERVICE_NAME))
     return True
 
 
+def _restore_wifi_radio():
+    """
+    Best-effort full WiFi restore after disabling the field timer.
+
+    Clears leftover hard-off state from older timer versions
+    (rfkill soft-block + NetworkManager WirelessEnabled=false) and brings
+    wlan* interfaces back up so the OS/NM own the radio again.
+    """
+    print("Restoring WiFi radio to normal OS control...")
+    run_cmd(["rfkill", "unblock", "wifi"], check=False)
+    run_cmd(["rfkill", "unblock", "all"], check=False)
+    run_cmd(["nmcli", "radio", "wifi", "on"], check=False)
+    try:
+        for name in os.listdir("/sys/class/net"):
+            if name.startswith("wlan"):
+                run_cmd(["ip", "link", "set", name, "up"], check=False)
+    except OSError:
+        pass
+    print("  rfkill unblock + nmcli radio wifi on + wlan* up requested.")
+
+
 def disable_wifi_field_timer():
-    """Stop and disable the field WiFi timer; optionally wake WiFi again."""
-    if not os.path.isfile(WIFI_TIMER_TARGET):
+    """Stop and disable the field WiFi timer; always restore WiFi control."""
+    unit_present = os.path.isfile(WIFI_TIMER_TARGET)
+    if not unit_present:
         print("Field WiFi timer unit is not installed ({}).".format(WIFI_TIMER_TARGET))
-        return
+        print("Still restoring WiFi in case a previous run left the radio off.")
+    else:
+        print("Stopping and disabling {} ...".format(WIFI_TIMER_SERVICE_NAME))
+        run_cmd(["systemctl", "stop", WIFI_TIMER_SERVICE_NAME], check=False)
+        run_cmd(["systemctl", "disable", WIFI_TIMER_SERVICE_NAME], check=False)
 
-    print("Stopping and disabling {} ...".format(WIFI_TIMER_SERVICE_NAME))
-    run_cmd(["systemctl", "stop", WIFI_TIMER_SERVICE_NAME], check=False)
-    run_cmd(["systemctl", "disable", WIFI_TIMER_SERVICE_NAME], check=False)
+        if ask_yes_no(
+            "Remove unit file from /etc/systemd/system/ as well?",
+            "y",
+        ):
+            try:
+                os.remove(WIFI_TIMER_TARGET)
+                print("Removed {}".format(WIFI_TIMER_TARGET))
+                run_cmd(["systemctl", "daemon-reload"], check=False)
+            except OSError as e:
+                print("WARNING: could not remove unit file: {}".format(e))
 
-    if ask_yes_no(
-        "Remove unit file from /etc/systemd/system/ as well?",
-        "y",
-    ):
-        try:
-            os.remove(WIFI_TIMER_TARGET)
-            print("Removed {}".format(WIFI_TIMER_TARGET))
-            run_cmd(["systemctl", "daemon-reload"], check=False)
-        except OSError as e:
-            print("WARNING: could not remove unit file: {}".format(e))
+    # Always restore — disable means "return WiFi to normal system control".
+    # Older timer versions used persistent rfkill/nmcli radio off; clean those too.
+    _restore_wifi_radio()
 
-    if ask_yes_no(
-        "Unblock WiFi now (rfkill unblock) so the radio works until next policy?",
-        "y",
-    ):
-        run_cmd(["rfkill", "unblock", "wifi"], check=False)
-        # Best-effort bring-up of any wlan interfaces.
-        try:
-            for name in os.listdir("/sys/class/net"):
-                if name.startswith("wlan"):
-                    run_cmd(["ip", "link", "set", name, "up"], check=False)
-        except OSError:
-            pass
-        print("WiFi unblock requested.")
-
-    print("Field WiFi timer disabled.")
+    print("Field WiFi timer disabled; WiFi restore requested.")
 
 
 def manage_wifi_field_timer():
     """
     Menu entry: enable (install+start) or disable the field WiFi timer.
 
-    Default policy: WiFi may stay on only for WIFI_TIMER_MAX_ON_SECONDS after
-    each boot; then it sleeps until reboot. See wifi_field_timer.sh.
+    Keep WiFi on while wlan is linked; soft-sleep only after no-link grace.
+    See wifi_field_timer.sh.
     """
     print("=" * 60)
     print("  FIELD WiFi TIMER (power saving)")
     print("=" * 60)
+    print("While wlan is linked: WiFi stays ON (home / remote SSH OK).")
     print(
-        "WiFi stays on for up to {}s ({} min) after boot, then sleeps until reboot.".format(
-            WIFI_TIMER_MAX_ON_SECONDS, WIFI_TIMER_MAX_ON_SECONDS // 60
+        "After wlan is gone for {}s ({} min): soft-sleep until reboot (forest).".format(
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS,
+            WIFI_TIMER_NO_LINK_GRACE_SECONDS // 60,
         )
     )
-    print(
-        "If no network is joined within {}s, WiFi sleeps early (forest-friendly).".format(
-            WIFI_TIMER_NO_LINK_GRACE_SECONDS
-        )
-    )
+    print("Soft sleep = wlan down only (no persistent rfkill / nmcli radio off).")
+    print("Disable always restores WiFi to normal OS control.")
     print()
     print("Current status:")
     for line in _wifi_timer_status_lines():

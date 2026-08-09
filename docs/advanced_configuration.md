@@ -141,20 +141,25 @@ For long-term battery-powered monitoring deployments, you can reduce power consu
 * Monitor battery voltage if using battery power
 * For field deployments with a USB WiFi dongle, enable the **field WiFi timer** below so the radio is not scanning all day
 
-## Field WiFi Timer (20 min after boot, then sleep until reboot)
+## Field WiFi Timer (keep-alive while linked; sleep 20 min after wlan lost)
 
-USB WiFi dongles draw significant current even with **no internet** (scan/reconnect). On power-limited units (e.g. Pi 2B + powerbank) this can contribute to under-voltage and short recordings.
+USB WiFi dongles (and onboard WiFi left scanning) draw significant current even with **no internet**. On power-limited units (e.g. Pi Zero 2 W / Pi 2B + powerbank) this can contribute to under-voltage and short recordings.
 
-`wifi_field_timer.sh` + `wifi-field-timer.service` implement a simple duty cycle:
+`wifi_field_timer.sh` + `wifi-field-timer.service` implement **keep-alive while linked** with **soft sleep** after no wlan link (safe to uninstall):
 
 | Phase | Behaviour |
 |-------|-----------|
-| Boot | WiFi **ON** (rfkill unblock + `wlan*` up) |
-| First **20 min** max (`MAX_ON_SECONDS=1200`) | Stays on if a **network link** appears (wlan has IPv4 / default route via wlan) |
-| No link within 15 min | WiFi **sleeps early** (typical forest: no SSID) |
-| After 20 min | WiFi **forced sleep** even if still linked |
-| Rest of uptime | WiFi stays off |
-| Turn WiFi on again | **Reboot** the Pi (only supported method) |
+| Boot | WiFi **ON** (`rfkill unblock` + `nmcli radio wifi on` if present + `wlan*` up) |
+| wlan linked (IPv4 / default route via wlan) | Stays **ON with no time limit** (home, phone hotspot, remote Tailscale over WiFi) |
+| wlan link lost (or never appears) | Start no-link countdown from that moment |
+| Link returns during countdown | Cancel timer; stay **ON** |
+| No wlan link for **20 min** (`NO_LINK_GRACE_SECONDS=1200`) | **Soft-sleep** for the rest of this boot (forest / unit left behind) |
+| After soft-sleep | `wlan*` down / NM wifi disconnected — **no** `rfkill block`, **no** `nmcli radio wifi off` |
+| Turn WiFi on again | **Reboot**, or manually `ip link set wlan0 up` / re-enable NM |
+
+Soft sleep is intentional: `rfkill block` and `nmcli radio wifi off` write **persistent** state that survives reboot and previously left units radio-dead after the timer was removed.
+
+There is **no** “max on while connected” cap. An older `MAX_ON_SECONDS` forced sleep even with an active link; that policy is removed.
 
 ### Install on the Pi (recommended)
 
@@ -190,29 +195,36 @@ ip -br link | grep wlan
 
 ### Tuning
 
-Defaults are baked into the unit and script (`MAX_ON_SECONDS=1200`). Override via the systemd unit:
+Defaults are baked into the unit and script (`NO_LINK_GRACE_SECONDS=1200`). Override via the systemd unit:
 
 ```ini
 # /etc/systemd/system/wifi-field-timer.service  (under [Service])
-Environment=MAX_ON_SECONDS=1200
-Environment=NO_LINK_GRACE_SECONDS=900
+Environment=NO_LINK_GRACE_SECONDS=1200
 Environment=CHECK_INTERVAL=30
 ```
 
 Examples:
 
-* Longer base upload window: `MAX_ON_SECONDS=1800` (30 min)
-* Forest: fail faster if no AP: `NO_LINK_GRACE_SECONDS=300`
-* Keep radio on the full window even without link (not recommended): set grace ≥ max
+* Leave forest faster after hotspot gone: `NO_LINK_GRACE_SECONDS=300` (5 min)
+* More tolerant of flaky hotspot: `NO_LINK_GRACE_SECONDS=1800` (30 min)
 
 Then: `sudo systemctl daemon-reload && sudo systemctl restart wifi-field-timer`
 
 ### Notes
 
 * Independent of `eco-monitor.service` — does **not** delay recording.
-* Does not change `config.json` / `upload_enabled`; it only controls the radio.
-* After WiFi sleeps, uploads wait until the next reboot window (or you upload at base after reboot).
-* To disable: installer menu **Disable field WiFi timer**, or `sudo systemctl disable --now wifi-field-timer.service` and optionally `sudo rfkill unblock wifi`.
+* Does not change `config.json` / `upload_enabled`; it only controls the radio for this boot.
+* After WiFi soft-sleeps, uploads wait until the next reboot window (or you upload at base after reboot).
+* A plain reboot **without** the timer still leaves WiFi under normal OS/NetworkManager control (soft sleep does not persist).
+* To disable: installer menu **Disable field WiFi timer** (always restores radio: `rfkill unblock` + `nmcli radio wifi on` + `wlan*` up). Manual equivalent:
+  ```bash
+  sudo systemctl disable --now wifi-field-timer.service
+  sudo rm -f /etc/systemd/system/wifi-field-timer.service
+  sudo systemctl daemon-reload
+  sudo rfkill unblock wifi
+  sudo nmcli radio wifi on
+  sudo ip link set wlan0 up
+  ```
 
 ## Runtime Optimizations (Automatic)
 

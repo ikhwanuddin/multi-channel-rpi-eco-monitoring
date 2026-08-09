@@ -1,12 +1,13 @@
 # ── MAARU field WiFi timer ──────────────────────────────────────────
-# WiFi ON for the first MAX_ON_SECONDS after boot (default 1200 = 20 min),
-# or until no-link grace expires. Then sleeps until reboot.
+# WiFi ON while wlan is linked (no time cap). After wlan is gone for
+# NO_LINK_GRACE_SECONDS (default 1200 = 20 min), soft-sleep until reboot
+# (wlan down / NM disconnect — not rfkill / not nmcli radio off).
 # Prefer: sudo python3 installer.py → menu "Field WiFi timer"
 # See wifi_field_timer.sh and docs/advanced_configuration.md
 # ────────────────────────────────────────────────────────────────────
 
 [Unit]
-Description=MAARU field WiFi timer (on after boot, then sleep until reboot)
+Description=MAARU field WiFi timer (keep-alive while linked, sleep after no-link grace)
 Documentation=file://__REPO_DIR__/docs/advanced_configuration.md
 # Start once the network stack exists so wlan interfaces can appear.
 # Do NOT use Before=eco-monitor: this job can run for many minutes and
@@ -17,12 +18,11 @@ Wants=network.target
 [Service]
 Type=simple
 User=root
-# Defaults baked in for field power saving (override via installer or edit).
-Environment=MAX_ON_SECONDS=1200
-Environment=NO_LINK_GRACE_SECONDS=900
+# Defaults for field power saving (override via installer or edit).
+Environment=NO_LINK_GRACE_SECONDS=1200
 Environment=CHECK_INTERVAL=30
 ExecStart=/bin/bash __REPO_DIR__/wifi_field_timer.sh
-# Run once per boot; do not restart after WiFi has been put to sleep.
+# Run once per boot; do not restart after WiFi has been soft-slept.
 Restart=no
 
 [Install]

@@ -1,28 +1,31 @@
 #!/bin/bash
 # =============================================================================
-# wifi_field_timer.sh — Field WiFi duty cycle for MAARU (power saving)
+# wifi_field_timer.sh — Field WiFi keep-alive + no-link sleep for MAARU
 #
 # Policy (until next reboot):
-#   1. On boot / service start: WiFi is turned ON so the unit can join a LAN
-#      (upload, SSH, time sync).
-#   2. WiFi may stay ON only during the first MAX_ON_SECONDS (default: 1200 = 20 min).
-#   3. If no network association appears within NO_LINK_GRACE_SECONDS
-#      (default: 900 = 15 min), WiFi sleeps early (typical forest deploy).
-#   4. After MAX_ON_SECONDS, WiFi is forced asleep regardless of link state.
-#   5. The only supported way to turn WiFi on again is rebooting the Pi
-#      (this service runs once per boot and does not re-enable WiFi).
+#   1. On boot / service start: WiFi ON (upload, SSH, time sync, phone hotspot).
+#   2. While wlan has an active link: WiFi stays ON with no time limit
+#      (home / base / remote Tailscale over WiFi must not be cut).
+#   3. When wlan link is missing — from boot, or after a link drops — start a
+#      no-link timer. If the link returns before the timer ends, cancel it.
+#   4. After NO_LINK_GRACE_SECONDS (default: 1200 = 20 min) with no wlan link:
+#      soft-sleep WiFi for the rest of this boot (forest / left behind).
+#   5. Soft sleep does not persist across reboot. Reboot starts the policy again.
+#
+# Sleep method (soft sleep — intentional):
+#   - Disconnect NM wifi devices (if nmcli present) and bring wlan* down.
+#   - Do NOT `rfkill block wifi` and do NOT `nmcli radio wifi off`.
+#     Those write persistent state and can leave units radio-dead after uninstall.
 #
 # Environment overrides (optional, via systemd unit Environment=):
-#   MAX_ON_SECONDS=1200
-#   NO_LINK_GRACE_SECONDS=900
+#   NO_LINK_GRACE_SECONDS=1200
 #   CHECK_INTERVAL=30
 #   LOG_FILE=/var/log/wifi-field-timer.log
 # =============================================================================
 
 set -u
 
-MAX_ON_SECONDS="${MAX_ON_SECONDS:-1200}"
-NO_LINK_GRACE_SECONDS="${NO_LINK_GRACE_SECONDS:-900}"
+NO_LINK_GRACE_SECONDS="${NO_LINK_GRACE_SECONDS:-1200}"
 CHECK_INTERVAL="${CHECK_INTERVAL:-30}"
 LOG_FILE="${LOG_FILE:-/var/log/wifi-field-timer.log}"
 LOG_TAG="wifi-field-timer"
@@ -43,9 +46,11 @@ list_wlan_ifaces() {
     done
 }
 
+# Clear leftover hard-off state from older timer versions / manual ops, then
+# bring radios up so NM (or dhcpcd/wpa) can associate.
 wifi_on() {
-    log "Enabling WiFi (field window start)"
-    # Unblock all soft-blocked wifi radios (onboard if any + USB).
+    log "Enabling WiFi (keep-alive while linked; sleep only after no-link grace)"
+
     if command -v rfkill >/dev/null 2>&1; then
         rfkill unblock wifi 2>/dev/null || true
         # Some USB dongles appear as "wlan" type rather than "wifi".
@@ -55,42 +60,52 @@ wifi_on() {
             done
     fi
 
+    # NetworkManager persists "radio wifi off" in NetworkManager.state — always
+    # re-enable so a previous hard-sleep cannot stick across boots.
+    if command -v nmcli >/dev/null 2>&1; then
+        nmcli radio wifi on 2>/dev/null || true
+    fi
+
     local name
     for name in $(list_wlan_ifaces); do
         ip link set "$name" up 2>/dev/null || true
     done
 
-    # Give USB dongles / wpa_supplicant a moment after unblock.
+    # Give USB dongles / NetworkManager a moment after unblock.
     sleep 2
 }
 
+# Soft sleep: stop scanning/association for this boot without persistent kill.
 wifi_off() {
-    local reason="${1:-timer expired}"
+    local reason="${1:-no-link grace expired}"
     log "Sleeping WiFi until next reboot ($reason)"
+
+    if command -v nmcli >/dev/null 2>&1; then
+        # Disconnect only wifi devices; leave ethernet/USB-tether alone.
+        nmcli -t -f DEVICE,TYPE device status 2>/dev/null \
+            | awk -F: '$2 == "wifi" && $1 != "" { print $1 }' \
+            | while read -r dev; do
+                [ -n "${dev:-}" ] || continue
+                nmcli device disconnect "$dev" 2>/dev/null || true
+            done
+    fi
 
     local name
     for name in $(list_wlan_ifaces); do
         ip link set "$name" down 2>/dev/null || true
     done
 
-    if command -v rfkill >/dev/null 2>&1; then
-        rfkill block wifi 2>/dev/null || true
-        rfkill list 2>/dev/null | awk -F: '/^[[:space:]]*[0-9]+:/{id=$1} /Wireless|wlan|Wi-Fi|Wireless LAN/{print id}' \
-            | while read -r id; do
-                [ -n "${id:-}" ] && rfkill block "$id" 2>/dev/null || true
-            done
-    fi
+    # Intentionally NOT:
+    #   rfkill block wifi
+    #   nmcli radio wifi off
+    # Those persist across reboot and can brick field WiFi after uninstall.
 
-    # NetworkManager (if present): keep radio off after we leave.
-    if command -v nmcli >/dev/null 2>&1; then
-        nmcli radio wifi off 2>/dev/null || true
-    fi
-
-    log "WiFi is asleep. Reboot the Raspberry Pi to enable WiFi for another window."
+    log "WiFi is asleep (soft). Reboot for another session, or: ip link set wlan0 up"
 }
 
 # True when any wlan* has a global IPv4 (associated + configured) or is the
 # default-route device. Carrier alone is not enough (can be "up" while scanning).
+# USB tether / Tailscale alone do not count — only real wlan link.
 is_connected() {
     local name
     for name in $(list_wlan_ifaces); do
@@ -105,44 +120,51 @@ is_connected() {
 }
 
 main() {
-    log "Starting field WiFi timer: max_on=${MAX_ON_SECONDS}s, no_link_grace=${NO_LINK_GRACE_SECONDS}s, check_every=${CHECK_INTERVAL}s"
+    log "Starting field WiFi timer: no_link_grace=${NO_LINK_GRACE_SECONDS}s, check_every=${CHECK_INTERVAL}s"
 
     wifi_on
 
-    local start_ts now elapsed ever_connected=0
-    start_ts=$(date +%s)
+    # 0 = not in a no-link countdown; otherwise unix time when no-link started.
+    local no_link_since=0
+    local was_linked=0
+    local now no_link_for
 
     while true; do
         now=$(date +%s)
-        elapsed=$((now - start_ts))
-
-        if [ "$elapsed" -ge "$MAX_ON_SECONDS" ]; then
-            wifi_off "reached MAX_ON_SECONDS=${MAX_ON_SECONDS}"
-            break
-        fi
 
         if is_connected; then
-            if [ "$ever_connected" -eq 0 ]; then
-                log "Network link detected on wlan (elapsed ${elapsed}s); WiFi stays on until max window"
+            if [ "$was_linked" -eq 0 ]; then
+                log "wlan link up; WiFi stays on for as long as the link holds"
+            elif [ "$no_link_since" -ne 0 ]; then
+                log "wlan link restored; no-link sleep timer cancelled"
             fi
-            ever_connected=1
+            was_linked=1
+            no_link_since=0
         else
-            # Forest / no AP: do not keep the radio scanning for the full hour.
-            if [ "$ever_connected" -eq 0 ] && [ "$elapsed" -ge "$NO_LINK_GRACE_SECONDS" ]; then
-                wifi_off "no network link within NO_LINK_GRACE_SECONDS=${NO_LINK_GRACE_SECONDS}"
+            if [ "$no_link_since" -eq 0 ]; then
+                no_link_since=$now
+                if [ "$was_linked" -eq 1 ]; then
+                    log "wlan link lost; starting no-link sleep timer (${NO_LINK_GRACE_SECONDS}s)"
+                else
+                    log "no wlan link yet; starting no-link sleep timer (${NO_LINK_GRACE_SECONDS}s)"
+                fi
+            fi
+
+            no_link_for=$((now - no_link_since))
+            if [ "$no_link_for" -ge "$NO_LINK_GRACE_SECONDS" ]; then
+                if [ "$was_linked" -eq 1 ]; then
+                    wifi_off "no wlan link for NO_LINK_GRACE_SECONDS=${NO_LINK_GRACE_SECONDS} after link was lost"
+                else
+                    wifi_off "no wlan link within NO_LINK_GRACE_SECONDS=${NO_LINK_GRACE_SECONDS}"
+                fi
                 break
             fi
         fi
 
-        local remaining=$((MAX_ON_SECONDS - elapsed))
-        if [ "$remaining" -lt "$CHECK_INTERVAL" ]; then
-            sleep "$remaining"
-        else
-            sleep "$CHECK_INTERVAL"
-        fi
+        sleep "$CHECK_INTERVAL"
     done
 
-    log "Timer finished; process exiting (WiFi remains asleep until reboot)"
+    log "Timer finished; process exiting (WiFi remains soft-asleep until reboot or manual up)"
     exit 0
 }
 

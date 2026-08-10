@@ -670,7 +670,7 @@ def install_shell_monitor_alias():
     snippet = r"""
 # ── Eco-monitor shell shortcuts ──
 # monitor   : health dashboard + live logs (Ctrl+C to quit)
-# healtheco : health dashboard only (no log follow; includes connection status)
+# healtheco : health dashboard only (no log follow; includes connection status + SSID)
 # restarteco: daemon-reload + restart eco-monitor
 # statuseco : systemctl status eco-monitor
 # stopeco   : stop eco-monitor
@@ -702,6 +702,24 @@ _eco_conn_line() {
             | awk -F: '{printf "    %-12s type=%-10s state=%-12s connection=%s\n", $1, $2, $3, $4}'
     else
         echo "  nmcli: not installed"
+    fi
+}
+
+_eco_wifi_ssid_line() {
+    if command -v nmcli >/dev/null 2>&1; then
+        echo "  WiFi SSID:"
+        local w name ssid
+        for w in /sys/class/net/wlan*; do
+            [ -e "$w" ] || continue
+            name=$(basename "$w")
+            ssid=$(nmcli -t -f IN-USE,SSID dev wifi list ifname "$name" 2>/dev/null \
+                | awk -F: '$1 == "*" { print $2; exit }')
+            if [ -n "$ssid" ]; then
+                printf "    %-12s SSID=%s\n" "$name" "$ssid"
+            else
+                printf "    %-12s SSID=(unknown)\n" "$name"
+            fi
+        done
     fi
 }
 
@@ -750,6 +768,7 @@ healtheco() {
     echo ""
     echo "--- Connection status ---"
     _eco_conn_line
+    _eco_wifi_ssid_line
 
     echo ""
     echo "--- WiFi / radio ---"
@@ -878,8 +897,8 @@ alias starteco='sudo systemctl start eco-monitor.service'
         "Shortcuts installed: monitor, healtheco, restarteco, statuseco, "
         "stopeco, starteco, sizeeco"
     )
-    print("  monitor   = health dashboard (connection status, WiFi, throttle, services, disk) + live logs")
-    print("  healtheco = health dashboard only (no log follow; includes connection status)")
+    print("  monitor   = health dashboard (connection status + SSID, WiFi, throttle, services, disk) + live logs")
+    print("  healtheco = health dashboard only (no log follow; includes connection status + SSID)")
     print("To use them immediately, run: source {}".format(bashrc_path))
     print("Or simply log out and log back in.")
 

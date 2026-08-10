@@ -1,6 +1,6 @@
 # ── Eco-monitor Shell Shortcuts Cheat Sheet ──
 # monitor    : Health dashboard + live logs (Ctrl+C to quit)
-# healtheco  : Health only (connection status, WiFi, under-voltage/throttle, services, disk)
+# healtheco  : Health only (connection status + SSID, WiFi, under-voltage/throttle, services, disk)
 # sizeeco    : Check disk usage of monitoring folders
 # statuseco  : Show systemd service status (eco-monitor + wifi timer)
 # restarteco : Restart service (daemon-reload & restart)

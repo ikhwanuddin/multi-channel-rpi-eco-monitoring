@@ -670,7 +670,7 @@ def install_shell_monitor_alias():
     snippet = r"""
 # ── Eco-monitor shell shortcuts ──
 # monitor   : health dashboard + live logs (Ctrl+C to quit)
-# healtheco : health dashboard only (no log follow)
+# healtheco : health dashboard only (no log follow; includes connection status)
 # restarteco: daemon-reload + restart eco-monitor
 # statuseco : systemctl status eco-monitor
 # stopeco   : stop eco-monitor
@@ -693,6 +693,16 @@ _eco_svc_line() {
     en=$(systemctl is-enabled "$u" 2>/dev/null || echo "n/a")
     act=$(systemctl is-active "$u" 2>/dev/null || echo "n/a")
     printf "  %-28s enabled=%-12s active=%s\n" "$u" "$en" "$act"
+}
+
+_eco_conn_line() {
+    if command -v nmcli >/dev/null 2>&1; then
+        echo "  nmcli device status:"
+        nmcli -t -f DEVICE,TYPE,STATE,CONNECTION dev status 2>/dev/null \
+            | awk -F: '{printf "    %-12s type=%-10s state=%-12s connection=%s\n", $1, $2, $3, $4}'
+    else
+        echo "  nmcli: not installed"
+    fi
 }
 
 _eco_decode_throttled() {
@@ -736,6 +746,10 @@ healtheco() {
     echo "--- Services ---"
     _eco_svc_line eco-monitor.service
     _eco_svc_line wifi-field-timer.service
+
+    echo ""
+    echo "--- Connection status ---"
+    _eco_conn_line
 
     echo ""
     echo "--- WiFi / radio ---"
@@ -864,8 +878,8 @@ alias starteco='sudo systemctl start eco-monitor.service'
         "Shortcuts installed: monitor, healtheco, restarteco, statuseco, "
         "stopeco, starteco, sizeeco"
     )
-    print("  monitor   = health dashboard (WiFi, throttle, services, disk) + live logs")
-    print("  healtheco = health dashboard only (no log follow)")
+    print("  monitor   = health dashboard (connection status, WiFi, throttle, services, disk) + live logs")
+    print("  healtheco = health dashboard only (no log follow; includes connection status)")
     print("To use them immediately, run: source {}".format(bashrc_path))
     print("Or simply log out and log back in.")
 

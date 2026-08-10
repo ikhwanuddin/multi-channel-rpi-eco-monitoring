@@ -41,7 +41,7 @@ RECORDER_BANNER = r"""
 ===================================================================
    Useful Shell Shortcuts:
    * monitor    : Health dashboard + live logs (Ctrl+C to quit)
-   * healtheco  : Health only (connection status + active WiFi line, WiFi, throttle, services, disk)
+   * healtheco  : Health only (connection status + readable WiFi line, WiFi, throttle, services, disk)
    * sizeeco    : Check disk usage of monitoring folders
    * statuseco  : Show systemd service status
    * restarteco : Restart service (daemon-reload & restart)

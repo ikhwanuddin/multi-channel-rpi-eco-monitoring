@@ -670,7 +670,7 @@ def install_shell_monitor_alias():
     snippet = r"""
 # ── Eco-monitor shell shortcuts ──
 # monitor   : health dashboard + live logs (Ctrl+C to quit)
-# healtheco : health dashboard only (no log follow; includes connection status + active WiFi line)
+# healtheco : health dashboard only (no log follow; includes connection status + readable WiFi line)
 # restarteco: daemon-reload + restart eco-monitor
 # statuseco : systemctl status eco-monitor
 # stopeco   : stop eco-monitor
@@ -708,14 +708,17 @@ _eco_conn_line() {
 _eco_wifi_active_line() {
     if command -v nmcli >/dev/null 2>&1; then
         echo "  WiFi active:"
-        local w name info
+        local w name ssid mode chan rate signal bars security
         for w in /sys/class/net/wlan*; do
             [ -e "$w" ] || continue
             name=$(basename "$w")
-            info=$(nmcli -t -f IN-USE,SSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY dev wifi list ifname "$name" 2>/dev/null \
-                | awk -F: '$1 == "*" { print $2 ":" $3 ":" $4 ":" $5 ":" $6 ":" $7 ":" $8; exit }')
-            if [ -n "$info" ]; then
-                printf "    %-12s %s\n" "$name" "$info"
+            read -r ssid mode chan rate signal bars security <<EOF
+$(nmcli -t -f IN-USE,SSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY dev wifi list ifname "$name" 2>/dev/null \
+    | awk -F: '$1 == "*" { print $2 "\n" $3 "\n" $4 "\n" $5 "\n" $6 "\n" $7 "\n" $8; exit }')
+EOF
+            if [ -n "$ssid" ]; then
+                printf "    %-12s SSID=%s  mode=%s  ch=%s  rate=%s  signal=%s%%  bars=%s  sec=%s\n" \
+                    "$name" "$ssid" "$mode" "$chan" "$rate" "$signal" "$bars" "$security"
             else
                 echo "    ${name} (no active WiFi details)"
             fi
@@ -897,8 +900,8 @@ alias starteco='sudo systemctl start eco-monitor.service'
         "Shortcuts installed: monitor, healtheco, restarteco, statuseco, "
         "stopeco, starteco, sizeeco"
     )
-    print("  monitor   = health dashboard (connection status + active WiFi line, WiFi, throttle, services, disk) + live logs")
-    print("  healtheco = health dashboard only (no log follow; includes connection status + active WiFi line)")
+    print("  monitor   = health dashboard (connection status + readable WiFi line, WiFi, throttle, services, disk) + live logs")
+    print("  healtheco = health dashboard only (no log follow; includes connection status + readable WiFi line)")
     print("To use them immediately, run: source {}".format(bashrc_path))
     print("Or simply log out and log back in.")
 

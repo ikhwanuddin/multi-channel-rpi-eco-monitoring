@@ -708,20 +708,24 @@ _eco_conn_line() {
 _eco_wifi_active_line() {
     if command -v nmcli >/dev/null 2>&1; then
         echo "  WiFi active:"
-        local w name ssid mode chan rate signal bars security
+        local w name
         for w in /sys/class/net/wlan*; do
             [ -e "$w" ] || continue
             name=$(basename "$w")
-            read -r ssid mode chan rate signal bars security <<EOF
-$(nmcli -t -f IN-USE,SSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY dev wifi list ifname "$name" 2>/dev/null \
-    | awk -F: '$1 == "*" { print $2 "\n" $3 "\n" $4 "\n" $5 "\n" $6 "\n" $7 "\n" $8; exit }')
-EOF
-            if [ -n "$ssid" ]; then
-                printf "    %-12s SSID=%s  mode=%s  ch=%s  rate=%s  signal=%s%%  bars=%s  sec=%s\n" \
-                    "$name" "$ssid" "$mode" "$chan" "$rate" "$signal" "$bars" "$security"
-            else
-                echo "    ${name} (no active WiFi details)"
-            fi
+            nmcli -t -f IN-USE,SSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY dev wifi list ifname "$name" 2>/dev/null \
+                | awk -F: -v name="$name" '
+                    $1 == "*" {
+                        print sprintf("    %-12s SSID=%s  mode=%s  ch=%s  rate=%s  signal=%s%%  bars=%s  sec=%s", \
+                            name, $2, $3, $4, $5, $6, $7, $8)
+                        found=1
+                        exit
+                    }
+                    END {
+                        if (!found) {
+                            print sprintf("    %-12s (no active WiFi details)", name)
+                        }
+                    }
+                '
         done
     fi
 }

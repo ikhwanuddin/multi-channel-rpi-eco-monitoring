@@ -446,7 +446,7 @@ source ~/.bashrc
 * Host model, uptime, load
 * Service state: `eco-monitor.service`, `wifi-field-timer.service`
 * Connection status: `nmcli dev status` summary for all interfaces
-* WiFi SSID: active SSID for each `wlan*` interface
+* WiFi active line: `SSID:MODE:CHAN:RATE:SIGNAL:BARS:SECURITY` for each `wlan*` interface
 * WiFi: `rfkill`, each `wlan*` operstate + IPv4, default route, probe to 8.8.8.8
 * Power: `vcgencmd get_throttled` **decoded** (under-voltage / throttle NOW vs since boot), volts, temp
 * Disk free + `live_data` / `tmp_dir` / `pre_upload_dir` sizes

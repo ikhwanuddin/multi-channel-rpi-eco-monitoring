@@ -16,3 +16,4 @@ tmp_data/
 
 fs_expanded
 .DS_Store
+config.json

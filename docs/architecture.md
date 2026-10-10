@@ -51,10 +51,10 @@ Core components protected from direct weather:
   - Essential for preventing condensation inside enclosure
   - Replace every 1-2 weeks or when saturated
 
-- **IP68 Acoustic Membrane**
-  - Specialized layer at microphone holes
-  - Water-resistant (IP68 rated)
-  - Maintains acoustic transparency
+- **Membrane Vents (SEL-3254)**
+  - Adhesive oleophobic membrane vents over the holes drilled near the mic ring
+  - Keep water out of the microphone holes
+  - Let sound reach the microphones
 
 - **Silicon Sealant**
   - Seals all cable holes
@@ -81,7 +81,7 @@ Core components protected from direct weather:
 - **Rope & Rubber**: Tethered to tree for stability and fall prevention
 - **Food Container + Plastic Roof**: Protection from extreme weather (rain, UV, insects)
 - **Silica Gel**: Humidity control in tropical rainforest environment
-- **IP68 Membrane**: Protects acoustic holes from water ingress
+- **Membrane Vents (SEL-3254)**: Protect acoustic holes from water ingress
 
 ### External & Cloud
 

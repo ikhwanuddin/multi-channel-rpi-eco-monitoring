@@ -1,163 +1,175 @@
 # Log Guide
 
-Understanding logs and structured logging format.
+Understanding where logs go and what the lines mean.
 
 ## Quick Start
 
 ### View recent logs
 
 ```bash
+cd ~/multi-channel-rpi-eco-monitoring
+
 # Last 50 lines
-tail -n 50 ~/logs/*.log
+tail -n 50 logs/logfile.log
 
 # Follow logs in real-time
-tail -f ~/logs/*.log
+tail -f logs/logfile.log
 
 # Filter for errors
-grep -i error ~/logs/*.log
+grep -iE "error|critical|failed" logs/logfile.log
+
+# Full service output (includes the ExecStartPre steps)
+sudo journalctl -u eco-monitor.service -f
 ```
+
+If you installed the shell shortcuts (installer menu 4), `monitor` shows a health snapshot followed by the live journal of `eco-monitor` and `wifi-field-timer`, and `healtheco` shows only the snapshot.
 
 ---
 
 ## Log File Locations
 
 ```
-~/logs/
-├── startup.log          # Boot sequence, recorder startup
-├── monitor.log          # Recording session details
-└── upload.log           # Cloud upload events
+~/multi-channel-rpi-eco-monitoring/logs/logfile.log   # record.py log (appended across restarts, not rotated)
+journalctl -u eco-monitor.service                      # same lines + ExecStartPre output + update_time.sh output
+/home/pi/monitoring_data/live_data/rclone.log          # rclone_upload.sh messages (appended each upload cycle)
+/home/pi/monitoring_data/live_data/rclone_state.json   # upload state (JSON, not a log)
+journalctl -u wifi-field-timer.service                 # field WiFi timer
+/var/log/wifi-field-timer.log                          # same, best-effort file copy
 ```
+
+At startup, any other `*.log` file found in `logs/` (anything except `logfile.log`) is moved to `live_data/RPiID-<serial>/logs/`. Log files are not uploaded (the uploader only tracks `.flac` and `.wav`).
 
 ---
 
-## Structured Log Format
+## Log Format
 
-All logs use a **prefix contract** to make filtering easier:
-
-```
-[TIMESTAMP] [COMPONENT][mode=MODE][phase=PHASE] message
-```
-
-### Example Log Lines
+`record.py` uses a `MinuteBoundaryFormatter`: a line is prefixed with `[YYYY-MM-DD HH:MM]` only when the minute changes; the following lines in the same minute have no timestamp. There are no level names in the file.
 
 ```
-[2024-07-01 14:23] [startup][mode=offline][phase=init] System boot detected
-[2024-07-01 14:23] [startup][mode=offline][phase=config-load] Loaded config from ./config.json
-[2024-07-01 14:24] [record][component=recording][phase=start] Recording to ./multichannel_audio/20240701_142400.flac
-[2024-07-01 14:44] [record][component=recording][phase=finalize] Stopped recording - duration: 20 minutes
-[2024-07-01 14:44] [upload][phase=verify][component=verify] File integrity OK: 287 MB
-[2024-07-01 14:45] [upload][phase=finalize] Upload complete: 287 MB to mybox:site_01/
+[2026-07-01 14:23] Start of continuous sampling: 20260701_1423
+Starting repository auto-update...
+Auto-update complete.
+Config file found
+Config loaded
+Sensor type Sipeed7Mic being configured.
+Detected USB audio card: 2
+Sipeed7Mic Sensor config succeeded.
+Sensor setup succeeded
+Draining pending queue before first recording...
+[2026-07-01 14:24] Capture started.
+Recording started: 14-24-03_dur=1200secs
+[2026-07-01 14:44] arecord exit code=0, size=307200044 bytes.
+Recorded: 293.0 MB -> 14-24-03_dur=1200secs.wav
+Recording done.
+Capture completed in 1201.3s.
 ```
+
+(Values above are illustrative.) A banner with the shell shortcut list is printed at each start.
+
+Scripts launched by `record.py` add their own prefixes:
+
+| Source | Prefix | Where |
+|---|---|---|
+| `rclone_upload.sh` | `[upload] [upload:<phase>] ...` (record.py adds `[upload] `) | `logfile.log`, journal, `rclone.log` |
+| `sync_rclone_config.sh` | `[gist-sync] ...` | journal, `rclone.log` (when pushed after an upload) |
+| `offline_time_sync.py` | `[*] ...` | journal |
+| `wifi_field_timer.sh` | `[YYYY-MM-DD HH:MM:SS] [wifi-field-timer] ...` | journal, `/var/log/wifi-field-timer.log` |
 
 ---
 
 ## Log Components
 
-### Startup Phase
+### Startup
 
-**Prefix**: `[startup]`
+Lines written once per service start, in this order:
 
-| Mode | Meaning |
-|------|---------|
-| `mode=offline` | Recording locally, no uploads |
-| `mode=online` | Recording and uploading to cloud |
+| Message | Meaning |
+|---------|---------|
+| `Start of continuous sampling: <YYYYMMDD_HHMM>` | `record.py` started |
+| `Starting repository auto-update...` / `Auto-update complete.` | `git reset --hard origin/master` done |
+| `Current git commit hash: ...` | Code version in use |
+| `Config file found` / `Config loaded` | `config.json` parsed |
+| `Configured daily reboot times: 02:00` | Scheduled reboot active |
+| `Storage safety policy: no auto-delete, warn below 4.00 GB, shutdown below 1.00 GB` | Storage thresholds |
+| `Sensor setup succeeded` | Sensor ready |
+| `Running with upload enabled - upload sync thread active` | Upload thread started |
 
-| Phase | Meaning |
-|-------|---------|
-| `phase=init` | System initializing |
-| `phase=config-load` | Reading config.json |
-| `phase=sensor-init` | Initializing audio sensor |
-| `phase=ready` | System ready to record |
+The `ExecStartPre` steps (fake-hwclock restore, time sync, filesystem check, LED off, Gist sync) appear only in the journal:
 
-**Example**:
 ```bash
-grep "\[startup\]" ~/logs/*.log
+sudo journalctl -u eco-monitor.service -b | grep -E "fake-hwclock|gist-sync|FS |LEDs"
 ```
 
 ---
 
-### Recording Phase
+### Recording
 
-**Prefix**: `[record]`
-
-| Component | Meaning |
-|-----------|---------|
-| `component=recording` | Main recording process |
-| `component=audio-buffer` | Audio queue status |
-| `component=gpio` | Shutdown button events |
-
-| Phase | Meaning |
-|-------|---------|
-| `phase=start` | Recording session began |
-| `phase=progress` | Recording in progress (per minute) |
-| `phase=finalize` | Recording session ended |
-| `phase=error` | Recording error occurred |
+| Message | Meaning |
+|---------|---------|
+| `Capture started.` / `Recording started: <file>` | New recording |
+| `arecord exit code=<n>, size=<bytes> bytes.` | Logged after every recording |
+| `arecord stderr: ...` | Any `arecord` warning (e.g. `overrun!!!`) |
+| `Recorded: <MB> MB -> <file>.wav` | WAV moved to `pre_upload_dir` |
+| `Recording failed: ...` | Failure; a `*_ERROR_audio-record-failed` marker is written |
+| `Tiny file: n/3 consecutive.` | Small/failed recording; at 3 the Pi reboots |
+| `Compressing <file> -> FLAC` / `Compression done: <file>.flac` | ffmpeg step |
+| `CPU governor set to powersave` / `ondemand` | Power saving switch |
+| `RAM[gc]: ...` / `RAM[skip-gc]: ...` | Memory snapshot after each cycle |
+| `Upload in progress (internet=True, syncing=False); pausing record.` | Recording paused because internet is reachable |
 
 **Example**:
 ```bash
-# All recording events
-grep "\[record\]" ~/logs/*.log
-
-# Only recording start/end
-grep "\[record\]\[phase=\(start\|finalize\)\]" ~/logs/*.log
-
-# Audio buffer warnings
-grep "component=audio-buffer" ~/logs/*.log
+grep -E "Recording started|Recorded:|Recording failed" logs/logfile.log | tail
 ```
 
 ---
 
-### Upload Phase
+### Upload
 
-**Prefix**: `[upload]`
-
-| Component | Meaning |
-|-----------|---------|
-| `component=verify` | File verification before upload |
-| `component=rclone` | Rclone copy operation |
-| `component=state` | Upload state tracking |
-| `component=upload-helper` | Upload helper script |
+`rclone_upload.sh` tags each line with its phase: `init`, `scan-mark`, `rclone-copy`, `verify`, `finalize`, `error`.
 
 | Phase | Meaning |
 |-------|---------|
-| `phase=init` | Upload process starting |
-| `phase=verify` | Checking file integrity |
-| `phase=compress` | Compressing (if needed) |
-| `phase=upload` | Transferring to cloud |
-| `phase=finalize` | Upload completed successfully |
-| `phase=error` | Upload failed |
+| `init` | Paths, remote and config file printed |
+| `scan-mark` | Pre-verify against remote, then mark local files as `uploading` |
+| `rclone-copy` | `rclone copy` running; one-line `stats` every 30 s |
+| `verify` | Remote listing compared; verified local files deleted |
+| `finalize` | Cycle completed; Gist push (or "Skipping Gist push (throttled ...)") |
+| `error` | `rclone copy` failed after retries; files kept for next cycle |
+
+`record.py` also logs `Internet detected. Starting immediate upload sync.`, `Upload sync completed successfully.` or `Upload sync failed with exit code <n>`.
 
 **Example**:
 ```bash
 # All upload events
-grep "\[upload\]" ~/logs/*.log
+grep "\[upload" logs/logfile.log
 
 # Only upload errors
-grep "\[upload\]\[phase=error\]" ~/logs/*.log
+grep "\[upload:error\]" logs/logfile.log
 
 # Upload success only
-grep "\[upload\]\[phase=finalize\]" ~/logs/*.log
+grep "Upload sync completed successfully" logs/logfile.log
 
-# Rclone diagnostics
-grep "component=rclone" ~/logs/*.log
+# Rclone copy-phase lines
+grep "\[upload:rclone-copy\]" logs/logfile.log
 ```
 
 ---
 
-### Time Sync Phase
+### Time Sync
 
-**Prefix**: `[time-sync]`
+`update_time.sh` prints plain messages (no prefix) to the journal, both at service start and before every upload cycle:
 
-System synchronizes time with NTP servers.
-
-| Mode | Meaning |
+| Message | Meaning |
 |------|---------|
-| `mode=ntp` | Using Network Time Protocol |
-| `mode=offline` | Using system clock (no internet) |
+| `Internet detected and clock already synced. Time not updated.` | NTP already in sync |
+| `Internet detected, syncing time via NTP` | `timedatectl set-ntp true` |
+| `Attempting silent automatic offline time sync via Wi-Fi gateway...` | No internet; trying the gateway |
+| `Offline mode: syncing time from SSH-provided epoch <n>` | `--epoch` used |
 
 **Example**:
 ```bash
-grep "\[time-sync\]" ~/logs/*.log
+sudo journalctl -u eco-monitor.service | grep -iE "time sync|NTP|already synced|\[\*\]"
 ```
 
 ---
@@ -167,45 +179,48 @@ grep "\[time-sync\]" ~/logs/*.log
 ### Healthy recording session
 
 ```
-[14:23] [startup][mode=offline][phase=init] System boot
-[14:23] [startup][mode=offline][phase=config-load] Loaded config
-[14:23] [startup][mode=offline][phase=sensor-init] Sipeed7Mic initialized
-[14:23] [startup][mode=offline][phase=ready] Ready to record
-[14:23] [record][component=recording][phase=start] Recording to file_202407011423.flac
-[14:43] [record][component=recording][phase=progress] Recorded: 20 minutes, 287 MB
-[14:43] [record][component=recording][phase=finalize] Stopped recording - OK
+[2026-07-01 14:24] Capture started.
+Recording started: 14-24-03_dur=1200secs
+[2026-07-01 14:44] arecord exit code=0, size=307200044 bytes.
+Recorded: 293.0 MB -> 14-24-03_dur=1200secs.wav
+Recording done.
+Capture completed in 1201.3s.
+Last recording file ... size is ... bytes, OK.
+RAM[skip-gc]: 41 MB proc, 230/416 MB free/total, 0 objects freed (continuous_recording).
+CPU governor set to powersave
 ```
 
 ### Successful upload
 
 ```
-[14:44] [upload][phase=init] Starting upload cycle
-[14:44] [upload][phase=verify][component=verify] Checking file integrity
-[14:44] [upload][phase=verify][component=verify] File OK: 287 MB
-[14:45] [upload][component=rclone][phase=upload] Copying to cloud...
-[15:02] [upload][component=rclone][phase=finalize] Copy complete
-[15:02] [upload][phase=finalize] All files uploaded, deleting local copies
+Internet detected. Starting immediate upload sync.
+[upload] Launching rclone_upload.sh...
+[upload] [upload:init] === Starting rclone upload ===
+[upload] [upload:scan-mark] Pre-verifying existing files on remote...
+[upload] [upload:rclone-copy] Starting rclone copy process...
+[upload] [upload:verify] Upload verification complete: 3 files deleted after verification
+[upload] [upload:finalize] Rclone upload cycle completed successfully
+Upload sync completed successfully.
 ```
 
 ### Recording error (typical)
 
 ```
-[14:23] [record][component=recording][phase=start] Starting...
-[14:35] [record][component=audio-buffer][phase=error] OVERRUN ERROR
-[14:35] [record][component=recording][phase=error] Recording aborted - audio buffer overrun
+arecord exit code=1, size=0 bytes.
+arecord stderr: arecord: main:...: audio open error: No such file or directory
+Recording failed: arecord exited with code 1 | ...
+Tiny file: 1/3 consecutive.
 ```
 
-**Fix**: SD card too slow (see [troubleshooting.md](troubleshooting.md))
+**Fix**: check the USB connection and `arecord -l` (see [troubleshooting.md](troubleshooting.md))
 
 ### Upload failure
 
 ```
-[14:44] [upload][phase=init] Starting upload
-[14:44] [upload][component=verify][phase=verify] File OK
-[14:44] [upload][component=rclone][phase=upload] Attempting upload...
-[14:55] [upload][component=rclone][phase=error] Connection timeout
-[14:55] [upload][phase=error] Upload failed - will retry next cycle
-[14:55] [record][component=recording][phase=start] Starting next recording...
+[upload] [upload:rclone-copy] Rclone copy failed (exit 5), retrying in 10s (attempt 1/3)...
+[upload] [upload:rclone-copy] Rclone copy failed after retries with exit code 5
+[upload] [upload:error] Rclone copy failed, files kept for retry
+Upload sync failed with exit code 5
 ```
 
 **Note**: Local file is kept, upload retried on next cycle.
@@ -214,59 +229,51 @@ grep "\[time-sync\]" ~/logs/*.log
 
 ## Filtering Logs
 
-### Find all errors in the last 24 hours
+### Find all errors
 
 ```bash
-grep -h "\[phase=error\]" ~/logs/*.log
+grep -iE "error|failed|critical" logs/logfile.log | tail -n 50
 ```
 
 ### Monitor specific component live
 
 ```bash
 # Watch rclone operations
-tail -f ~/logs/*.log | grep --line-buffered "component=rclone"
+tail -f logs/logfile.log | grep --line-buffered "\[upload:rclone-copy\]"
 
-# Watch only upload phase
-tail -f ~/logs/*.log | grep --line-buffered "\[upload\]"
+# Watch only upload lines
+tail -f logs/logfile.log | grep --line-buffered "\[upload"
 
 # Watch only recording issues
-tail -f ~/logs/*.log | grep --line-buffered "\[record\].*\[phase=\(progress\|error\)\]"
+tail -f logs/logfile.log | grep --line-buffered -E "arecord stderr|Recording failed|Tiny file"
 ```
 
 ### Count events by type
 
 ```bash
-# How many recording sessions?
-grep -c "\[record\]\[phase=start\]" ~/logs/*.log
+# How many recordings?
+grep -c "Recording started" logs/logfile.log
 
-# How many uploads?
-grep -c "\[upload\]\[phase=finalize\]" ~/logs/*.log
+# How many successful upload cycles?
+grep -c "Upload sync completed successfully" logs/logfile.log
 
-# How many errors total?
-grep -c "\[phase=error\]" ~/logs/*.log
+# How many failed recordings?
+grep -c "Recording failed" logs/logfile.log
 ```
 
 ### Upload errors per day
 
-```bash
-grep "\[upload\]\[phase=error\]" ~/logs/*.log | \
-  cut -d']' -f1 | tr -d '[' | cut -d' ' -f1 | sort | uniq -c
-```
+Lines in the same minute have no timestamp, so per-day counts are easiest from the journal:
 
-**Output**:
-```
-     3 2024-07-01
-     1 2024-07-02
-     0 2024-07-03
+```bash
+sudo journalctl -u eco-monitor.service -o short-iso | grep "Upload sync failed" | cut -c1-10 | sort | uniq -c
 ```
 
 ### Last 200 lines health snapshot
 
 ```bash
-tail -n 200 ~/logs/*.log | grep -E "\[phase=(error|finalize|shutdown)\]"
+tail -n 200 logs/logfile.log | grep -iE "error|failed|WATCHDOG|Storage low|Scheduled reboot"
 ```
-
-This shows only key events (errors, completion, shutdown).
 
 ---
 
@@ -276,91 +283,65 @@ This shows only key events (errors, completion, shutdown).
 
 | Message | Meaning | Action |
 |---------|---------|--------|
-| `Loaded config from ./config.json` | Config found and loaded | Normal |
-| `config.json not found` | Config missing | Run `python setup_config.py` |
-| `Sensor initialization failed` | Audio device not found | Check USB cable, run `discover_serial.py` |
-| `Cannot write to logs directory` | Permission denied | `chmod 755 ~/logs` |
+| `Config file found` | Config found and loaded | Normal |
+| `Config file not found` | Config missing | Run `sudo python3 installer.py` (menu 1) |
+| `Failed to load config` | A required key (`sys`, `rclone`, `sensor`, `working_dir`, `upload_dir`) is missing | Regenerate or fix `config.json` |
+| `Sensor setup failed.` | Sensor `setup()` returned false | Check sensor and `arecord -l` |
+| `No environment variable set for cpu_serial` | `PI_ID` missing (run outside the service) | Normal when run by hand; files go under `CPU_SERIAL_ERROR` |
 
 ### Recording
 
 | Message | Meaning | Action |
 |---------|---------|--------|
-| `Recording to file_...flac` | Session started | Normal |
-| `OVERRUN ERROR` | Audio buffer dropped samples | SD card too slow, see troubleshooting |
-| `Recorded: X minutes` | Progress update | Normal |
-| `Stopping - keyboard interrupt` | Ctrl+C pressed | Normal if manual test |
+| `Recording started: <file>` | Session started | Normal |
+| `arecord stderr: overrun!!!` | Audio buffer dropped samples | SD card / power, see troubleshooting |
+| `File too small: ... discarding.` | Recording under 1 MB was deleted | Check sensor |
+| `Storage low on ...` | Free space under `warn_free_storage_gb` | Offload data |
+| `Storage below safe threshold ... Safely shutting down.` | Under `min_free_storage_gb` | Offload data |
 
 ### Upload
 
 | Message | Meaning | Action |
 |---------|---------|--------|
-| `File integrity OK` | Verification passed | Normal |
-| `Checking remote...` | Contacting cloud | Normal, may take time on slow network |
-| `Upload complete` | File transferred | Normal |
-| `Connection timeout` | No internet or slow network | Check network, retry later |
-| `Authentication failed` | Cloud credentials expired | Re-auth: `rclone config reconnect mybox` |
+| `Internet not available. Skipping sync.` | Periodic check, offline | Normal |
+| `ERROR: jq binary not found` | `jq` missing | `sudo apt-get install jq` |
+| `ERROR: rclone binary not found in PATH` | rclone missing | Install rclone |
+| `Upload verification complete: N files deleted after verification` | Files on remote, deleted locally | Normal |
+| `WATCHDOG: upload sync thread has not reported a heartbeat ...` | Upload thread stalled | Restart the service |
 
 ---
 
 ## Log Rotation
 
-Logs accumulate over time. To prevent disk fill:
+`logs/logfile.log` is appended forever and is not rotated; `rclone.log` likewise. To prevent disk fill:
 
 ### Manual cleanup
 
 ```bash
-# Delete logs older than 30 days
-find ~/logs -name "*.log" -mtime +30 -delete
-
-# Or compress old logs
-gzip ~/logs/*.log.old
+# Truncate the recorder log (stop the service first)
+sudo systemctl stop eco-monitor.service
+: > ~/multi-channel-rpi-eco-monitoring/logs/logfile.log
+sudo systemctl start eco-monitor.service
 ```
 
 ### Automatic cleanup (Optional)
 
-Add to `crontab`:
-
-```bash
-crontab -e
-```
-
-```
-# Delete logs older than 30 days, daily at 3 AM
-0 3 * * * find ~/logs -name "*.log" -mtime +30 -delete
-```
+Not provided by this repository. The journal is managed by `journald` (see `journalctl --disk-usage`).
 
 ---
 
 ## Advanced: Parsing Logs Programmatically
 
-### Extract upload statistics
+### Upload state summary
 
 ```bash
-#!/bin/bash
-# Parse upload logs to get summary
-
-for log in ~/logs/upload*.log; do
-  echo "=== $(basename $log) ==="
-  grep "\[phase=finalize\]" "$log" | wc -l
-  echo "Successful uploads"
-  grep "\[phase=error\]" "$log" | wc -l
-  echo "Failed uploads"
-done
+jq '.upload_stats' /home/pi/monitoring_data/live_data/rclone_state.json
 ```
 
-### Monitor disk usage during recording
+### Recording sizes
 
 ```bash
-#!/bin/bash
-# Track how much data each recording session uses
-
-grep "Recording to" ~/logs/*.log | while read line; do
-  file=$(echo "$line" | grep -oP "(?<=to ).*(?=\s)")
-  if [ -f "$file" ]; then
-    size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null)
-    echo "$file: $(numfmt --to=iec-i --suffix=B $size 2>/dev/null || echo $size bytes)"
-  fi
-done
+grep -E "^Recorded:|Recorded:" ~/multi-channel-rpi-eco-monitoring/logs/logfile.log | tail -n 20
 ```
 
 ---
@@ -369,31 +350,25 @@ done
 
 **No logs appearing**:
 ```bash
+# Is the service running?
+sudo systemctl status eco-monitor.service
+
 # Check directory exists
-ls -la ~/logs/
-
-# Check permissions
-touch ~/logs/test.log
-
-# If touch fails, fix:
-chmod 755 ~/logs
+ls -la ~/multi-channel-rpi-eco-monitoring/logs/
 ```
 
 **Logs full of errors**:
 ```bash
-# Get error summary
-grep "\[phase=error\]" ~/logs/*.log | head -5
-
-# Most common error?
-grep "\[phase=error\]" ~/logs/*.log | sort | uniq -c | sort -rn
+# Most common error lines
+grep -iE "error|failed" logs/logfile.log | sed 's/^\[[^]]*\] //' | sort | uniq -c | sort -rn | head
 ```
 
 **Can't find specific event**:
 ```bash
 # Unsure of exact format? Search for keywords:
-grep -i "upload" ~/logs/*.log
-grep -i "recording" ~/logs/*.log
-grep -i "error" ~/logs/*.log
+grep -i "upload" logs/logfile.log
+grep -i "recording" logs/logfile.log
+grep -i "error" logs/logfile.log
 ```
 
 ---
@@ -401,5 +376,5 @@ grep -i "error" ~/logs/*.log
 ## See Also
 
 - [troubleshooting.md](troubleshooting.md) - Interpreting error messages
-- [advanced_configuration.md](advanced_configuration.md) - Log configuration options
-- [config.md](config.md) - `log_output_dir` setting
+- [advanced_configuration.md](advanced_configuration.md) - Runtime optimizations and their log lines
+- [config.md](config.md) - Configuration reference

@@ -2,7 +2,7 @@
 
 This document contains additional setup instructions for specialized configurations and optimizations for the multi-channel Raspberry Pi ecosystem monitoring system.
 
-> **Note**: For fundamental configuration of operational modes (Forest/Home/Test) and how to safely edit `config.json`, please refer to the [Configuration & Operational Scenarios](../README.md#configuration--operational-scenarios) section in the `README.md`.
+> **Note**: For the `config.json` options (`upload_enabled`, `test_mode`, sensor and system settings) and how to safely edit the file, see [config.md](config.md).
 
 ## GPIO Shutdown Button via the Installer (Recommended)
 
@@ -19,13 +19,13 @@ The installer detects the sensor type from `config.json` and suggests the approp
 
 The manual and helper-script methods below are still available as alternatives.
 
-## Shutdown Button Setup for Sipeed 7-Mic Array
+## Shutdown Button Setup for Sipeed Mic Array
 
 ![GPIO Pin on Raspberry Pi Zero 2 W](https://i.sstatic.net/yHddo.png)
 
 *GPIO Pin on Raspberry Pi Zero 2 W.*
 
-If using Sipeed 7-Mic Array sensor, you can set up a hardware shutdown button using device tree overlay:
+If using the Sipeed sensor (`Sipeed7Mic`), you can set up a hardware shutdown button using device tree overlay (this is what installer menu 3 does; `record.py` has no Python button listener for Sipeed):
 
 * Edit `/boot/config.txt` (or `/boot/firmware/config.txt` on newer OS versions):
   ```
@@ -94,6 +94,8 @@ sudo ./enable_system_shutdown_button.sh 26 ./config.json
 sudo reboot
 ```
 
+The first argument is the GPIO pin (default `26`); use `21` for Sipeed units.
+
 What it does:
 * Adds (or replaces) `dtoverlay=gpio-shutdown,gpio_pin=26,active_low=1,gpio_pull=up` in boot config.
 * Sets `sys.use_system_shutdown_button=1` in `config.json`.
@@ -103,16 +105,10 @@ What it does:
 For long-term battery-powered monitoring deployments, you can reduce power consumption with these configurations:
 
 ### Disable HDMI Output
-* **Option 1: Permanent configuration** (add to `/boot/config.txt`, recommended):
+* Add to `/boot/config.txt` (or `/boot/firmware/config.txt`):
   ```
   hdmi_blanking=1
   hdmi_force_hotplug=0
-  ```
-
-* **Option 2: Run on startup** (legacy `recorder_startup_script.sh` — only if still using the /etc/profile method):
-  ```
-  # Disable HDMI to save power
-  tvservice -o
   ```
 
 ### Disable Bluetooth
@@ -122,17 +118,16 @@ For long-term battery-powered monitoring deployments, you can reduce power consu
   ```
 
 ### Disable Activity LED
-* **Option 1: Add to `/boot/config.txt`**:
+* Done automatically: `eco-monitor.service` sets the `ACT`/`led0` trigger to `none` and brightness to `0` at every start.
+* To make it permanent from boot as well, add to `/boot/config.txt`:
   ```
   dtparam=act_led_trigger=none
   dtparam=act_led_activelow=on
   ```
 
-* **Option 2: Run on startup** (legacy `recorder_startup_script.sh` — only if still using the /etc/profile method):
-  ```
-  # Disable activity LED to save power
-  echo 0 > /sys/class/leds/led0/brightness
-  ```
+### Sipeed Board LEDs
+* Done automatically: `eco-monitor.service` runs `led_off.sh` at every start, which sends `e` to the board's serial port `/dev/ttyACM0` (no-op if the device is absent).
+* To switch them on for a visual check: `./led_on.sh` (sends `E`). The user needs read/write access to `/dev/ttyACM0` (e.g. member of the `dialout` group).
 
 ### Additional Power Saving Tips
 * Use a quality power supply with appropriate voltage/current
@@ -341,14 +336,13 @@ it logs `already-synced` and returns immediately — skipping the previous
 fixed 10-second `sleep`. This keeps the upload loop fast and avoids
 unnecessary wake-ups on battery power.
 
-New phase values in the time-sync log contract:
-* `check-ntp` — about to inspect `timedatectl`
-* `already-synced` — clock already synchronized, no action taken
-* `sync-ntp` — NTP re-sync forced (previous behavior)
+The script tracks internal phases (`check-ntp`, `already-synced`, `sync-ntp`) but prints only plain messages, and its output goes to the journal (not to `logs/logfile.log`):
+* `Internet detected and clock already synced. Time not updated.`
+* `Internet detected, syncing time via NTP`
 
 **Filter:**
 ```bash
-grep -hE "already-synced|sync-ntp" logs/*.log
+sudo journalctl -u eco-monitor.service | grep -E "already synced|syncing time via NTP"
 ```
 
 ### Automated Offline Time Synchronization (Zero-Touch)
@@ -367,17 +361,23 @@ The automated system executes two sequential background probes against the local
 2. **Gateway HTTP Date Header Harvesting (Ports 80, 443, 8080, 8081)**:
    If the gateway does not respond to NTP, the RPi sends a rapid HTTP `HEAD` request to common web-admin ports of the gateway IP. Almost all local routers run a web configuration panel on port 80 or 443. The RPi captures the HTTP response's standard `Date` header, extracts the accurate calendar time, synchronizes the system clock, and writes it to the RTC.
 
-If either of the probes succeeds, the clock is instantly updated within 2 seconds. If both probes fail (e.g., if there is no local Wi-Fi gateway or the router is offline), the system bypasses time sync gracefully without blocking or crashing, and starts recording using the current system time.
+If either of the probes succeeds, the clock is updated within a few seconds (2 s NTP timeout, 1.5 s per HTTP port). If both probes fail (e.g., if there is no local Wi-Fi gateway or the router is offline), the system bypasses time sync gracefully without blocking or crashing, and starts recording using the current system time.
 
 #### Operator Workflow (Zero-Touch)
 
 The field operator does not need to perform any manual intervention:
 
-1. Turn on the local field Wi-Fi router (which has its own clock set or was synchronized).
+1. Turn on the local field Wi-Fi router (which has its own clock set or was synchronized). The Pi must already know this network (saved WiFi credentials).
 2. Power on the Raspberry Pi (MAARU).
 3. The RPi connects to the Wi-Fi network, silently synchronizes its system time from the router in less than 2 seconds, and automatically launches `record.py` with the correct system time.
 
 *No mobile web browser, terminal typing, SSH connection, or manual operator instructions are required.*
+
+Before any of this, the service restores the last saved time from `/etc/fake-hwclock.data`, so without a gateway the clock starts from the last saved value rather than from 1970. If no gateway is available you can still set the time over SSH:
+
+```bash
+ssh pi@<hostname>.local "sudo bash ~/multi-channel-rpi-eco-monitoring/update_time.sh --epoch $(date +%s)"
+```
 
 ### State Manager: WAV + FLAC Tracking
 
@@ -393,35 +393,19 @@ verify which files are queued for upload on a given Pi:
 python3 state_manager.py init-scan-mark <data_dir> <state_file> | jq '.files_to_upload'
 ```
 
-## Troubleshooting PyAudio Installation
+## Python Dependencies
 
-If PyAudio installation fails on Raspberry Pi, try these alternatives:
+The recorder does not use PyAudio (audio is captured with `arecord`). It needs only these system packages; there is no `pip` step and no `requirements.txt`:
 
-### Option 1: Use system package (recommended for Raspberry Pi)
 ```bash
-sudo apt-get install python3-pyaudio python3-psutil
+sudo apt-get install -y python3-psutil python3-rpi.gpio alsa-utils ffmpeg rclone jq curl wget git
 ```
 
-### (DEPRECATED) Option 2: Manual installation with pip
+Test installation:
 ```bash
-# This method is deprecated as the project now relies on system packages
-# Ensure dependencies are installed
-sudo apt-get install portaudio19-dev python3-dev
-
-# Install PyAudio
-pip install --no-cache-dir pyaudio
+python3 -c "import psutil, RPi.GPIO; print('Python dependencies OK')"
 ```
 
-### (DEPRECATED) Option 3: Force binary installation
-```bash
-pip install --only-binary=all pyaudio
-```
-
-### Test installation:
-```bash
-python3 -c "import pyaudio; print('PyAudio installed successfully')"
-```
-    
 ## Useful Shell Shortcuts
 
 To speed up *debugging* and monitoring when connected via SSH, install shell shortcuts via the installer (re-run menu **4** after updating the repo so `monitor` picks up new checks):
@@ -455,44 +439,38 @@ source ~/.bashrc
 
 After install, type **`monitor`** or **`healtheco`** in the shell.
 
-## Log Filter Examples (Prefix Contract)
+## Log Filter Examples
 
-The runtime logs use structured prefixes such as:
+`record.py` writes plain messages (timestamp only when the minute changes) to `logs/logfile.log` and the journal. Upload lines carry the `rclone_upload.sh` phase:
 
-* `[startup][mode=online][phase=upload-loop] ...`
-* `[upload][phase=verify][component=verify] ...`
-* `[time-sync][mode=ntp][phase=sync-ntp] ...`
+* `[upload] [upload:<phase>] ...` where phase is `init`, `scan-mark`, `rclone-copy`, `verify`, `finalize` or `error`
+* `[gist-sync] ...` from `sync_rclone_config.sh`
+* `[wifi-field-timer] ...` from the WiFi timer (journal only)
 
-This makes targeted filtering easier during debugging.
-
-### Find all startup logs in offline mode
-
-```bash
-grep -h "\[startup\]\[mode=offline\]" logs/*.log
-```
+See [log_guide.md](log_guide.md) for the full list.
 
 ### Follow only upload verify events live
 
 ```bash
-tail -F logs/*.log | grep --line-buffered "\[upload\]\[phase=verify\]"
+tail -F logs/logfile.log | grep --line-buffered "\[upload:verify\]"
 ```
 
 ### Show only terminal upload outcomes (success or error)
 
 ```bash
-grep -hE "\[upload\]\[phase=(finalize|error)\]" logs/*.log
+grep -hE "Upload sync completed successfully|Upload sync failed" logs/logfile.log
 ```
 
 ### Show only time synchronization flow
 
 ```bash
-grep -h "\[time-sync\]" logs/*.log
+sudo journalctl -u eco-monitor.service | grep -iE "time sync|NTP|gateway"
 ```
 
 ### Show rclone copy-phase lines only
 
 ```bash
-grep -h "\[upload\]\[phase=rclone-copy\]" logs/*.log
+grep -h "\[upload:rclone-copy\]" logs/logfile.log
 ```
 
 `rclone` one-line stats are emitted every `30s` during this phase (`--stats 30s --stats-one-line`).
@@ -500,30 +478,33 @@ grep -h "\[upload\]\[phase=rclone-copy\]" logs/*.log
 ### Show helper state-scan lines only
 
 ```bash
-grep -h "\[component=upload-helper\]" logs/*.log
+grep -h "\[upload:scan-mark\]" logs/logfile.log
 ```
 
 ### Count upload errors per day
 
 ```bash
-grep -h "\[upload\]\[phase=error\]" logs/*.log | cut -d']' -f1 | tr -d '[' | cut -d' ' -f1 | sort | uniq -c
+sudo journalctl -u eco-monitor.service -o short-iso | grep "Upload sync failed" | cut -c1-10 | sort | uniq -c
 ```
 
 ### Quick health snapshot (last 200 lines)
 
 ```bash
-tail -n 200 logs/*.log | grep -E "\[phase=(error|finalize|shutdown)\]"
+tail -n 200 logs/logfile.log | grep -iE "error|failed|WATCHDOG|Storage low"
 ```
 
 ## Side Notes
 
 * Be careful not to pull the power cable from the Pi (or pull the plug from the socket) - this has been known to corrupt the SD card, and requires a fresh install.
 * Using a battery bank is a safe option - if it runs out of power, the Pi tends to shutdown safely.
-* To safely power off, use the appropriate method for your sensor (e.g. button on Respeaker 6-Mic array or software shutdown), and wait for the green light (on the Pi) to stop flashing.
+* To safely power off, use the shutdown button (if configured) or `sudo shutdown -h now`, and wait for the Pi to finish shutting down. The service switches the ACT LED off, so the green light may not flash as on a stock Pi.
 
 ## Make a new disk image
 
 * Take the microSD card from the Pi, and make a copy of it onto your computer [(How?)](https://howchoo.com/pi/create-a-backup-image-of-your-raspberry-pi-sd-card-in-mac-osx).
   * Note: May need to run ``sudo -i`` (before sudo dd...) - this puts the terminal into root mode
   * Note: After running sudo dd... it may take a while - You get no indication of how far through you are - as long as the no error appears in the terminal, or no new line for code entry, just wait (up to 1 hour for 32 GB SD card)
-* Now you can clone as many of these SD cards as you need for your monitoring devices with no extra setup required - install on new SD card with Balena Etcher
+* Now you can clone as many of these SD cards as you need for your monitoring devices - install on new SD card with Balena Etcher
+  * Before taking the image, delete `/home/pi/.fs_expanded`, otherwise `check_fs_expanded.sh` will not expand the root filesystem on the new cards
+  * Each Pi still uploads to its own `RPiID-<serial>` folder, because the ID is read from the CPU at boot
+  * The copy contains `config.json` (including any `github_token`), so treat the image as private

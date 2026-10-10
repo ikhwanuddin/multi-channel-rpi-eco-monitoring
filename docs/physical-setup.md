@@ -2,9 +2,9 @@
 
 ## Overview
 
-MAARU (Multi-Channel Acoustic Monitoring Unit) is an ecosystem monitoring system specifically designed for extreme tropical environments. This document explains each hardware component, how it works, and how it is protected from natural conditions.
+MAARU (Multichannel Acoustic Autonomous Recording Unit) is an ecosystem monitoring system; this document describes this fork's build for extreme tropical environments. This document explains each hardware component, how it works, and how it is protected from natural conditions.
 
-**Interactive Visualisation**: Open [MAARU Physical Setup Diagram](../../maaru-physical-setup.html) to view the layered structure and physical connections.
+**Diagram**: See [maaru-physical-setup.svg](./maaru-physical-setup.svg) for the layered structure and physical connections (editable source: `maaru-physical-setup.af`, Affinity Designer).
 
 ---
 
@@ -61,7 +61,7 @@ Each layer has a specific function for survival in tropical rainforest.
 
 #### Function in MAARU
 1. **Input**: Receives audio signal from microphone sensor
-2. **Processing**: Encodes audio in FLAC format real-time
+2. **Processing**: Records WAV with `arecord`, then compresses each finished file to FLAC with `ffmpeg`
 3. **Storage**: Manages local files on Micro SD card
 4. **Network**: Uploads files via USB WiFi adapter (optional)
 5. **Logging**: Records all events for debugging
@@ -90,28 +90,30 @@ MAARU supports two sensor types. Choose based on needs and budget.
 - Battle-tested on many projects
 
 **Disadvantages:**
-- Only 6 channels (vs Sipeed 7-mic)
+- Only 6 channels (vs 7 mics on the Sipeed array)
+- Needs the Seeed voicecard driver: legacy Raspbian Buster with a frozen kernel
 - Must solder GPIO pins if no header pre-installed
 
 **Connected to**: GPIO pins on Raspberry Pi (I2S protocol)
 
 ---
 
-#### **Option B: Sipeed 7-Mic Array**
+#### **Option B: Sipeed 6+1 Mic Array + MA-USB8 board (sensor `Sipeed7Mic`)**
 
 **Specifications:**
-- **Channels**: 7 simultaneously recorded channels
+- **Channels**: 8 recorded channels: CH0–CH5 ring mics, CH6 beamformed output (time-aligned average of CH0–CH5, not a physical mic), CH7 centre mic ([Sipeed wiki](https://wiki.sipeed.com/hardware/en/modules/micarray_usbboard_bl616.html))
+- **Recorded format**: 16 kHz, 16-bit (`S16_LE`); the board streams 48 kHz and ALSA `plughw` resamples
 - **Connection**: USB Type-C (or USB-A via adapter)
 - **Power**: Self-powered via USB (0.5-0.8A)
 - **Frequency Response**: 50 Hz - 20 kHz
-- **Beamforming**: Software-based, for noise cancellation
+- **Beamforming**: done on the board (CH6); direction steerable in 30° steps over the serial port. The recorder does not change it
 - **Codec**: Built-in USB Audio Class compliant
 - **Cost**: ~$50-70
 
 **Advantages:**
-- 7 channels (1 more than ReSpeaker)
+- 7 mics (1 more than ReSpeaker) plus the beamformed channel
 - Self-powered via USB (easier power management)
-- Plug-and-play (minimal setup)
+- Plug-and-play (minimal setup), works on current Raspberry Pi OS
 - More modular
 
 **Disadvantages:**
@@ -123,8 +125,8 @@ MAARU supports two sensor types. Choose based on needs and budget.
 ---
 
 #### Sensor Recommendations
-- **Location with stable WiFi, long recording sessions**: Sipeed 7-Mic (more channels, plug-and-play)
-- **Tight budget, power budget critical**: ReSpeaker 6-Mic (GPIO, more power-efficient)
+- **Location with stable WiFi, long recording sessions**: Sipeed (more channels, plug-and-play, current OS)
+- **Tight budget, power budget critical**: ReSpeaker 6-Mic (GPIO, more power-efficient; legacy software stack)
 
 ---
 
@@ -141,17 +143,18 @@ MAARU supports two sensor types. Choose based on needs and budget.
 
 **File Capacity Example:**
 ```
-Format: FLAC
-Channels: 7
+Format: WAV (upper bound; FLAC is smaller, depending on content)
+Channels: 8 (Sipeed)
 Sample Rate: 16 kHz
 Bit Depth: 16 bits
 Duration per session: 20 minutes
 
-Size per session ≈ 270 MB
+Size per session ≈ 307 MB as WAV
 
-64 GB card → ~237 sessions (80 hours of recording)
-128 GB card → ~474 sessions (158 hours)
-256 GB card → ~948 sessions (316 hours)
+64 GB card → at least ~200 sessions (~67 hours of recording)
+128 GB card → at least ~400 sessions (~133 hours)
+256 GB card → at least ~800 sessions (~267 hours)
+(ignoring the space used by the OS; the recorder shuts the Pi down below 1 GB free)
 ```
 
 **Location**: Within the food box, protected from weather
@@ -184,7 +187,7 @@ Size per session ≈ 270 MB
 
 **Power Consideration**: 
 - Total USB power available: ~1A (shared with Sipeed if used)
-- If using Sipeed 7-Mic: Ensure powerbank can supply ≥2A for both Mic + WiFi
+- If using Sipeed: Ensure powerbank can supply ≥2A for both Mic + WiFi
 
 ---
 
@@ -397,7 +400,7 @@ Recording Session Duration:
 ```
 Raspberry Pi (3B): 1.0A
 ReSpeaker 6-Mic: 0.5A
-OR Sipeed 7-Mic: 0.8A
+OR Sipeed: 0.8A
 USB WiFi: 0.5A
 ───────────
 Peak (with both Mic + WiFi): 2.3A (Sipeed) or 2.0A (ReSpeaker)
@@ -413,7 +416,7 @@ Typical: ~1.0A (ReSpeaker)
 OR
 
 Raspberry Pi: 0.7A
-Sipeed 7-Mic: 0.6A
+Sipeed: 0.6A
 ───────────
 Typical: ~1.3A (Sipeed)
 ```
@@ -430,7 +433,7 @@ Duration = Usable Energy ÷ Average Current Draw
 Scenario 1: ReSpeaker 6-Mic only
 Duration = 17,000 mAh ÷ 1.0A = 17 hours
 
-Scenario 2: Sipeed 7-Mic only
+Scenario 2: Sipeed only
 Duration = 17,000 mAh ÷ 1.3A = 13 hours
 
 Scenario 3: With WiFi enabled (upload every hour)
@@ -443,7 +446,7 @@ Duration = 17,000 mAh ÷ 1.8A = 9.4 hours
 
 ### Pre-Deployment
 
-- [ ] Raspberry Pi flashed with Raspberry Pi OS Lite (latest)
+- [ ] Raspberry Pi flashed with Raspberry Pi OS Lite (latest), user `pi`, repository installed (`sudo python3 installer.py`)
 - [ ] Sensor (ReSpeaker or Sipeed) tested & connected
 - [ ] Micro SD card formatted & mounted
 - [ ] USB WiFi adapter installed (if needed)
@@ -461,7 +464,7 @@ Duration = 17,000 mAh ÷ 1.8A = 9.4 hours
 - [ ] Verify rope doesn't restrict thermal airflow
 - [ ] Confirm Micro USB port facing downward (water runoff)
 - [ ] Test WiFi reception (if enabled)
-- [ ] Record 5 minutes audio & verify quality
+- [ ] Record a short test & verify quality (e.g. `test_mode: 1` and a small `record_length`, then restore the deployment values)
 - [ ] Check all seals with water spray (non-damaging test)
 - [ ] Mark location & date on unit
 
@@ -529,7 +532,7 @@ Shortfall: 7,000 mAh (need additional powerbank or solar panel)
 
 - [Raspberry Pi Official Specs](https://www.raspberrypi.org/specifications/)
 - [ReSpeaker 6-Mic Array Docs](https://wiki.seeedstudio.com/ReSpeaker_6-Mic_Array_for_Raspberry_Pi/)
-- [Sipeed 7-Mic Array Docs](https://github.com/sipeed/spk1110)
+- [Sipeed MA-USB8 Mic Array USB board](https://wiki.sipeed.com/hardware/en/modules/micarray_usbboard_bl616.html)
 - [Dry Bag Best Practices](https://www.rei.com/learn/expert-advice/dry-bags)
 - [Tropical Climate Electronics Protection](https://en.wikipedia.org/wiki/Salt_spray_testing)
 

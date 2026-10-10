@@ -1,8 +1,10 @@
 # multi-channel-rpi-eco-monitoring
 
-Autonomous multichannel acoustic recording system for ecosystem monitoring using Raspberry Pi and the Sipeed 7-Mic Array (or legacy Respeaker hardware).
+Autonomous multichannel acoustic recording system for ecosystem monitoring using a Raspberry Pi and the Sipeed 6+1 Mic Array on the Sipeed MA-USB8 USB audio board (legacy ReSpeaker 4-Mic / 6-Mic hardware is still supported).
 
-Part of the **MAARU** (Multichannel Autonomous Acoustic Recording Unit) project. Full project details: [beckyheath.github.io/MAARU](https://beckyheath.github.io/MAARU/)
+Part of the **MAARU** (Multichannel Acoustic Autonomous Recording Unit) project. Full project details: [beckyheath.github.io/MAARU](https://beckyheath.github.io/MAARU/)
+
+This repository is a fork of [BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring), adapted by ikhwanuddin to run the Sipeed array on current Raspberry Pi OS (tested on Raspberry Pi Zero 2 W, 3B+ and 4B).
 
 ---
 
@@ -10,7 +12,7 @@ Part of the **MAARU** (Multichannel Autonomous Acoustic Recording Unit) project.
 
 ### New to this project?
 
-1. **Read first**: [`docs/quickstart.md`](docs/quickstart.md) - Get running in 5 minutes
+1. **Read first**: [`docs/quickstart.md`](docs/quickstart.md) - Install and start recording
 2. **Configure**: [`docs/config.md`](docs/config.md) - All options explained
 3. **Deploy**: [`docs/cloud_setup.md`](docs/cloud_setup.md) - Enable cloud uploads (optional)
 4. **Monitor**: [`docs/log_guide.md`](docs/log_guide.md) - Understand logs
@@ -26,45 +28,51 @@ Part of the **MAARU** (Multichannel Autonomous Acoustic Recording Unit) project.
 
 ## 📋 What This Does
 
-Records high-quality multichannel audio from ecosystem monitoring sites:
+Records multichannel audio at ecosystem monitoring sites:
 
-- **7-channel recording** using Sipeed 7-Mic Array (recommended)
-- **16-bit, 16 kHz** or customizable quality
-- **FLAC compression** for efficient storage
-- **Local recording** or **cloud upload** (Box, Google Drive, Dropbox, etc.)
-- **Auto-start on boot** for unattended deployments
-- **Structured logging** for debugging and analysis
+- **8-channel recording** from the Sipeed MA-USB8 board (6 ring mics, 1 beamformed channel, 1 centre mic), via `arecord`
+- **16 kHz, 16-bit** (`S16_LE`) WAV; ALSA `plughw` resamples from the board's native 48 kHz
+- **FLAC compression** (lossless, via `ffmpeg`) after each recording, optional
+- **Local recording** and optional **cloud upload** through rclone (Box, Google Drive, Dropbox, etc.)
+- **Auto-start on boot** via a systemd service (`eco-monitor.service`)
+- **Logging** to `logs/logfile.log` and the systemd journal
 
 ---
 
 ## 💾 Hardware Options
 
-### Recommended: Sipeed 7-Mic Array
-- Modern, reliable
+### Recommended: Sipeed 6+1 Mic Array + MA-USB8 board (sensor `Sipeed7Mic`)
+- USB Audio Class device, no extra kernel driver
 - No kernel freezing required
 - Works with current Raspberry Pi OS
 - Recommended for new deployments
 
-### Legacy: Respeaker 4-Mic / 6-Mic
-- Older hardware, still supported
-- Requires Raspbian Buster + kernel freeze
-- See [`docs/quickstart.md`](docs/quickstart.md) for legacy path
+### Legacy: ReSpeaker 4-Mic / 6-Mic (sensors `Respeaker4Mic`, `Respeaker6Mic`, `Respeaker_Custom`)
+- Older hardware, still in the code
+- Needs the Seeed voicecard driver, so in practice an older Raspbian Buster image with the kernel frozen
+- For this path, use the original repository ([BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring)) as the reference
 
 ---
 
 ## 🔧 Installation
 
-### Easiest: Prebuilt Image
-Download prebuilt image → Flash with Balena Etcher → Configure → Done
+There is **no prebuilt image** for the Sipeed version. (The disk image linked from Becky Heath's original repository is a legacy Raspbian Buster image for the ReSpeaker setup and does not contain this fork.)
 
-### Manual Setup (15 min)
+### Manual Setup (current Raspberry Pi OS)
+
+Several paths are hard-coded to `/home/pi` (for example `/home/pi/pre_upload_dir`), so create the user **`pi`** when flashing the OS and clone the repository into `/home/pi`.
+
 ```bash
-git clone https://github.com/your-org/multi-channel-rpi-eco-monitoring.git
+sudo apt-get update
+sudo apt-get install -y git python3-psutil python3-rpi.gpio alsa-utils ffmpeg rclone jq curl wget
+
+cd ~
+git clone https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring.git
 cd multi-channel-rpi-eco-monitoring
-pip install -r requirements.txt
-sudo apt-get install portaudio19-dev
-python setup_config.py
+sudo python3 installer.py      # choose 5 = Full setup
 ```
+
+There is no `requirements.txt` and no `pip install` step; the code runs from source using the system packages above. The installer does not install packages itself.
 
 See [`docs/quickstart.md`](docs/quickstart.md) for detailed steps.
 
@@ -74,13 +82,14 @@ See [`docs/quickstart.md`](docs/quickstart.md) for detailed steps.
 
 | Document | Purpose |
 |----------|----------|
-| [`quickstart.md`](docs/quickstart.md) | Get started in 5 minutes |
+| [`quickstart.md`](docs/quickstart.md) | Install and first recording |
 | [`config.md`](docs/config.md) | Configuration reference |
 | [`cloud_setup.md`](docs/cloud_setup.md) | Cloud upload setup |
 | [`troubleshooting.md`](docs/troubleshooting.md) | Common issues & solutions |
 | [`log_guide.md`](docs/log_guide.md) | Log format & analysis |
 | [`architecture.md`](docs/architecture.md) | System design |
-| [`advanced_configuration.md`](docs/advanced_configuration.md) | Power saving, shutdown buttons, etc. |
+| [`advanced_configuration.md`](docs/advanced_configuration.md) | Power saving, shutdown buttons, WiFi timer, etc. |
+| [`physical-setup.md`](docs/physical-setup.md) | Enclosure and hardware notes |
 | [`index.md`](docs/index.md) | Documentation hub |
 
 ---
@@ -89,27 +98,32 @@ See [`docs/quickstart.md`](docs/quickstart.md) for detailed steps.
 
 ```
 multi-channel-rpi-eco-monitoring/
-├── README.md                    (this file)
-├── docs/                        (all documentation)
-│   ├── quickstart.md
-│   ├── config.md
-│   ├── cloud_setup.md
-│   ├── troubleshooting.md
-│   ├── log_guide.md
-│   ├── architecture.md
-│   ├── advanced_configuration.md
-│   └── index.md
+├── README.md                     (this file)
+├── docs/                         (all documentation)
 │
-├── python_record.py             (main recorder)
-├── setup_config.py              (configuration wizard)
-├── recorder_startup_script.sh   (auto-start on boot)
-├── rclone_upload.sh             (cloud upload)
-├── sensors/                     (sensor implementations)
-├── audio_sensor_scripts/        (helper scripts)
-├── logs/                        (runtime logs)
-├── multichannel_audio/          (recorded audio files)
-└── config.json                  (your configuration)
+├── installer.py                  (interactive installer: config.json, service, GPIO, shortcuts, WiFi timer)
+├── record.py                     (main recorder, run by eco-monitor.service)
+├── eco-monitor.service           (systemd unit template)
+├── wifi_field_timer.sh           (field WiFi power saving)
+├── wifi-field-timer.service      (systemd unit template for the WiFi timer)
+├── rclone_upload.sh              (cloud upload, called by record.py)
+├── state_manager.py              (upload state tracking, used by rclone_upload.sh)
+├── sync_rclone_config.sh         (sync rclone.conf with a private GitHub Gist)
+├── update_time.sh                (time sync: NTP, gateway, or SSH epoch)
+├── offline_time_sync.py          (time sync from the Wi-Fi gateway)
+├── discover_serial.py            (prints the Pi ID, RPiID-<cpu serial>)
+├── check_fs_expanded.sh          (one-time root filesystem expansion)
+├── enable_system_shutdown_button.sh (helper for the gpio-shutdown overlay)
+├── led_on.sh / led_off.sh        (Sipeed board LEDs on/off)
+├── clean_live_data.sh            (manual deletion of local live_data files)
+├── sensors/                      (sensor classes)
+├── audio_sensor_scripts/         (asound.state mixer levels)
+├── pyproject.toml                (repository metadata only)
+├── logs/                         (runtime log, created at first run)
+└── config.json                   (your configuration, created by installer.py, git-ignored)
 ```
+
+Recordings are written outside the repository, by default under `/home/pi/monitoring_data/live_data/RPiID-<serial>/<YYYY-MM-DD>/`.
 
 ---
 
@@ -131,22 +145,25 @@ multi-channel-rpi-eco-monitoring/
 
 ## 💡 Key Features
 
-- ✅ **7-channel recording** with structured logging
+- ✅ **8-channel recording** (Sipeed) with logging to file and journal
 - ✅ **Multiple cloud services** via rclone (Box, Drive, Dropbox, S3, etc.)
-- ✅ **Auto-start on boot** - no manual intervention needed
-- ✅ **Graceful shutdown** - with optional GPIO button
-- ✅ **State tracking** - resume uploads after reboot
-- ✅ **Power saving** - HDMI, Bluetooth, LED disable options
-- ✅ **Configurable parameters** - sample rate, bit depth, duration, codec
+- ✅ **Auto-start on boot** via systemd, with automatic restart on crash
+- ✅ **Graceful shutdown** with an optional GPIO button (`dtoverlay=gpio-shutdown`)
+- ✅ **State tracking** - uploads are verified on the remote before local files are deleted
+- ✅ **Power saving** - Sipeed and ACT LEDs off, CPU governor switching, field WiFi timer
+- ✅ **Configurable parameters** - recording length, pause between recordings, FLAC on/off, daily reboot times
+
+> **Note**: on every service start, `record.py` force-updates the repository to `origin/master` (`git reset --hard`, then `git clean` keeping `config.json` and `logs/`). Local edits on the Pi are discarded. See [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
 ## ⚙️ System Requirements
 
-- **Raspberry Pi**: Zero 2 W, 3B+, 4B+ (minimum 512 MB RAM)
+- **Raspberry Pi**: Zero 2 W, 3B+, 4B (tested; minimum 512 MB RAM)
+- **OS**: current Raspberry Pi OS, user `pi`
 - **Storage**: Class 10 SD card, **minimum 150 MB/s** read/write
 - **Power**: 5V 2A+ supply
-- **Sensor**: Sipeed 7-Mic Array (recommended) or Respeaker 6-Mic
+- **Sensor**: Sipeed 6+1 Mic Array + MA-USB8 board (recommended) or ReSpeaker 4/6-Mic (legacy)
 
 ---
 
@@ -165,7 +182,7 @@ For a comprehensive index, see [`docs/index.md`](docs/index.md).
 
 ## 👥 Credits
 
-**Original project**: Becky Heath and contributors ([BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring))
+**Original project**: Becky Heath and contributors ([BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring)), building on Sarab Sethi's [rpi-eco-monitoring](https://github.com/sarabsethi/rpi-eco-monitoring)
 
 **Contributors**: ikhwanuddin, Neel Le Penru, James Skinner, Sarab Sethi, and others
 

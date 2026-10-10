@@ -2,9 +2,9 @@
 
 ## What is MAARU?
 
-**MAARU** = Multi-Channel Acoustic Monitoring Unit
+**MAARU** = Multichannel Acoustic Autonomous Recording Unit
 
-A waterproof, tropical-climate-hardened system that records ecosystem sounds on a Raspberry Pi with 6-7 channel microphone arrays. Records for 6-18 hours per charge, stores audio locally, and can upload to cloud storage.
+A waterproof, tropical-climate-hardened system that records ecosystem sounds on a Raspberry Pi with a multichannel microphone array (Sipeed: 8 recorded channels; ReSpeaker 6-Mic: 6). Records for 6-18 hours per charge, stores audio locally, and can upload to cloud storage.
 
 **Location**: Tethered to a tree in tropical rainforest (Lampung, Indonesia)
 
@@ -21,7 +21,7 @@ Layer 2: Food Box (Main Enclosure) ← All electronics here
     - Raspberry Pi (brain)
     - Sensor Mic Array (ear) — pick ONE:
       • ReSpeaker 6-Mic (GPIO) → 1.0A power, 6 channels
-      • Sipeed 7-Mic (USB) → 1.3A power, 7 channels
+      • Sipeed 6+1 Mic + MA-USB8 board (USB) → 1.3A power, 8 recorded channels
     - Micro SD Card (memory)
     - USB WiFi Adapter (network)
     - Silica Gel (dries humidity)
@@ -45,7 +45,7 @@ Mounting: Rope & Rubber (rope + rubber) → Tied to tree
 | ReSpeaker 6-Mic | 0.3A |
 | **Total (ReSpeaker)** | **~1.0A** |
 | --- | --- |
-| Sipeed 7-Mic | 0.6A |
+| Sipeed | 0.6A |
 | **Total (Sipeed)** | **~1.3A** |
 
 ### **Recording Duration**
@@ -76,16 +76,16 @@ Mounting: Rope & Rubber (rope + rubber) → Tied to tree
 
 ### **Microphone: ReSpeaker or Sipeed?**
 
-| Aspect | ReSpeaker 6-Mic | Sipeed 7-Mic |
+| Aspect | ReSpeaker 6-Mic | Sipeed 6+1 Mic (MA-USB8) |
 |--------|-----------------|--------------|
-| **Channels** | 6 | 7 |
+| **Channels** | 6 | 8 (6 ring + beamformed + centre) |
 | **Connection** | GPIO (I2S) | USB |
 | **Power** | 0.3A | 0.6A |
 | **Cost** | $60-80 | $50-70 |
-| **Setup** | More complex | Plug-and-play |
+| **Setup** | More complex (legacy OS, frozen kernel) | Plug-and-play, current OS |
 | **Best For** | Power-critical | Modularity |
 
-→ **Recommended**: Sipeed 7-Mic (more channels, simpler)
+→ **Recommended**: Sipeed (more channels, simpler, current OS)
 
 ---
 
@@ -120,13 +120,13 @@ Mounting: Rope & Rubber (rope + rubber) → Tied to tree
 
 ## 📊 Storage Capacity
 
-**One 20-minute recording = ~270 MB** (7-channel FLAC @ 16 kHz)
+**One 20-minute recording ≈ 307 MB as WAV** (8 channels, 16 kHz, 16-bit); the FLAC file is smaller, depending on content
 
-| SD Card | Recording Hours | Days (20 min sessions) |
-|---------|-----------------|----------------------|
-| 64 GB | 80 hours | 5 months (continuous 20-min sessions) |
-| 128 GB | 158 hours | 10 months |
-| 256 GB | 316 hours | 20 months |
+| SD Card | Recording Hours (WAV upper bound) |
+|---------|-----------------|
+| 64 GB | at least ~67 hours |
+| 128 GB | at least ~133 hours |
+| 256 GB | at least ~267 hours |
 
 **Recommended**: Rotate 64 GB cards monthly (backup + failover)
 
@@ -147,7 +147,7 @@ Powerbank (Dry Bag)
 
 **Key Connections:**
 - **ReSpeaker** → GPIO pins (I2S protocol)
-- **Sipeed** → USB port (USB Audio Class)
+- **Sipeed** → USB port (USB Audio Class, MA-USB8 board)
 - **WiFi** → USB port (optional, for SSH + uploads)
 - **Power** → Micro USB (5V 2A+ recommended)
 
@@ -163,22 +163,22 @@ If WiFi adapter is connected:
 # Find MAARU's IP (ask network admin)
 ssh pi@<IP_ADDRESS>
 
-# Default password: raspberry
-# Change it immediately!
+# Health snapshot (if shell shortcuts are installed)
+healtheco
 
 # Check recorded files
-ls -la /home/pi/monitoring_data/
+ls -laR /home/pi/monitoring_data/live_data/
 
-# Download a file
-scp pi@<IP>:/home/pi/monitoring_data/20240701_*.flac .
+# Download a day of recordings
+scp -r pi@<IP>:/home/pi/monitoring_data/live_data/RPiID-<serial>/<YYYY-MM-DD> .
 ```
 
-### **USB Direct Connection** (if WiFi fails)
+### **SD Card Direct** (if WiFi fails)
 
-1. Disconnect dry bag's USB cable from Micro USB
-2. Connect Micro USB directly to computer
-3. Mount as external drive
-4. Copy files
+1. Shut the Pi down (button or `sudo shutdown -h now`)
+2. Take out the Micro SD card
+3. Read it on a computer that can read the Linux (ext4) partition
+4. Copy `/home/pi/monitoring_data/live_data/`
 
 ---
 
@@ -186,7 +186,8 @@ scp pi@<IP>:/home/pi/monitoring_data/20240701_*.flac .
 
 | Problem | Likely Cause | Quick Fix |
 |---------|-------------|-----------|
-| **No sound recorded** | Sensor not connected | Check GPIO/USB cable, test with `arecord` |
+| **No sound recorded** | Sensor not connected | Check GPIO/USB cable, test with `arecord -l` |
+| **No files while on WiFi** | Recording pauses while internet is reachable | Expected; use `test_mode: 1` for bench tests |
 | **Slow file writes** | SD card aging | Replace with new card |
 | **Power shuts off early** | Weak powerbank | Replace or add 2nd powerbank |
 | **Water inside enclosure** | Silica gel saturated | Replace silica gel |
@@ -204,7 +205,7 @@ scp pi@<IP>:/home/pi/monitoring_data/20240701_*.flac .
 3. **Test before deployment** — Record 5 min in lab, verify audio quality + file integrity
 4. **Backup often** — Download files every week (SD cards can fail)
 5. **Keep spares** — Extra silica gel, USB cable, powerbank at site
-6. **Log everything** — Check `~/logs/` for errors, helps with debugging
+6. **Log everything** — Check `~/multi-channel-rpi-eco-monitoring/logs/logfile.log` (or `monitor`) for errors
 7. **Weather watch** — Heavy rain? Check enclosure afterwards
 
 ---
@@ -214,7 +215,7 @@ scp pi@<IP>:/home/pi/monitoring_data/20240701_*.flac .
 | Component | Cost | Notes |
 |-----------|------|-------|
 | **Raspberry Pi 3B** | $45 | Reusable, backbone |
-| **Sipeed 7-Mic** | $60 | Better than ReSpeaker for MAARU |
+| **Sipeed 6+1 Mic + MA-USB8** | $60 | Better than ReSpeaker for MAARU |
 | **Micro SD 64GB** | $15 | Replaceable annually |
 | **USB WiFi Adapter** | $20 | Optional but recommended |
 | **Powerbank 20K mAh** | $20 | Need 2 for 24hr operation |
@@ -240,7 +241,7 @@ scp pi@<IP>:/home/pi/monitoring_data/20240701_*.flac .
 | **[config.md](config.md)** | Need to customize settings |
 | **[troubleshooting.md](troubleshooting.md)** | Something broke |
 | **[log_guide.md](log_guide.md)** | Need to debug via logs |
-| **[MAARU Physical Setup Diagram](../../maaru-physical-setup.html)** | Visual learner |
+| **[MAARU Physical Setup Diagram](maaru-physical-setup.svg)** | Visual learner |
 
 ---
 
@@ -253,7 +254,7 @@ A: Yes, but more power-hungry (~1.5-2A), shorter runtime. Not recommended unless
 A: Yes! 30K mAh or 40K mAh available. More runtime but heavier & bulkier. Budget ~$30-50 for larger capacities.
 
 **Q: What if I want WiFi always on?**
-A: Cuts runtime by ~50%. Use 2 powerbanks. Or schedule WiFi upload every 2 hours instead of continuous.
+A: Cuts runtime by ~50%. Use 2 powerbanks. In the field, enable the field WiFi timer (installer menu 9), which puts WiFi to sleep after 20 minutes without a link.
 
 **Q: Can I run MAARU for 24 hours?**
 A: Yes, with 2 powerbanks. Swap at 12-hour mark. Or add solar panel (5W minimum) for trickle-charge.
@@ -271,10 +272,9 @@ A: Files become incomplete or corrupted. Check `dmesg` logs. Replace when this s
 - **Hardware Issues**: Check this doc + [physical-setup.md](physical-setup.md)
 - **Software Issues**: Check [config.md](config.md) + [troubleshooting.md](troubleshooting.md)
 - **Deployment Strategy**: Ask a biologist or field researcher
-- **Cloud Upload Setup**: See [readme.md](readme.md#cloud-upload)
+- **Cloud Upload Setup**: See [cloud_setup.md](cloud_setup.md)
 
 ---
 
-**Last Updated**: July 2024
 **For**: Multi-Channel RPi Eco-Monitoring Project (MAARU)
 **Location**: Lampung, Indonesia (tropical rainforest)

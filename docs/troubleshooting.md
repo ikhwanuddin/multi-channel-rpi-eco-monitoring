@@ -2,20 +2,21 @@
 
 Solutions for common issues with multi-channel ecosystem monitoring setup.
 
+Paths below assume the default layout: repository in `/home/pi/multi-channel-rpi-eco-monitoring`, log file `logs/logfile.log` inside it, recordings in `/home/pi/monitoring_data/live_data/RPiID-<serial>/`.
+
 ## Recording Issues
 
-### "No such device" error
+### "No such device" error / `arecord` fails
 
 **Problem**: Audio device not found.
 
 **Solutions**:
 ```bash
-# List available audio devices
-python discover_serial.py
-
-# Update device_index in config.json with correct number
-nano config.json
+# List available capture devices
+arecord -l
 ```
+
+`Sipeed7Mic` picks the first card in `arecord -l` whose line contains `MicArray` or `USB`, and falls back to card `1` (logged as `find_usb_audio_card: no Sipeed/USB card found ...`). There is no device index in `config.json`. If another USB audio device is plugged in, it may be picked instead: unplug it.
 
 Check connections:
 - USB cable firmly connected
@@ -35,12 +36,11 @@ Check connections:
 
 **Check recording settings**:
 ```bash
-# Test with verbose output
-python python_record.py --verbose
-
-# Check sample rate isn't too high
-nano config.json  # Verify sample_rate: 16000
+# See the arecord exit code, size and stderr for each recording
+sudo journalctl -u eco-monitor.service | grep -E "arecord|Recorded"
 ```
+
+Remember that on the Sipeed board CH6 is a beamformed channel and CH7 the centre mic ([Sipeed wiki](https://wiki.sipeed.com/hardware/en/modules/micarray_usbboard_bl616.html)).
 
 **Audio level too low**:
 ```bash
@@ -48,27 +48,28 @@ nano config.json  # Verify sample_rate: 16000
 alsamixer
 ```
 
+At start the sensor restores mixer levels from `audio_sensor_scripts/asound.state` (`alsactl --file ... restore`), so manual changes are overwritten on the next service start unless you save them into that file.
+
 ---
 
 ### "Overrun error" or dead channels
 
-**Problem**: Some channels record, others don't. Usually: `ERR (Unknown Error)`
+**Problem**: Some channels record, others don't, or `arecord stderr: overrun!!!` lines appear in the log.
 
-**Root cause**: SD card too slow.
+**Root cause**: often a slow SD card.
 
 **Solution**:
 ```bash
-# Check SD card speed
+# Check SD card read speed
 sudo hdparm -t /dev/mmcblk0
 
-# Expected: > 150 MB/s
-# If slower: replace with Class 10 SD card minimum 150 MB/s read/write
+# If slow: replace with Class 10 SD card minimum 150 MB/s read/write
 ```
 
 Other causes:
 - Too many background processes
+- Under-voltage (run `healtheco` and check the `vcgencmd get_throttled` section)
 - USB device causing interference
-- Sensor needs restart
 
 ```bash
 # Restart sensor
@@ -79,35 +80,37 @@ sudo reboot
 
 ### Files not being created
 
-**Problem**: Script runs but no audio files appear.
+**Problem**: Service runs but no audio files appear.
 
 **Check**:
 ```bash
-# Is the recording directory writable?
-ls -la ~/multichannel_audio/
-touch ~/multichannel_audio/test  # Should succeed
+# Is the service running, and is it paused for upload?
+sudo systemctl status eco-monitor.service
+grep -E "pausing record|Recording started|Recording failed" ~/multi-channel-rpi-eco-monitoring/logs/logfile.log | tail
 
-# Are logs being created?
-tail ~/logs/*.log
+# Error markers written when a recording fails
+find /home/pi/pre_upload_dir -name "*_ERROR_audio-record-failed"
 
 # Look for errors
-grep -i "error\|failed" ~/logs/*.log
+grep -i "error\|failed" ~/multi-channel-rpi-eco-monitoring/logs/logfile.log | tail -n 50
 ```
 
 **Possible causes**:
-- Disk full → `df -h` to check
-- Wrong permissions → `chmod 755 ~/multichannel_audio/`
-- Sensor not initialized → Check device_index
+- Internet is reachable and `upload_enabled` is true → recording is paused on purpose (`Upload in progress ...; pausing record.`). Use `"test_mode": 1` for bench tests
+- Uploaded files are deleted locally after verification → check the remote
+- Disk full → `df -h` to check. Below `min_free_storage_gb` (1 GB) the Pi shuts down
+- Sensor not detected → see "No such device" above
+
+Three failed or tiny (< 1 MB) recordings in a row trigger an automatic reboot (`Repeated tiny recordings detected`).
 
 ---
 
-### "PyAudio installation failed"
+### Missing Python modules
 
-See [advanced_configuration.md#troubleshooting-pyaudio-installation](advanced_configuration.md#troubleshooting-pyaudio-installation)
+The code needs `psutil` and `RPi.GPIO` from system packages (there is no PyAudio dependency):
 
 ```bash
-# Quick fix (Raspberry Pi)
-sudo apt-get install python3-pyaudio
+sudo apt-get install -y python3-psutil python3-rpi.gpio
 ```
 
 ---
@@ -118,18 +121,21 @@ sudo apt-get install python3-pyaudio
 
 **Check**:
 ```bash
-# Verify monitoring mode is online
-grep "monitoring_mode" config.json
+# Verify uploads are enabled and test mode is off
+grep -E '"upload_enabled"|"test_mode"' ~/multi-channel-rpi-eco-monitoring/config.json
 
 # Test rclone connection
 rclone ls mybox:  # Should list your cloud folder
 
-# Check internet
+# Check internet (the code checks 8.8.8.8:53)
 ping 8.8.8.8
 
 # View upload logs
-tail -n 100 ~/logs/*.log | grep upload
+grep "\[upload" ~/multi-channel-rpi-eco-monitoring/logs/logfile.log | tail -n 100
+tail -n 100 /home/pi/monitoring_data/live_data/rclone.log
 ```
+
+Also check that `jq` is installed (`rclone_upload.sh` exits with `ERROR: jq binary not found` otherwise).
 
 ---
 
@@ -157,10 +163,12 @@ rclone config
 **Solution**:
 ```bash
 # Re-authenticate with your cloud service
-rclone config reconnect mybox
+rclone config reconnect mybox:
 
 # Then follow prompts to sign in again
 ```
+
+If several Pis share `rclone.conf` through the Gist sync, a Pi with an old token may pull the newer one at its next service start (`[gist-sync]` lines in the journal).
 
 ---
 
@@ -176,64 +184,55 @@ curl -o /dev/null -s -w '%{speed_download}\n' https://www.google.com
 
 **Solutions**:
 - Move Pi closer to WiFi router
-- Use wired Ethernet: `sudo apt-get install -y raspi-config` → Interface Options → Ethernet
-- Reduce file size: Use FLAC codec, lower sample rate (16 kHz is standard)
-- Schedule uploads during off-peak hours
+- Use wired Ethernet where the Pi has a port
+- Keep `compress_data: true` (FLAC)
 
 ---
 
 ### Disk fills up, upload stops
 
-**Problem**: `/tmp` or `/home` partitions full.
+**Problem**: SD card full.
 
 **Check**:
 ```bash
 df -h  # Shows disk usage
 
-# Specifically check home directory
-du -sh ~/*
+# Monitoring folders (or use the `sizeeco` shortcut)
+du -sh /home/pi/monitoring_data/live_data/ /home/pi/tmp_dir/ /home/pi/pre_upload_dir/
 ```
 
 **Solution**:
-```bash
-# Delete old recordings if keeping local copies
-rm ~/multichannel_audio/old_files_*.flac
 
-# Or enable automatic deletion in config.json:
-# "keep_recorded_data": false
+Nothing is deleted automatically except files that were verified on the remote. Copy the data off the card first, then clear `live_data` with the helper (asks for confirmation, keeps the folder structure):
+
+```bash
+cd ~/multi-channel-rpi-eco-monitoring
+./clean_live_data.sh /home/pi/monitoring_data/live_data
 ```
 
 ---
 
 ## Startup/Shutdown Issues
 
-### Script not starting on boot
+### Service not starting on boot
 
 **Problem**: Recorder doesn't start when Pi powers on.
 
 **Check**:
 ```bash
-# Verify startup script is executable
-ls -l ~/multi-channel-rpi-eco-monitoring/recorder_startup_script.sh
-# Should show "rwxr-xr-x"
+# Is the unit installed and enabled?
+systemctl is-enabled eco-monitor.service
+sudo systemctl status eco-monitor.service
 
-# If not:
-chmod +x ~/multi-channel-rpi-eco-monitoring/recorder_startup_script.sh
-```
-
-**Check `/etc/profile` configuration**:
-```bash
-tail /etc/profile  # Should show startup script lines
+# If not: sudo python3 installer.py → menu 2 (or 8 to show status)
 ```
 
 **View startup logs**:
 ```bash
-# Check if script is running
-ps aux | grep python_record.py
-
-# Check systemd journal
-journalctl -xe | tail -50
+sudo journalctl -u eco-monitor.service -b --no-pager | head -100
 ```
+
+If you are upgrading an old unit that still starts `recorder_startup_script.sh` from `/etc/profile`, run installer menu 6 to remove those lines, then menu 2.
 
 ---
 
@@ -241,17 +240,18 @@ journalctl -xe | tail -50
 
 **Problem**: GPIO button doesn't trigger shutdown.
 
-**For Sipeed 7-Mic**:
-- Device tree button is system-level, should work independently
-- Check GPIO 21 is free: `raspi-gpio get 21`
+**For Sipeed**:
+- The button is handled by the `gpio-shutdown` device tree overlay, independent of the recorder
+- Check the overlay is present: installer menu 8, or `grep gpio-shutdown /boot/firmware/config.txt /boot/config.txt`
 - Verify wiring: Button connects GPIO 21 to GND
+- A reboot is needed after adding the overlay
 
 **For Respeaker 6-Mic**:
 ```bash
-# Check if Python script is listening for button
+# Check whether the overlay or the Python listener is used
 grep "use_system_shutdown_button" config.json
 
-# If 0, button is software-managed
+# If 0, button is handled by record.py on GPIO 26
 # If 1, button is handled by device tree overlay
 ```
 
@@ -270,10 +270,9 @@ sudo reboot
 ```bash
 top
 # Press 'q' to exit
-
-# Expected: python_record.py ~30-50% CPU
-# If higher: may indicate sensor or filesystem issue
 ```
+
+`arecord` and, after each recording, `ffmpeg` are the main CPU users. The CPU governor is set to `powersave` between recordings and `ondemand` during capture.
 
 **Check running processes**:
 ```bash
@@ -293,16 +292,18 @@ ps aux | grep -v grep
 
 **Check**:
 ```bash
-# View voltage warnings in kernel logs
-dmesg | grep -i "low volt"
+# Decoded under-voltage / throttle flags (shell shortcut)
+healtheco
 
-# If you see warnings, upgrade power supply
+# Or directly
+vcgencmd get_throttled
+dmesg | grep -i "voltage"
 ```
 
 **Solutions**:
 - Use 5V 2.5A+ power supply (not USB port)
 - Use powered USB hub for sensors
-- Reduce recording sample rate to 16 kHz
+- Enable the field WiFi timer to cut WiFi power when no network is in range
 
 ---
 
@@ -313,7 +314,7 @@ dmesg | grep -i "low volt"
 **Solution**:
 ```bash
 cd ~/multi-channel-rpi-eco-monitoring
-python setup_config.py
+sudo python3 installer.py   # menu option 1
 ```
 
 ### config.json syntax error
@@ -323,7 +324,7 @@ python setup_config.py
 **Fix**:
 ```bash
 # Validate JSON syntax
-python -m json.tool config.json
+python3 -m json.tool config.json
 
 # If error shown, fix manually
 nano config.json
@@ -338,16 +339,21 @@ nano config.json
 
 ### Timezone not working
 
-**Problem**: Logs show wrong time.
+**Problem**: Logs and file names show the wrong time.
 
 **Check configured timezone**:
 ```bash
-# View system timezone
+# View system timezone and sync status
 timedatectl
 
-# Configure timezone in config.json
-python setup_config.py
-# Or manually: "timezone": "Europe/London"
+# Set it (there is no timezone key in config.json)
+sudo timedatectl set-timezone Europe/London
+```
+
+The clock is set at service start from `/etc/fake-hwclock.data`, then `update_time.sh` tries NTP (if online) or the WiFi gateway (`offline_time_sync.py`). Without any network you can push the time over SSH:
+
+```bash
+ssh pi@<hostname>.local "sudo bash ~/multi-channel-rpi-eco-monitoring/update_time.sh --epoch $(date +%s)"
 ```
 
 ---
@@ -356,16 +362,14 @@ python setup_config.py
 
 ### How much space does recording use?
 
-**Rule of thumb** (per 20-minute session):
-- Sample rate 16 kHz, 7 channels, 16-bit, FLAC: ~200-300 MB
-- Sample rate 48 kHz, 7 channels, 24-bit, FLAC: ~1-1.5 GB
+**Rule of thumb** (per 20-minute Sipeed recording, 8 channels, 16 kHz, 16-bit):
+- WAV: 16,000 × 8 × 2 bytes × 1,200 s ≈ 307 MB
+- FLAC: smaller; the ratio depends on the sound content
 
 **Calculate for your setup**:
 ```
-Size ≈ (sample_rate × channels × bit_depth / 8) × duration × (1 - compression_ratio)
+WAV size = sample_rate × channels × (bits / 8) × duration
 ```
-
-For FLAC, compression ratio is typically 40-60% (final size = 40-60% of uncompressed).
 
 ### Monitor disk usage
 
@@ -374,25 +378,26 @@ For FLAC, compression ratio is typically 40-60% (final size = 40-60% of uncompre
 df -h
 
 # Monitor in real-time during recording
-watch -n 1 du -sh ~/multichannel_audio/
+watch -n 10 du -sh /home/pi/monitoring_data/live_data/ /home/pi/tmp_dir/ /home/pi/pre_upload_dir/
 ```
 
 ---
 
 ## Sensor-Specific Issues
 
-### Sipeed 7-Mic Array
+### Sipeed 6+1 Mic Array (MA-USB8)
 
 **No audio detected**:
 - Check USB cable connection
 - Try different USB port
-- `python discover_serial.py` to find device index
-- Update `device_index` in config.json
+- `arecord -l` should list the board (`MicArray` / `USB`)
+- Check the `Detected USB audio card:` line in the log
 
 **Multiple devices showing**:
 - Only one should be active
-- Disconnect unused sensors
-- Update `device_index` to select correct one
+- Disconnect other USB audio devices (the first `MicArray`/`USB` card is used)
+
+**LEDs**: `led_off.sh` runs at every service start and switches the board LEDs off via `/dev/ttyACM0`. `./led_on.sh` turns them on again (needs read/write access to `/dev/ttyACM0`, e.g. user in the `dialout` group).
 
 ### Respeaker 4-Mic / 6-Mic (Legacy)
 
@@ -428,34 +433,29 @@ uname -a
 # Raspberry Pi model
 cat /proc/device-tree/model
 
-# Recording config
+# Recording config (remove the github_token first)
 cat ~/multi-channel-rpi-eco-monitoring/config.json
 
 # Recent logs
-tail -n 200 ~/logs/*.log
+tail -n 200 ~/multi-channel-rpi-eco-monitoring/logs/logfile.log
+sudo journalctl -u eco-monitor.service -u wifi-field-timer.service -n 200 --no-pager
 
 # Audio device info
-python discover_serial.py
+arecord -l
+
+# Pi ID
+python3 ~/multi-channel-rpi-eco-monitoring/discover_serial.py
 
 # Disk usage
 df -h
 ```
 
-### Enable verbose logging
+### Verbose logging
 
-Edit `recorder_startup_script.sh`, add `-v` flag to python calls:
+There is no verbose flag. `record.py` logs at INFO level; the `arecord` command line and `ffmpeg` command are logged at DEBUG and are not shown. The journal (`journalctl -u eco-monitor.service`) also contains output that is not in `logfile.log`, such as the `ExecStartPre` steps and `update_time.sh`.
 
 ```bash
-# Change this:
-python python_record.py
-
-# To this:
-python python_record.py -v  # if supported
-```
-
-Then check logs:
-```bash
-tail -f ~/logs/*.log  # Follow logs in real-time
+tail -f ~/multi-channel-rpi-eco-monitoring/logs/logfile.log  # Follow logs in real-time
 ```
 
 ---
@@ -466,40 +466,41 @@ tail -f ~/logs/*.log  # Follow logs in real-time
 
 ```bash
 # Graceful shutdown
-sudo halt
+sudo shutdown -h now
 
-# Then wait for green LED to stop flashing before removing power
+# Then wait for the Pi to finish shutting down before removing power
 ```
 
 ### Reset configuration
 
 ```bash
 cd ~/multi-channel-rpi-eco-monitoring
-rm config.json
-python setup_config.py  # Start fresh
+sudo python3 installer.py  # menu 1, answer "y" to replace the existing config
 ```
 
 ### Clear old recordings
 
 ```bash
 # List recordings
-ls -lh ~/multichannel_audio/
+ls -lhR /home/pi/monitoring_data/live_data/
 
-# Delete old ones
-rm ~/multichannel_audio/older_than_X_days_*.flac
-
-# Or use find:
-find ~/multichannel_audio/ -mtime +7 -delete  # Older than 7 days
+# Delete all files under live_data (asks for confirmation, keeps folders)
+./clean_live_data.sh /home/pi/monitoring_data/live_data
 ```
+
+Copy the data off first: this cannot be undone.
 
 ### View live logs
 
 ```bash
-# Watch logs as they're written
-tail -f ~/logs/*.log
+# Health snapshot + live journal (shell shortcut)
+monitor
+
+# Watch the log file as it is written
+tail -f ~/multi-channel-rpi-eco-monitoring/logs/logfile.log
 
 # Filter for errors only
-tail -f ~/logs/*.log | grep -i error
+tail -f ~/multi-channel-rpi-eco-monitoring/logs/logfile.log | grep -i error
 ```
 
 ---
@@ -511,4 +512,4 @@ Check:
 2. [config.md](config.md) - All configuration options
 3. [cloud_setup.md](cloud_setup.md) - Upload troubleshooting
 4. [log_guide.md](log_guide.md) - Understanding log format
-5. [readme.md](readme.md) - Full project documentation
+5. [README](../README.md) - Project overview

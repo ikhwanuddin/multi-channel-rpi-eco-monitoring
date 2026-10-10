@@ -2,7 +2,7 @@
 
 ## Overview
 
-Complete documentation for **MAARU (Multi-Channel Acoustic Monitoring Unit)** — Raspberry Pi-based ecosystem monitoring system for tropical rainforest.
+Complete documentation for **MAARU (Multichannel Acoustic Autonomous Recording Unit)** — Raspberry Pi-based ecosystem monitoring system for tropical rainforest.
 
 This documentation is designed for **various levels of understanding**: from non-technical people to hardware engineers.
 
@@ -20,10 +20,8 @@ This documentation is designed for **various levels of understanding**: from non
    - Key specs & costs
    - Troubleshooting quick tips
 
-2. **[MAARU Physical Setup Diagram (Interactive)](../../maaru-physical-setup.html)**
-   - Zoom & explore
-   - Dark/light theme toggle
-   - Export as PNG for presentations
+2. **[MAARU Physical Setup Diagram](maaru-physical-setup.svg)**
+   - Static SVG (editable source: `maaru-physical-setup.af`, Affinity Designer)
 
 3. **[architecture.md](architecture.md)** — Physical Hardware Setup section
    - Layered structure
@@ -148,8 +146,9 @@ This documentation is designed for **various levels of understanding**: from non
 ### **Visual References**
 | File | Format | Purpose |
 |------|--------|---------|
-| **[MAARU Physical Setup Diagram](../../maaru-physical-setup.html)** | Interactive SVG | Hardware structure visualization |
-| **[maaru-physical-setup.architecture.json](../../maaru-physical-setup.architecture.json)** | JSON Schema | Diagram source (editable) |
+| **[maaru-physical-setup.svg](maaru-physical-setup.svg)** | SVG | Hardware structure visualization |
+| `maaru-physical-setup.af` | Affinity Designer | Diagram source (editable) |
+| **[workflow.svg](workflow.svg)** | SVG | Software workflow (some labels use old script names) |
 
 ---
 
@@ -158,7 +157,7 @@ This documentation is designed for **various levels of understanding**: from non
 ### **"I want to build MAARU**"
 → Read in this order:
 1. [MAARU_QUICK_REFERENCE.md](MAARU_QUICK_REFERENCE.md) (understand what you're building)
-2. [MAARU Physical Setup Diagram](../../maaru-physical-setup.html) (visualise structure)
+2. [MAARU Physical Setup Diagram](maaru-physical-setup.svg) (visualise structure)
 3. [physical-setup.md](physical-setup.md) (detailed component specs)
 4. [quickstart.md](quickstart.md) (assemble & test)
 
@@ -187,11 +186,11 @@ This documentation is designed for **various levels of understanding**: from non
 1. [architecture.md](architecture.md) (understand system)
 2. [advanced_configuration.md](advanced_configuration.md) (customization options)
 3. [config.md](config.md) (available settings)
-4. Code in `../src/`
+4. Code in the repository root (`record.py`, `installer.py`, `sensors/`)
 
 ### **"I need to explain MAARU to non-technical stakeholders"**
 → Share:
-1. [MAARU Physical Setup Diagram](../../maaru-physical-setup.html) (visual)
+1. [MAARU Physical Setup Diagram](maaru-physical-setup.svg) (visual)
 2. [MAARU_QUICK_REFERENCE.md](MAARU_QUICK_REFERENCE.md) (1-page summary)
 3. Mention cost estimate from QUICK_REFERENCE
 
@@ -201,10 +200,8 @@ This documentation is designed for **various levels of understanding**: from non
 
 ```
 Total Documentation:
-├─ Markdown files: 11 files, ~80 KB
-├─ Interactive diagram: 1 HTML file, 50 KB
-├─ Diagram schema: 1 JSON file, 5 KB
-└─ Total: ~135 KB (fully self-contained)
+├─ Markdown files: 12 files in docs/ + README.md
+└─ Diagrams: maaru-physical-setup.svg (+ .af source), workflow.svg
 
 Reading Time:
 ├─ Quick overview: 5 min (QUICK_REFERENCE)
@@ -230,7 +227,7 @@ Reading Time:
 
 - [Raspberry Pi Official Specs](https://www.raspberrypi.org/specifications/) — referenced in physical-setup.md
 - [ReSpeaker 6-Mic Array Docs](https://wiki.seeedstudio.com/ReSpeaker_6-Mic_Array_for_Raspberry_Pi/) — sensor option
-- [Sipeed 7-Mic Array Docs](https://github.com/sipeed/spk1110) — sensor option
+- [Sipeed MA-USB8 Mic Array board](https://wiki.sipeed.com/hardware/en/modules/micarray_usbboard_bl616.html) — sensor option
 - Cloud Storage API Docs (Box, Google Drive, etc.) — in cloud_setup.md
 
 ---
@@ -257,16 +254,13 @@ multi-channel-rpi-eco-monitoring/
 │   ├── log_guide.md
 │   ├── troubleshooting.md
 │   │
-│   └── [implementation docs in src/]
+│   ├── maaru-physical-setup.svg ⭐ Hardware diagram
+│   ├── maaru-physical-setup.af  (diagram source)
+│   └── workflow.svg
 │
-├── [Source code]
-├── [Configuration]
-└── [Data files]
-
-../
-├── maaru-physical-setup.html    ⭐ Interactive diagram
-├── maaru-physical-setup.architecture.json
-└── [Supporting docs from archify skill]
+├── README.md
+├── [Source code: record.py, installer.py, sensors/, *.sh]
+└── [Configuration: config.json, *.service templates]
 ```
 
 ---
@@ -294,7 +288,7 @@ These docs explain why MAARU is designed the way it is:
    - Temperature swings
 
 4. **Operational Flexibility** — read [config.md](config.md) + [advanced_configuration.md](advanced_configuration.md)
-   - Offline or online mode
+   - Upload on/off (`upload_enabled`) and test mode
    - Multiple sensor options
    - Customisable recording parameters
    - Cloud upload strategies
@@ -308,7 +302,7 @@ These docs explain why MAARU is designed the way it is:
 It's a **systems engineering solution** that balances:
 - 🔧 Hardware reliability (tropical environment)
 - ⚡ Power efficiency (battery-powered)
-- 📊 Data quality (7-channel audio @ 16 kHz)
+- 📊 Data quality (8-channel audio @ 16 kHz with the Sipeed board)
 - 🌱 Ecological value (ecosystem monitoring)
 - 💰 Cost effectiveness (entry-level monitoring)
 
@@ -391,7 +385,7 @@ cloud_setup.md (10 min)
     ↓
 quickstart.md (10 min)
     ↓
-Browse source code in ../src/
+Browse source code in the repository root
 ```
 
 ### **Path 4: Operator (Field)**
@@ -419,16 +413,15 @@ troubleshooting.md (10 min)
 
 ## 🗨️ Notes
 
-- All documentation assumes **Raspberry Pi OS Lite** (Linux)
+- All documentation assumes **Raspberry Pi OS** (Lite) with user `pi`
 - Examples use **Python 3** (3.7+)
-- Sensor examples: **ReSpeaker 6-Mic** and **Sipeed 7-Mic**
+- Sensor examples: **ReSpeaker 6-Mic** (legacy) and **Sipeed 6+1 Mic Array + MA-USB8 board**
 - Cloud provider examples: **Box** and **Google Drive** (via rclone)
 - Location context: **Tropical rainforest in Lampung, Indonesia**
 
 ---
 
-**Last Updated**: July 2024
 **For**: Multi-Channel RPi Ecosystem Monitoring Project (MAARU)
-**Maintained By**: [Your name/team]
+**Maintained By**: ikhwanuddin (fork of Becky Heath's original repository)
 
 For questions about the documentation itself, see [index.md](index.md) or open an issue.

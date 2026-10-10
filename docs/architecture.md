@@ -4,11 +4,11 @@ Overview of how the multi-channel ecosystem monitoring system works.
 
 ## Physical Hardware Setup
 
-MAARU (Multi-Channel Acoustic Recording Unit) is a rugged ecosystem monitoring system built for tropical rainforest environments. The diagram below shows the physical hardware layout, weatherproofing layers, and how components connect to each other.
+MAARU (Multichannel Acoustic Autonomous Recording Unit) is a rugged ecosystem monitoring system; this fork's hardware notes describe a build for tropical rainforest environments. The diagram below shows the physical hardware layout, weatherproofing layers, and how components connect to each other.
 
 ![MAARU Physical Setup Diagram](./maaru-physical-setup.svg)
 
-> **Tip**: The diagram scales with the page width. For an interactive version with theme toggle and export options, open [maaru-physical-setup.html](../../maaru-physical-setup.html).
+> **Tip**: The diagram scales with the page width. The editable source is [maaru-physical-setup.af](./maaru-physical-setup.af) (Affinity Designer).
 
 ### Nested Architecture Layers
 
@@ -20,24 +20,24 @@ MAARU (Multi-Channel Acoustic Recording Unit) is a rugged ecosystem monitoring s
 #### **Layer 2: Main Enclosure (Food Container)**
 Core components protected from direct weather:
 
-- **Raspberry Pi 2B or Zero 2W**
+- **Raspberry Pi** (tested: Zero 2 W, 3B+, 4B)
   - Compute core for the system
-  - Pi 2B: Recommended (more stable, better performance)
-  - Pi Zero 2W: Minimum (lower power, cheaper)
+  - Larger models: more RAM and CPU headroom
+  - Pi Zero 2 W: lower power, cheaper; the runtime tuning (rclone limits, GC thresholds) targets its 512 MB RAM
 
 - **Microphone Array Sensor** (choose one)
-  - **ReSpeaker 6-Mic Array** → connected via **GPIO pins**
+  - **ReSpeaker 6-Mic Array** (legacy) → connected via **GPIO pins**
     - 6 channel simultaneous recording
     - Lower power consumption (~0.5A)
     - Direct I2S connection
-  - **Sipeed 7-Mic Array** → connected via **USB port**
-    - 7 channel simultaneous recording
-    - Self-powered via USB
+  - **Sipeed 6+1 Mic Array on the MA-USB8 board** → connected via **USB port**
+    - 8 channel recording: CH0–CH5 ring mics, CH6 beamformed output, CH7 centre mic ([Sipeed wiki](https://wiki.sipeed.com/hardware/en/modules/micarray_usbboard_bl616.html))
+    - Powered via USB
     - Better for modularity
 
 - **Micro SD Card**
   - Local storage for audio files (.FLAC)
-  - Typical: Class 10, 200+ MB/s speed
+  - Class 10, minimum 150 MB/s
   - Capacity: 64GB-256GB (depends on retention policy)
 
 - **USB WiFi Adapter**
@@ -95,53 +95,55 @@ Core components protected from direct weather:
 This section describes the software components running on MAARU:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Raspberry Pi                              │
-├─────────────────────────────────────────────────────────────┤
+┌───────────────────────────────────────────────────────────────┐
+│                         Raspberry Pi                          │
+├───────────────────────────────────────────────────────────────┤
 │                                                               │
-│  ┌──────────────┐      ┌──────────────┐   ┌──────────────┐  │
-│  │   Sensor     │      │   Python     │   │   Rclone     │  │
-│  │  (7-Mic      │──→   │   Recorder   │──→│   Upload     │  │
-│  │   Array)     │      │              │   │              │  │
-│  └──────────────┘      └──────────────┘   └──────────────┘  │
+│  ┌──────────────┐      ┌──────────────┐   ┌──────────────┐    │
+│  │   Sensor     │      │  record.py   │   │ rclone_      │    │
+│  │ (Sipeed      │──→   │  arecord +   │──→│ upload.sh +  │    │
+│  │  MA-USB8)    │      │  ffmpeg      │   │ state_manager│    │
+│  └──────────────┘      └──────────────┘   └──────────────┘    │
 │        │                      │                    │          │
 │        USB/GPIO               │               Network         │
 │                         Local Storage            (optional)   │
 │                         .FLAC files                           │
 │                                                               │
-│  ┌──────────────┐      ┌──────────────┐   ┌──────────────┐  │
-│  │  Config      │      │   Startup    │   │   Logs       │  │
-│  │  JSON        │──→   │   Script     │──→│              │  │
-│  │              │      │              │   │              │  │
-│  └──────────────┘      └──────────────┘   └──────────────┘  │
+│  ┌──────────────┐      ┌──────────────┐   ┌──────────────┐    │
+│  │  config.json │      │ eco-monitor  │   │   Logs       │    │
+│  │              │──→   │ .service     │──→│              │    │
+│  │              │      │ (systemd)    │   │              │    │
+│  └──────────────┘      └──────────────┘   └──────────────┘    │
 │                                                               │
-└─────────────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────────────┘
          │
-         ├─→ Local Files: ~/monitoring_data/
+         ├─→ Recordings: /home/pi/monitoring_data/live_data/RPiID-<serial>/
          ├─→ Config: ~/multi-channel-rpi-eco-monitoring/config.json
-         └─→ Logs: ~/logs/
+         └─→ Logs: ~/multi-channel-rpi-eco-monitoring/logs/logfile.log + journald
 ```
 
 ---
 
 ## Boot Sequence
 
-When the Raspberry Pi starts:
+When the Raspberry Pi starts, systemd runs `eco-monitor.service` (installed by `installer.py`, runs as the installing user, normally `pi`). No auto-login or `/etc/profile` entry is used.
 
-1. **System Boot** (~1-2 seconds)
-   - Kernel loads, file systems mount
-   - Systemd starts core services
+1. **ExecStartPre steps** (in order)
+   - Restore the clock from `/etc/fake-hwclock.data`
+   - `update_time.sh`: NTP if online, otherwise the WiFi gateway (`offline_time_sync.py`); failure is allowed
+   - `discover_serial.py` writes `PI_ID=RPiID-<cpu serial>` to `/tmp/eco-monitor-pi-id.env`
+   - `check_fs_expanded.sh`: one-time `raspi-config --expand-rootfs` if the root partition is under 90% of the card
+   - `led_off.sh`: Sipeed board LEDs off; then the Pi's ACT LED off
+   - `sync_rclone_config.sh`: pull/push `rclone.conf` from/to the GitHub Gist (if configured)
 
-2. **Auto-Login** (~5 seconds)
-   - If configured: auto-login as `pi` user
-   - `/etc/profile` executed
+2. **`record.py`** (`ExecStart`)
+   - Auto-update: `git checkout master`, `git fetch origin`, `git reset --hard origin/master`, `git clean -fd` (keeps `config.json` and `logs/`), then `systemctl daemon-reload`
+   - Loads `config.json`, sets up the sensor, drains any pending WAV files (compresses them)
+   - Starts the recording thread, the scheduled-reboot thread and, if enabled, the upload thread
 
-3. **Startup Script** (`recorder_startup_script.sh`)
-   - Loads config.json
-   - Initializes audio sensor
-   - Enters recording loop or upload loop (depending on mode)
+3. **Restart policy**: `Restart=always`, `RestartSec=5`
 
-**Timeline**: System ready to record within 10-15 seconds of power-on.
+`wifi-field-timer.service` (optional) starts independently and does not delay recording.
 
 ---
 
@@ -151,12 +153,14 @@ When the Raspberry Pi starts:
 
 ![System Workflow](./workflow.svg)
 
-### Offline Mode (Default)
+(The diagram predates the systemd service; some labels use old names such as `python_record.py` and `.rclone_state.json`. The text below is current.)
+
+### Offline (no internet reachable, or `upload_enabled: false`)
 
 ```
-┌──────────────┐
-│ Boot System  │
-└──────┬───────┘
+┌──────────────────────┐
+│ Boot / service start │
+└──────┬───────────────┘
        │
        ↓
 ┌──────────────────────┐
@@ -165,47 +169,58 @@ When the Raspberry Pi starts:
 └──────┬───────────────┘
        │
        ↓
-┌──────────────────────┐
-│ Start Recording      │
-│ Duration: 20 min     │
-│ Channels: 7          │
-│ Sample Rate: 16 kHz  │
-└──────┬───────────────┘
+┌──────────────────────────────┐
+│ Compress pending WAVs        │
+│ (pre_upload_dir → live_data) │
+└──────┬───────────────────────┘
        │
        ↓
 ┌──────────────────────┐
-│ Audio Saved          │
-│ File: file_XXX.flac  │
-│ Size: ~300 MB        │
+│ Storage check        │
+│ arecord, 8 ch,       │
+│ 16 kHz, S16_LE,      │
+│ record_length 1200 s │
 └──────┬───────────────┘
        │
        ↓
+┌──────────────────────────────┐
+│ WAV → pre_upload_dir         │
+│ next loop: ffmpeg → FLAC in  │
+│ live_data/RPiID-<serial>/    │
+└──────┬───────────────────────┘
+       │
+       ↓
 ┌──────────────────────┐
-│ Wait (if needed)     │
-│ Resume Loop          │
+│ Sleep capture_delay  │
+│ (300 s, powersave)   │
 └──────┬───────────────┘
        │
        └─→ Repeat
 ```
 
-### Online Mode (With Cloud Upload)
+### Online (`upload_enabled: true`, `test_mode: 0`, internet reachable)
 
 ```
-┌──────────────┐
-│ Record Audio │
-│ 20 minutes   │
-└──────┬───────┘
-       │
-       ↓
 ┌──────────────────────┐
-│ Verify File          │
-│ Check integrity      │
+│ Internet detected    │
+│ → recording paused   │
 └──────┬───────────────┘
        │
        ↓
 ┌──────────────────────┐
-│ Upload to Cloud      │
-│ Using rclone         │
+│ update_time.sh       │
+└──────┬───────────────┘
+       │
+       ↓
+┌──────────────────────┐
+│ Pre-verify remote,   │
+│ mark files uploading │
+└──────┬───────────────┘
+       │
+       ↓
+┌──────────────────────┐
+│ rclone copy          │
+│ (3 attempts)         │
 └──────┬───────────────┘
        │
        ↓
@@ -214,80 +229,81 @@ When the Raspberry Pi starts:
 ├──────┬───────────────┤
 │ YES  │     NO        │
 │      │               │
-│ Delete  Keep local  │
-│ local   Retry next  │
-│         cycle       │
+│ Verify  Keep local   │
+│ on      Retry next   │
+│ remote, cycle        │
+│ delete               │
+│ local                │
 └──────┴───────────────┘
 ```
+
+Recording resumes when internet is no longer reachable.
 
 ---
 
 ## Core Scripts
 
-### 1. `recorder_startup_script.sh`
+### 1. `eco-monitor.service`
 
-**Purpose**: Main entry point, runs at boot
+**Purpose**: systemd unit template; `installer.py` replaces `__REPO_DIR__` and `__SERVICE_USER__` and installs it to `/etc/systemd/system/`
 
-**Flow**:
-1. Reads config.json to determine mode (offline/online)
-2. Calls `python_record.py` in a loop
-3. Handles errors and retries
-4. Manages shutdown signals
-
-**Logs to**: `~/logs/startup.log`
+**Flow**: runs the `ExecStartPre` steps above, then `python3 -u record.py <repo>/config.json logfile.log logs`, and restarts it if it exits
 
 ---
 
-### 2. `python_record.py`
+### 2. `record.py`
 
-**Purpose**: Performs the actual audio recording
+**Purpose**: Main recorder
 
 **Key Functions**:
-- Initialize audio device
-- Read from microphone buffer
-- Save to FLAC file
-- Monitor disk space
-- Handle Ctrl+C gracefully
+- `auto_update_repository()`: force-sync to `origin/master`
+- `continuous_recording()`: record loop, pauses while online, storage check, tiny-file reboot (3 in a row)
+- `run_postprocess()`: stage WAVs from `tmp_dir` to `pre_upload_dir`, call `sensor.postprocess()` (FLAC)
+- `upload_server_sync()`: upload thread, runs `update_time.sh` and `rclone_upload.sh`
+- `scheduled_reboot_monitor()`: daily reboot at `reboot_time` / `reboot_time_2`, deferred while recording
+- `set_cpu_governor()`, `gc_and_log_memory()`: power and memory housekeeping
 
 **Key Classes**:
 - `MinuteBoundaryFormatter`: Prefix logs with timestamp only when minute changes
-- Sensor classes: `Sipeed7Mic`, `Respeaker6Mic`, `Respeaker4Mic`
+- Sensor classes (in `sensors/`): `Sipeed7Mic`, `Respeaker6Mic`, `Respeaker4Mic`, `Respeaker_Custom`, `UnixDevice`
 
-**Logs to**: `~/logs/monitor.log`
+**Logs to**: `logs/logfile.log` and stdout (journal)
 
 ---
 
-### 3. `rclone_upload.sh`
+### 3. `rclone_upload.sh` + `state_manager.py`
 
 **Purpose**: Uploads recorded files to cloud storage
 
 **Flow**:
-1. Read `.rclone_state.json` (tracks what's uploaded)
-2. For each new file:
-   - Verify file integrity
-   - Upload using rclone
-   - Track in state file
-   - Delete local copy (if configured)
-3. Handle upload failures gracefully
+1. `state_manager.py pre-verify`: files already on the remote are marked `completed`
+2. `state_manager.py init-scan-mark`: all local `.flac`/`.wav` not yet completed are marked `uploading`
+3. `rclone copy --files-from -` to `<remote>:monitoring_data/RPiID-<serial>/` (retries on exit codes 3–9)
+4. `state_manager.py verify-finalize`: files listed on the remote are marked `completed` and deleted locally
+5. Push `rclone.conf` to the Gist (at most once per hour)
 
-**Called by**: `recorder_startup_script.sh` (in online mode)
+**Called by**: `record.py` upload thread
 
-**Logs to**: `~/logs/upload.log`
+**Logs to**: stdout (captured into `logfile.log` with `[upload]` prefix) and `/home/pi/monitoring_data/live_data/rclone.log`
 
 ---
 
-### 4. `setup_config.py`
+### 4. `installer.py`
 
-**Purpose**: Interactive configuration wizard
+**Purpose**: Interactive installer (replaces the former `setup_config.py`); must run with `sudo`
 
-**Flow**:
-1. Ask user for sensor type
-2. Ask for recording parameters
-3. Ask for cloud settings (if online mode)
-4. Validate inputs
-5. Save to config.json
+**Menu**:
+1. Configure sensor & generate `config.json`
+2. Install `eco-monitor.service`
+3. Configure GPIO shutdown button (`dtoverlay=gpio-shutdown`)
+4. Install shell shortcuts into `~/.bashrc`
+5. Full setup (1 → 2 → 3 → 4, then the WiFi timer)
+6. Migrate from legacy `/etc/profile` startup
+7. Migrate `config.json` to the latest schema
+8. Show current status
+9. Enable / manage field WiFi timer
 
-**Output**: `config.json`
+**Output**: `config.json`, systemd units, boot config overlay, `.bashrc` shortcuts. It does not install apt packages.
 
 ---
 
@@ -296,30 +312,33 @@ When the Raspberry Pi starts:
 ### File Naming Convention
 
 ```
-~/monitoring_data/
-├── 20240701_142300.flac    # YYYYMMDD_HHMMSS
-├── 20240701_143000.flac
-├── 20240701_143700.flac
-└── ...
+/home/pi/tmp_dir/2026-07-01/14-24-03_dur=1200secs.wav        # while recording
+/home/pi/pre_upload_dir/2026-07-01/14-24-03_dur=1200secs.wav # finished, waiting for compression
+/home/pi/monitoring_data/live_data/RPiID-<serial>/
+├── 2026-07-01/
+│   ├── 14-24-03_dur=1200secs.flac    # HH-MM-SS_dur=<record_length>secs
+│   ├── 14-49-10_dur=1200secs.flac
+│   └── ...
+└── logs/
 ```
 
-Filename format makes chronological ordering trivial.
+The date folder plus start time makes chronological ordering trivial. A failed recording leaves `<name>_ERROR_audio-record-failed` in `pre_upload_dir` with the `arecord` details.
 
 ### File Size Factors
 
 | Factor | Typical Value | Impact |
 |--------|---------------|--------|
-| Channels | 7 | Fixed per sensor |
-| Sample Rate | 16,000 Hz | Higher = larger files |
-| Bit Depth | 16 bits | Higher = larger files |
-| Duration | 1,200 sec (20 min) | Longer = larger files |
-| Codec | FLAC | 40-60% compression |
+| Channels | 8 (Sipeed) | Fixed per sensor |
+| Sample Rate | 16,000 Hz | Fixed in sensor class |
+| Bit Depth | 16 bits | Fixed in sensor class |
+| Duration | 1,200 sec (20 min) | `record_length` |
+| Codec | FLAC | `compress_data` |
 
-**Rough formula**:
+**WAV size**:
 ```
-Size = (sample_rate × channels × bit_depth / 8) × duration × (1 - compression%)
-     = (16,000 × 7 × 2) × 1,200 × 0.5
-     ≈ 268 MB per 20-minute session
+Size = sample_rate × channels × bit_depth / 8 × duration
+     = 16,000 × 8 × 2 × 1,200
+     ≈ 307 MB per 20-minute WAV (FLAC is smaller; ratio depends on content)
 ```
 
 ---
@@ -328,12 +347,11 @@ Size = (sample_rate × channels × bit_depth / 8) × duration × (1 - compressio
 
 When the system starts, it reads settings in this order:
 
-1. **Default values** (hardcoded in scripts)
+1. **Default values** (hardcoded in sensor classes and `record.py`)
 2. **config.json** (user configuration)
-3. **Command-line arguments** (if running manually)
-4. **Environment variables** (if set)
+3. **Environment variables**: `PI_ID` (set by the service) and `FORCE_OFFLINE_MODE` (disables uploads)
 
-Each level overrides the previous one.
+Each level overrides the previous one. `record.py` takes exactly three positional arguments (config path, log file name, log dir) and has no other command-line options.
 
 ---
 
@@ -343,27 +361,34 @@ Each level overrides the previous one.
 
 To support a new microphone array:
 
-1. Create new class in `sensors/NewSensor.py`:
+1. Create new class in `sensors/NewSensor.py`, following `Sipeed7Mic.py`:
    ```python
    class NewSensor(SensorBase):
-       def __init__(self, device_index, channels, sample_rate, bit_depth):
-           # Initialize hardware
-       
-       def record_chunk(self, duration):
-           # Capture and return audio data
+       def __init__(self, config=None):
+           # read options with sensors.set_option(); set server_sync_interval
+
+       @staticmethod
+       def options():
+           # list of {name, type, default, prompt} used by installer.py
+
+       def setup(self):
+           # return True when ready
+
+       def capture_data(self, working_dir, upload_dir, pre_upload_dir):
+           # record one file into pre_upload_dir
+
+       def postprocess(self, wfile, upload_dir):
+           # compress/move one WAV into upload_dir, return True on success
    ```
 
 2. Register in `sensors/__init__.py`:
    ```python
-   from NewSensor import NewSensor
+   from sensors.NewSensor import NewSensor
    ```
 
-3. Add to `setup_config.py` valid sensor options
+3. The installer lists every class in `sensors` automatically (except `SensorBase`)
 
-4. Test with:
-   ```bash
-   python python_record.py --sensor newsensor
-   ```
+4. Test by selecting it in `sudo python3 installer.py` (menu 1) and restarting the service
 
 ---
 
@@ -373,11 +398,11 @@ To support a new microphone array:
 
 | Error | Cause | Recovery |
 |-------|-------|----------|
-| OVERRUN | Audio buffer full, samples lost | Retry next cycle, or upgrade SD card |
-| Device not found | Sensor disconnected | Wait for reconnect, retry |
-| Disk full | No space left | Delete old files, expand storage |
-
-**Strategy**: Log error, wait, retry (graceful degradation)
+| OVERRUN | Audio buffer full, samples lost | Logged as `arecord stderr`; upgrade SD card / power |
+| Device not found | Sensor disconnected | Error marker written; after 3 failed/tiny recordings in a row the Pi reboots |
+| `arecord` hangs | USB / driver stall | Killed after `max(1.75 × record_length, record_length + 180)` s |
+| Disk low | No space left | Warning below 4 GB, safe shutdown below 1 GB; no automatic deletion |
+| Unhandled exception | Any | Logged with traceback, loop continues after 5 s; systemd restarts the process if it exits |
 
 ### Upload Errors
 
@@ -385,9 +410,9 @@ To support a new microphone array:
 |-------|-------|----------|
 | Connection timeout | Network down | Keep local file, retry next cycle |
 | Auth failed | Credentials expired | Re-authenticate, continue |
-| Disk error | SD card failure | Manual intervention needed |
+| Thread stall | Unknown | `WATCHDOG` error logged after `3 × sync interval + 300` s |
 
-**Strategy**: Persist failed files, retry on next cycle with exponential backoff
+**Strategy**: Persist failed files, retry on next cycle; within a cycle `rclone copy` is retried up to 3 times with exponential backoff (10 s, 20 s)
 
 ---
 
@@ -395,18 +420,16 @@ To support a new microphone array:
 
 ### CPU Usage
 
-- **Idle**: ~5% (waiting for next recording)
-- **Recording**: ~30-50% (audio capture + encoding)
-- **Upload**: ~10-20% (file I/O)
-
-On Raspberry Pi Zero 2 W, these are acceptable.
+- **Idle**: CPU governor `powersave` between recordings
+- **Recording**: `arecord`, then `ffmpeg` FLAC compression, governor `ondemand`
+- **Upload**: rclone with 2 transfers, 4 checkers, 4 MB buffer
 
 ### Memory Usage
 
-- **Baseline**: ~100 MB (Python + libraries)
-- **Peak Recording**: ~200-300 MB (audio buffer + encoding)
+- Python garbage collection runs when the process exceeds 120 MB RSS, or every 12th cycle
+- rclone settings keep peak buffer use around 8 MB
 
-Sufficient for Pi Zero 2 W (512 MB) and larger models.
+Tuned for Pi Zero 2 W (512 MB) and larger models.
 
 ### Network Bandwidth
 
@@ -415,24 +438,20 @@ Sufficient for Pi Zero 2 W (512 MB) and larger models.
 - Same file over 10 Mbps connection ≈ 4 minutes
 
 **Optimize**:
-- Schedule uploads during off-peak hours
+- Keep FLAC compression on
 - Use faster internet (wired > WiFi)
-- Compress with FLAC codec
+- Remember recording is paused while uploading
 
 ---
 
 ## Logging Architecture
 
-All components write to logs with **structured prefixes**:
-
-```
-[timestamp] [component][mode=X][phase=Y][details] message
-```
+`record.py` logs plain messages with a `[YYYY-MM-DD HH:MM]` prefix whenever the minute changes. Helper scripts add their own prefixes (`[upload] [upload:<phase>]`, `[gist-sync]`, `[wifi-field-timer]`).
 
 This enables:
-- **Easy filtering**: `grep "\[phase=error\]"`
-- **Component isolation**: `grep "\[upload\]"`
-- **Timeline reconstruction**: `grep "202407011423"`
+- **Easy filtering**: `grep "\[upload:error\]"`
+- **Component isolation**: `grep "\[upload"`
+- **Timeline reconstruction**: `journalctl -u eco-monitor.service -o short-iso`
 
 See [log_guide.md](log_guide.md) for details.
 
@@ -443,18 +462,18 @@ See [log_guide.md](log_guide.md) for details.
 ### Configuration State
 - **File**: `config.json`
 - **Scope**: Recording parameters, upload settings
-- **Persistence**: Survives reboots
+- **Persistence**: Survives reboots and auto-update (git-ignored, excluded from `git clean`)
 - **Frequency**: Loaded once at startup
 
 ### Upload State
-- **File**: `.rclone_state.json`
-- **Scope**: Which files have been uploaded
-- **Persistence**: Survives reboots
-- **Frequency**: Updated after each upload attempt
+- **File**: `/home/pi/monitoring_data/live_data/rclone_state.json`
+- **Scope**: Which files are pending, uploading or completed
+- **Persistence**: Survives reboots (atomic write via temp file + rename)
+- **Frequency**: Updated at each upload cycle
 
 ### Boot State
-- **Location**: Kernel arguments, systemd services
-- **Scope**: Auto-login, GPIO buttons, network
+- **Location**: `/etc/systemd/system/eco-monitor.service`, `wifi-field-timer.service`, boot `config.txt` overlay, `/home/pi/.fs_expanded` marker
+- **Scope**: Service start, GPIO button, filesystem expansion
 - **Persistence**: Survives reboots
 - **Frequency**: Applied at boot
 
@@ -464,20 +483,23 @@ See [log_guide.md](log_guide.md) for details.
 
 ### Graceful Shutdown
 
-1. **User action**: Press button or run `sudo halt`
-2. **Signal received**: SIGTERM/SIGINT propagates
-3. **Recording stopped**: Current audio buffer flushed
-4. **Uploads paused**: In-progress uploads terminated
-5. **Logs finalized**: Last messages written
-6. **System halts**: Kernel cleanly unmounts filesystems
+1. **User action**: Press button (`gpio-shutdown` overlay) or run `sudo shutdown -h now`
+2. **Signal received**: systemd stops `eco-monitor.service` (SIGTERM)
+3. **Recording stopped**: the current `arecord` file is left unfinished in `tmp_dir`
+4. **Uploads stopped**: an in-progress upload is interrupted
+5. **System halts**: Kernel cleanly unmounts filesystems
+
+On the next start, `run_postprocess()` moves leftover WAVs from `tmp_dir` to `pre_upload_dir` for compression (files under 1 MB are discarded) and removes orphaned `.tmp` files from interrupted compression.
+
+`record.py` itself also calls `sudo shutdown -h now` when free space falls below `min_free_storage_gb`, or (ReSpeaker, `use_system_shutdown_button: 0`) when the GPIO 26 button is pressed.
 
 ### Emergency Shutdown
 
 If power loses unexpectedly:
-1. Files in recording buffer may be incomplete
+1. The file being recorded may be incomplete
 2. Uploads may be partial
 3. State tracking continues on next boot
-4. `.rclone_state.json` prevents re-uploading
+4. The pre-verify step prevents re-uploading files already on the remote
 
 ---
 
@@ -489,7 +511,7 @@ If power loses unexpectedly:
 Pi → SD Card (Local Storage)
 ```
 
-Best for: Site characterization, temporary surveys
+Best for: Site characterization, temporary surveys. Set `upload_enabled: false`, or simply deploy without a known WiFi network.
 
 ### Single Device Online
 
@@ -497,17 +519,17 @@ Best for: Site characterization, temporary surveys
 Pi → SD Card → Rclone → Cloud Storage (Box/Drive)
 ```
 
-Best for: Long-term monitoring, remote sites with internet
+Best for: Units that come back in range of WiFi (base camp, phone hotspot); remember recording pauses while online
 
 ### Multi-Device Parallel
 
 ```
 Pi #1 ──┐
-Pi #2 ──→ Shared Cloud Folder
+Pi #2 ──→ Shared remote, one RPiID-<serial> folder per Pi
 Pi #3 ──┘
 ```
 
-Best for: Ecosystem-wide monitoring, multiple locations
+Best for: Ecosystem-wide monitoring, multiple locations. The Gist sync keeps one `rclone.conf` across Pis.
 
 ---
 
@@ -518,10 +540,11 @@ Best for: Ecosystem-wide monitoring, multiple locations
 - **Raspberry Pi**: Zero 2 W (1 GHz, 512 MB RAM)
 - **Storage**: Class 10 SD card, 150 MB/s minimum
 - **Power**: 5V 2A supply
+- **OS**: current Raspberry Pi OS, user `pi`; packages `python3-psutil python3-rpi.gpio alsa-utils ffmpeg rclone jq curl wget git`
 
 ### Recommended
 
-- **Raspberry Pi**: 3B+, 4B+ (better stability, faster uploads)
+- **Raspberry Pi**: 3B+, 4B (better stability, faster uploads)
 - **Storage**: UHS-I SD card, 200+ MB/s
 - **Power**: 5V 2.5A+ with UPS (optional)
 - **Network**: Wired Ethernet or strong WiFi for uploads
@@ -533,11 +556,14 @@ Best for: Ecosystem-wide monitoring, multiple locations
 Check system regularly:
 
 ```bash
+# Health snapshot (shell shortcut from installer menu 4)
+healtheco
+
 # Is recording happening?
-ls -lt ~/monitoring_data/ | head -1
+ls -ltR /home/pi/monitoring_data/live_data/ | head
 
 # Recent errors?
-grep "\[phase=error\]" ~/logs/*.log | tail -5
+grep -iE "error|failed" ~/multi-channel-rpi-eco-monitoring/logs/logfile.log | tail -5
 
 # Disk usage?
 df -h
@@ -552,9 +578,9 @@ See [troubleshooting.md](troubleshooting.md) for diagnostic scripts.
 
 ## See Also
 
-- [readme.md](readme.md) - Setup instructions
-- [physical-setup.md](physical-setup.md) - **Hardware components & protection details** (start here for "orang umum")
+- [README](../README.md) - Setup instructions
+- [physical-setup.md](physical-setup.md) - **Hardware components & protection details** (start here for non-technical readers)
 - [config.md](config.md) - Configuration options
 - [log_guide.md](log_guide.md) - Log format reference
 - [troubleshooting.md](troubleshooting.md) - Common issues
-- [MAARU Physical Setup Diagram](../../maaru-physical-setup.html) - Interactive SVG visualization
+- [MAARU Physical Setup Diagram](./maaru-physical-setup.svg) - SVG diagram

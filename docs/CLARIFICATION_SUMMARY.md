@@ -62,7 +62,7 @@ Components shown:
 
 Connections shown:
 - ReSpeaker 6-Mic → **GPIO pins** (Pi)
-- Sipeed 7-Mic → **USB port** (Pi)
+- Sipeed 6+1 Mic Array (MA-USB8 board) → **USB port** (Pi)
 - USB WiFi Adapter → **USB port** (Pi)
 - Powerbank → **USB Micro** (Pi)
 - Micro SD Card → **SD Card Slot** (Pi)
@@ -91,9 +91,11 @@ Dry Bag ← Powerbank (protected + humidity-controlled)
 ### **Question 6: Output Format**
 **Result**: **SVG** (editable).
 
-**Output generated:**
-- `maaru-physical-setup.html` — Interactive diagram with dark/light theme toggle, export PNG/JPEG/WebP/SVG
-- `maaru-physical-setup.architecture.json` — Schema for re-rendering if hardware changes
+**Output in this repository:**
+- `docs/maaru-physical-setup.svg` — the diagram
+- `docs/maaru-physical-setup.af` — editable source (Affinity Designer)
+
+(An interactive HTML version and a JSON schema were generated during the session but are not part of this repository.)
 
 ### **Question 7: Text Explanation**
 **Result**: **YES**, for each component.
@@ -107,7 +109,7 @@ Dry Bag ← Powerbank (protected + humidity-controlled)
 ## 📦 Generated Output
 
 ### **1. Interactive Diagram**
-📍 **File**: `/Users/ri322/macmini/maaru-physical-setup.html` (50 KB)
+📍 **File**: `docs/maaru-physical-setup.svg` (the interactive HTML version is not in this repository)
 
 **Features:**
 - ✅ Dark/Light theme toggle (auto-detect `prefers-color-scheme`)
@@ -122,13 +124,13 @@ Dry Bag ← Powerbank (protected + humidity-controlled)
 - 9 physical connections with clear labels (GPIO, USB, SD, WiFi, Power)
 
 ### **2. Hardware Documentation**
-📍 **File**: `/Users/ri322/macmini/multi-channel-rpi-eco-monitoring/docs/physical-setup.md` (15+ KB)
+📍 **File**: `docs/physical-setup.md`
 
 **Sections:**
 1. **Overview** — Layered structure & function
 2. **Hardware Components** — Details for each part:
    - Raspberry Pi 3B vs Zero 2W (comparison table)
-   - ReSpeaker 6-Mic vs Sipeed 7-Mic (comparison + specs)
+   - ReSpeaker 6-Mic vs Sipeed 6+1 Mic Array (comparison + specs)
    - Micro SD Card (capacity, speed, durability)
    - USB WiFi Adapter (recommendations)
    - Powerbank (power budget, runtime calculations)
@@ -148,7 +150,7 @@ Dry Bag ← Powerbank (protected + humidity-controlled)
 8. **References** — Links to component docs
 
 ### **3. Updated Architecture Documentation**
-📍 **File**: `/Users/ri322/macmini/multi-channel-rpi-eco-monitoring/docs/architecture.md`
+📍 **File**: `docs/architecture.md`
 
 **Changes:**
 - ✅ Added "Physical Hardware Setup" section (with diagram)
@@ -168,7 +170,7 @@ MAARU is a **sophisticated engineering solution** for tropical rainforest:
 ```
 Hardware:
 ├─ Compute: Pi 3B or Zero 2W
-├─ Audio: ReSpeaker 6-Mic (GPIO) or Sipeed 7-Mic (USB)
+├─ Audio: ReSpeaker 6-Mic (GPIO) or Sipeed 6+1 Mic + MA-USB8 (USB)
 ├─ Storage: Micro SD Card
 ├─ Network: USB WiFi Adapter
 ├─ Power: Powerbank (20K mAh)
@@ -249,13 +251,12 @@ Tropical rainforest conditions (Lampung, Indonesia):
 ## 🎯 How to Use These Docs
 
 ### **For Non-Technical People**
-1. Start with **Interactive Diagram** (`maaru-physical-setup.html`)
+1. Start with the **Diagram** (`maaru-physical-setup.svg`)
    - Visual, colour-coded, easy to understand
-   - Can zoom & explore
 
 2. Read **Brief Summary** (architecture.md → Physical Hardware Setup section)
    - 3 layers of protection
-   - 3 choices of microphone sensor
+   - 2 families of microphone sensor (Sipeed, legacy ReSpeaker)
    - Power & runtime info
 
 3. If deeper dive needed: **physical-setup.md**
@@ -271,10 +272,9 @@ Tropical rainforest conditions (Lampung, Indonesia):
    - Environmental protection strategy
    - Maintenance schedule
 
-3. Use **JSON schema** (`maaru-physical-setup.architecture.json`) to:
+3. Edit the diagram source (`maaru-physical-setup.af`) to:
    - Modify components
    - Update connections
-   - Re-render custom diagrams
 
 ### **For Cloud/Software Integration**
 1. Focus on **architecture.md** → System Components (Software)
@@ -287,12 +287,11 @@ Tropical rainforest conditions (Lampung, Indonesia):
 
 | File | Purpose | Audience |
 |------|---------|----------|
-| `maaru-physical-setup.html` | Interactive hardware diagram | Everyone (visual-first) |
+| `maaru-physical-setup.svg` | Hardware diagram | Everyone (visual-first) |
+| `maaru-physical-setup.af` | Diagram source (Affinity Designer) | Diagrammers |
 | `architecture.md` | System overview + physical + software | Project leads |
 | `physical-setup.md` | Detailed component specifications | Hardware engineers, maintainers |
-| `maaru-physical-setup.architecture.json` | Diagram source (editable) | Diagrammers, infrastructure-as-code |
-| `README_MAARU_DIAGRAM.md` | Quick start guide | First-time viewers |
-| `MAARU_HARDWARE_BOM.md` | Bill of materials + costs | Procurement, budgeting |
+| `MAARU_QUICK_REFERENCE.md` | One-page summary incl. cost estimate | First-time viewers, budgeting |
 
 ---
 

@@ -15,13 +15,14 @@ MAARU uses a layered approach to protect components from extreme weather:
 ```
 PLASTIC ROOF (Roof)
     ↓
-FOOD BOX (Main Enclosure)
+FOOD BOX (Main Enclosure: plastic food container)
+    ├─ 3D-printed Pi mount + mic cover ring
     ├─ Raspberry Pi
     ├─ Mic Sensor Array
     ├─ Micro SD Card
     ├─ USB WiFi Adapter
     ├─ Silica Gel
-    └─ IP68 Acoustic Membrane
+    └─ Membrane vents over mic holes (SEL-3254)
     ↓
 DRY BAG (Power Protection)
     └─ Powerbank
@@ -35,6 +36,27 @@ Mounting:
 ```
 
 Each layer has a specific function for survival in tropical rainforest.
+
+### Enclosure and 3D-printed parts
+
+The main enclosure used in the field is an ordinary plastic food container (about £1–2 from Poundland, London); any similar box works. The container is drilled near the mic ring, and the holes are covered with adhesive oleophobic membrane vents (SEL-3254) on all units.
+
+Inside the box sit two 3D-printed parts per configuration: a Raspberry Pi support/mount with legs, and a mic cover ring for the mic array. They were designed in SolidWorks by Rifqi Ikhwanuddin (Feb–Mar 2026), starting from Neel Le Penru's CaseV4 design.
+
+| Configuration | Pi mount | Mic cover ring |
+|---------------|----------|----------------|
+| ReSpeaker + Raspberry Pi | CaseV6-MainFrameV13-minimalis | CaseV6_MicCoverV6 |
+| Raspberry Pi Zero 2 W + Sipeed | CaseV6-PiZero2Wv2 | CaseV6_MicCoverSipeedV3 |
+
+CAD/STL files are available on request (they are not in this repository).
+
+### Connections at a glance
+
+- **Power**: powerbank (in dry bag) → USB cable → Pi power port (5V, 2A+)
+- **ReSpeaker** → GPIO header (I2S)
+- **Sipeed** → USB port (USB Audio Class, MA-USB8 board)
+- **WiFi adapter** → USB port (optional, for SSH and uploads)
+- **Micro SD card** → Pi card slot
 
 ---
 
@@ -250,22 +272,15 @@ Recording Session Duration:
 
 ---
 
-### 7. **IP68 Acoustic Membrane**
+### 7. **Acoustic Membrane Vents (SEL-3254)**
 
-**Function**: Protects microphone holes from water while maintaining acoustic transparency.
+**Function**: Protects the drilled microphone holes from water while letting sound through.
 
-**Specifications:**
-- **Material**: Hydrophobic PTFE membrane
-- **Rating**: IP68 (fully sealed against liquid)
-- **Acoustic Transparency**: Minimal loss @ 16 kHz
-- **Thickness**: 0.1-0.15 mm
-- **Cost**: $5-20 per metre
+**What is used**: adhesive oleophobic membrane vents (SEL-3254), on all units.
 
 **Installation:**
-1. Cut circular piece to cover each microphone hole
-2. Adhesive backing or double-sided tape
-3. Seal edges with silicone sealant
-4. Test with water spray before deployment
+1. Drill the container near the mic ring
+2. Stick one vent over each hole (clean, dry surface first)
 
 **Durability**: 6-12 months in tropical climate, replace if visible damage occurs
 
@@ -384,7 +399,7 @@ Recording Session Duration:
 | Component | Threat | Protection | Check Interval |
 |-----------|--------|-----------|----------------|
 | **Silica Gel** | Humidity (80-95%) | Absorbs moisture | 1-2 weeks (replace when pink) |
-| **Acoustic Membrane** | Water ingress @ mic holes | IP68 hydrophobic PTFE | 3-6 months (inspect for damage) |
+| **Membrane Vents** | Water ingress @ mic holes | Adhesive oleophobic vents (SEL-3254) | 3-6 months (inspect for damage) |
 | **Silicon Sealant** | Water leaks @ seams | Sealed all openings | 2-3 months (check for cracks) |
 | **Plastic Roof** | Direct rain on enclosure | Roof shape + water runoff | 1-2 weeks (after heavy rain) |
 | **Dry Bag** | Powerbank moisture | Waterproof casing | 1-2 weeks (check seal integrity) |
@@ -452,7 +467,7 @@ Duration = 17,000 mAh ÷ 1.8A = 9.4 hours
 - [ ] USB WiFi adapter installed (if needed)
 - [ ] Powerbank fully charged
 - [ ] Silica gel placed inside enclosure
-- [ ] Acoustic membrane installed on all mic holes
+- [ ] Membrane vents (SEL-3254) stuck over all mic holes
 - [ ] Silicon sealant applied to all seams (24h cure)
 - [ ] USB cable rated for 2A+ power delivery
 - [ ] Plastic roof attached & secure
@@ -481,7 +496,7 @@ Duration = 17,000 mAh ÷ 1.8A = 9.4 hours
 - Check for water seepage in enclosure
 
 **Quarterly:**
-- Replace acoustic membrane
+- Replace membrane vents (if damaged)
 - Re-apply silicon sealant (if cracks visible)
 - Rotate Micro SD cards (if multiple units)
 
@@ -545,6 +560,7 @@ Shortfall: 7,000 mAh (need additional powerbank or solar panel)
 3. **Monitor**: Check logs & power consumption daily
 4. **Iterate**: Adjust protection based on real-world conditions
 5. **Document**: Record temperature, humidity, issues encountered
+6. **Keep spares at the site**: silica gel, USB cable, powerbank
 
 ---
 

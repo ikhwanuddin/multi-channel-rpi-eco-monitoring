@@ -4,19 +4,18 @@ Quick reference for all documentation in this project.
 
 ## 🚀 Getting Started (Pick One)
 
-### If you're in a hurry (5 minutes)
+### If you're in a hurry
 → **[quickstart.md](quickstart.md)**
-- Prebuilt image setup
-- Manual setup
+- Manual setup (no prebuilt image for the Sipeed version)
+- `installer.py` full setup
 - Basic configuration
 - Verification steps
 
 ### If you want full details
-→ **[readme.md](readme.md)**
-- Complete setup instructions
+→ **[README](../README.md)**
+- Project overview and install commands
 - Hardware options (Sipeed vs Respeaker)
-- OS configuration
-- Boot automation
+- Credits and citations
 
 ---
 
@@ -33,16 +32,18 @@ Quick reference for all documentation in this project.
 ### Setting up cloud uploads
 → **[cloud_setup.md](cloud_setup.md)**
 - Rclone configuration (Box, Google Drive, etc.)
-- Creating cloud storage paths
+- Remote folder layout
 - Testing uploads
 - Bandwidth limiting
 - Multiple deployment sites
+- Sharing rclone.conf via a GitHub Gist
 
 ### Advanced configurations
 → **[advanced_configuration.md](advanced_configuration.md)**
 - Shutdown buttons
-- Power saving options
-- PyAudio troubleshooting
+- Power saving options and field WiFi timer
+- Runtime optimizations, time sync
+- Shell shortcuts (`monitor`, `healtheco`, ...)
 - Log filtering examples
 - Making disk images
 
@@ -60,10 +61,14 @@ Quick reference for all documentation in this project.
 - Performance characteristics
 - Deployment models
 
+### Hardware and enclosure
+→ **[physical-setup.md](physical-setup.md)**
+- Components, enclosure layers, power budget, maintenance
+
 ### Understanding log files
 → **[log_guide.md](log_guide.md)**
 - Log file locations
-- Structured log format
+- Log format and prefixes
 - Component reference
 - Common patterns
 - Filtering techniques
@@ -90,28 +95,29 @@ Quick reference for all documentation in this project.
 ## 📊 Documentation by Topic
 
 | Topic | Document | Key Sections |
-|-------|----------|______________|
-| **First-time setup** | quickstart.md | Prerequisites, 30-second setup, configuration |
+|-------|----------|--------------|
+| **First-time setup** | quickstart.md | Prerequisites, manual setup, configuration |
 | **Configuration** | config.md | All options, examples, best practices |
 | **Cloud uploads** | cloud_setup.md | Rclone setup, testing, troubleshooting |
 | **System overview** | architecture.md | Components, workflows, performance |
 | **Log analysis** | log_guide.md | Format, filtering, patterns, parsing |
 | **Debugging** | troubleshooting.md | Common issues, diagnostics, recovery |
-| **Advanced** | advanced_configuration.md | Buttons, power saving, disk images |
-| **Complete setup** | readme.md | Hardware paths, manual setup, full details |
+| **Advanced** | advanced_configuration.md | Buttons, power saving, WiFi timer, disk images |
+| **Hardware** | physical-setup.md | Components, enclosure, power budget |
+| **Overview** | ../README.md | Hardware paths, install commands, credits |
 
 ---
 
 ## 💡 Common Tasks
 
 ### Task: I want to start recording locally
-1. [quickstart.md](quickstart.md) - Choose prebuilt image or manual setup
+1. [quickstart.md](quickstart.md) - Manual setup and installer
 2. [config.md](config.md) - Review recording parameters
 3. [architecture.md](architecture.md) - Understand what's happening
 
 ### Task: I want to upload to cloud storage
 1. [cloud_setup.md](cloud_setup.md) - Configure rclone
-2. [config.md](config.md) - Enable online mode
+2. [config.md](config.md) - `upload_enabled`, `test_mode`, rclone settings
 3. [troubleshooting.md](troubleshooting.md) - Verify and debug
 
 ### Task: My recording has no audio
@@ -126,7 +132,7 @@ Quick reference for all documentation in this project.
 
 ### Task: I want to understand the logs
 1. [log_guide.md](log_guide.md) - Format and structure
-2. [advanced_configuration.md](advanced_configuration.md#log-filter-examples-prefix-contract) - Filter examples
+2. [advanced_configuration.md](advanced_configuration.md#log-filter-examples) - Filter examples
 3. [troubleshooting.md](troubleshooting.md#getting-help) - Debug information
 
 ### Task: I want to save power for battery operation
@@ -137,7 +143,7 @@ Quick reference for all documentation in this project.
 ### Task: I'm deploying multiple monitoring sites
 1. [cloud_setup.md](cloud_setup.md#multiple-deployment-sites) - Multi-device setup
 2. [config.md](config.md) - Configuration per site
-3. [log_guide.md](log_guide.md#monitor-disk-usage-during-recording) - Monitoring tips
+3. [log_guide.md](log_guide.md#filtering-logs) - Monitoring tips
 
 ---
 
@@ -145,48 +151,61 @@ Quick reference for all documentation in this project.
 
 ```
 multi-channel-rpi-eco-monitoring/
-├── 📖 Documentation/
-│   ├── readme.md                 (Main documentation)
-│   ├── quickstart.md             (Get started fast)
-│   ├── config.md                 (Configuration reference)
-│   ├── cloud_setup.md            (Cloud uploads)
-│   ├── troubleshooting.md        (Common issues)
-│   ├── log_guide.md              (Log reference)
-│   ├── architecture.md           (System design)
-│   └── index.md                  (This file)
+├── README.md                          (Project overview)
+├── 📖 docs/
+│   ├── quickstart.md                  (Get started fast)
+│   ├── config.md                      (Configuration reference)
+│   ├── cloud_setup.md                 (Cloud uploads)
+│   ├── troubleshooting.md             (Common issues)
+│   ├── log_guide.md                   (Log reference)
+│   ├── architecture.md                (System design)
+│   ├── advanced_configuration.md      (Buttons, power saving, WiFi timer)
+│   ├── physical-setup.md              (Hardware and enclosure)
+│   └── index.md                       (This file)
 │
 ├── 🐍 Python Scripts/
-│   ├── python_record.py               (Main recorder)
-│   ├── setup_config.py                (Configuration wizard)
-│   └── discover_serial.py             (Find audio devices)
+│   ├── installer.py                   (Interactive installer)
+│   ├── record.py                      (Main recorder)
+│   ├── state_manager.py               (Upload state tracking)
+│   ├── offline_time_sync.py           (Time from WiFi gateway)
+│   └── discover_serial.py             (Prints RPiID-<cpu serial>)
 │
-├── 🔧 Bash Scripts/
-│   ├── recorder_startup_script.sh     (Boot automation)
+├── 🔧 Bash Scripts / systemd units/
+│   ├── eco-monitor.service            (Main systemd unit template)
+│   ├── wifi-field-timer.service       (WiFi timer unit template)
+│   ├── wifi_field_timer.sh
 │   ├── rclone_upload.sh               (Cloud uploads)
-│   ├── enable_system_shutdown_button.sh
-│   ├── sync_rclone_config.sh
+│   ├── sync_rclone_config.sh          (rclone.conf ↔ Gist)
 │   ├── update_time.sh
+│   ├── check_fs_expanded.sh
+│   ├── enable_system_shutdown_button.sh
 │   ├── clean_live_data.sh
 │   ├── led_on.sh
 │   └── led_off.sh
 │
-├── 📦 Sensors/
-│   ├── sensors/SensorBase.py
-│   ├── sensors/Sipeed7Mic.py
-│   ├── sensors/Respeaker4Mic.py
-│   ├── sensors/Respeaker6Mic.py
-│   └── sensors/__init__.py
+├── 📦 sensors/
+│   ├── SensorBase.py
+│   ├── Sipeed7Mic.py
+│   ├── Respeaker4Mic.py
+│   ├── Respeaker6Mic.py
+│   ├── Respeaker_Custom.py
+│   ├── UnixDevice.py
+│   └── __init__.py
 │
 ├── ⚙️ Configuration/
-│   ├── config.json                    (Your settings)
-│   ├── pyproject.toml                 (Python package info)
-│   ├── requirements.txt               (Python dependencies)
+│   ├── config.json                    (Your settings, git-ignored)
+│   ├── audio_sensor_scripts/asound.state (Mixer levels)
+│   ├── pyproject.toml                 (Repository metadata only)
 │   └── .gitignore
 │
-└── 📂 Runtime Directories/
-    ├── multichannel_audio/            (Recorded files)
-    ├── logs/                          (Log files)
-    └── .rclone_state.json             (Upload state)
+└── 📂 Runtime/
+    ├── logs/logfile.log               (Recorder log)
+    ├── /home/pi/tmp_dir/              (Recording in progress)
+    ├── /home/pi/pre_upload_dir/       (Finished WAVs before compression)
+    └── /home/pi/monitoring_data/live_data/
+        ├── RPiID-<serial>/<date>/     (Recordings)
+        ├── rclone_state.json          (Upload state)
+        └── rclone.log                 (Upload log)
 ```
 
 ---
@@ -208,13 +227,13 @@ Perfect for: "I need to understand this"
 Perfect for: "How does this really work?"
 - [architecture.md](architecture.md) - System design
 - [advanced_configuration.md](advanced_configuration.md) - Advanced options
-- [readme.md](readme.md) - Complete technical details
+- [physical-setup.md](physical-setup.md) - Hardware details
 
 ### Level 4: Source Code
 Perfect for: "I need to modify this"
-- `python_record.py` - Recording logic
-- `setup_config.py` - Configuration
-- `rclone_upload.sh` - Upload logic
+- `record.py` - Recording logic
+- `installer.py` - Configuration and installation
+- `rclone_upload.sh`, `state_manager.py` - Upload logic
 - `sensors/*.py` - Sensor implementations
 
 ---
@@ -229,7 +248,7 @@ Perfect for: "I need to modify this"
 ### Before first deployment
 - [ ] Recording test successful (see [quickstart.md](quickstart.md#check-its-working))
 - [ ] Reviewed log format ([log_guide.md](log_guide.md))
-- [ ] Confirmed SD card speed ([troubleshooting.md](troubleshooting.md#pi-very-slow-recording-stutters))
+- [ ] Confirmed SD card speed ([troubleshooting.md](troubleshooting.md#overrun-error-or-dead-channels))
 
 ### If enabling cloud uploads
 - [ ] Configured rclone ([cloud_setup.md](cloud_setup.md#step-1-install-and-configure-rclone))
@@ -237,7 +256,8 @@ Perfect for: "I need to modify this"
 - [ ] Understood upload workflow ([cloud_setup.md](cloud_setup.md#how-uploads-work))
 
 ### For field deployments
-- [ ] Set up shutdown button ([advanced_configuration.md](advanced_configuration.md#shutdown-button-setup-for-sipeed-7-mic-array))
+- [ ] Set up shutdown button ([advanced_configuration.md](advanced_configuration.md#shutdown-button-setup-for-sipeed-mic-array))
+- [ ] Enabled the field WiFi timer if running on battery ([advanced_configuration.md](advanced_configuration.md))
 - [ ] Enabled power saving if needed ([advanced_configuration.md](advanced_configuration.md#power-saving-configuration))
 - [ ] Made backup disk image ([advanced_configuration.md](advanced_configuration.md#make-a-new-disk-image))
 - [ ] Reviewed diagnostics collection ([troubleshooting.md](troubleshooting.md#collect-diagnostic-information))
@@ -256,13 +276,11 @@ Perfect for: "I need to modify this"
 
 ## 📚 External References
 
-- **Sipeed 7-Mic Array**: [Official Documentation](https://wiki.sipeed.com/)
+- **Sipeed MA-USB8 Mic Array board**: [Official Documentation](https://wiki.sipeed.com/hardware/en/modules/micarray_usbboard_bl616.html)
 - **Raspberry Pi**: [Official Docs](https://www.raspberrypi.com/documentation/)
 - **Rclone**: [Complete Manual](https://rclone.org/docs/)
 - **MAARU Project**: [Beckyheath MAARU](https://beckyheath.github.io/MAARU/)
 
 ---
 
-**Last Updated**: 2024-07-01
-
-For questions or documentation improvements, refer to [readme.md](readme.md) for contributing guidelines.
+For questions or documentation improvements, open an issue on [GitHub](https://github.com/ikhwanuddin/multi-channel-rpi-eco-monitoring).

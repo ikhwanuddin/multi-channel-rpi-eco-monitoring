@@ -4,89 +4,11 @@ Overview of how the multi-channel ecosystem monitoring system works.
 
 ## Physical Hardware Setup
 
-MAARU (Multichannel Acoustic Autonomous Recording Unit) is a rugged ecosystem monitoring system; this fork's hardware notes describe a build for tropical rainforest environments. The diagram below shows the physical hardware layout, weatherproofing layers, and how components connect to each other.
-
 ![MAARU Physical Setup Diagram](./maaru-physical-setup.svg)
 
 > **Tip**: The diagram scales with the page width. The editable source is [maaru-physical-setup.af](./maaru-physical-setup.af) (Affinity Designer).
 
-### Nested Architecture Layers
-
-#### **Layer 1: Waterproof Roof**
-- **Function**: Protects against direct rainfall over the main enclosure
-- **Material**: Recycled plastic container
-- **Protection**: Water runoff to sides, extends enclosure lifespan
-
-#### **Layer 2: Main Enclosure (Food Container)**
-Core components protected from direct weather:
-
-- **Raspberry Pi** (tested: Zero 2 W, 3B+, 4B)
-  - Compute core for the system
-  - Larger models: more RAM and CPU headroom
-  - Pi Zero 2 W: lower power, cheaper; the runtime tuning (rclone limits, GC thresholds) targets its 512 MB RAM
-
-- **Microphone Array Sensor** (choose one)
-  - **ReSpeaker 6-Mic Array** (legacy) → connected via **GPIO pins**
-    - 6 channel simultaneous recording
-    - Lower power consumption (~0.5A)
-    - Direct I2S connection
-  - **Sipeed 6+1 Mic Array on the MA-USB8 board** → connected via **USB port**
-    - 8 channel recording: CH0–CH5 ring mics, CH6 beamformed output, CH7 centre mic ([Sipeed wiki](https://wiki.sipeed.com/hardware/en/modules/micarray_usbboard_bl616.html))
-    - Powered via USB
-    - Better for modularity
-
-- **Micro SD Card**
-  - Local storage for audio files (.FLAC)
-  - Class 10, minimum 150 MB/s
-  - Capacity: 64GB-256GB (depends on retention policy)
-
-- **USB WiFi Adapter**
-  - Wireless network connectivity
-  - For SSH access from mobile/computer
-  - For cloud storage upload (optional)
-  - Powered from Pi USB port
-
-- **Silica Gel**
-  - Absorbs ambient moisture in tropical rainforest environment
-  - Essential for preventing condensation inside enclosure
-  - Replace every 1-2 weeks or when saturated
-
-- **Membrane Vents (SEL-3254)**
-  - Adhesive oleophobic membrane vents over the holes drilled near the mic ring
-  - Keep water out of the microphone holes
-  - Let sound reach the microphones
-
-- **Silicon Sealant**
-  - Seals all cable holes
-  - Prevents water ingress
-
-#### **Layer 3: Dry Bag (Power Protection)**
-- **Function**: Protects powerbank from moisture and water damage
-- **Location**: Outside main enclosure, within plastic roof
-- **Contents**: Powerbank supplying power to Pi
-- **Connection**: USB Cable (USB-A to Micro-USB) to Pi power port
-
-### Physical Connections & Power Flow
-
-| Component | Connected to | Interface | Power (A) | Notes |
-|-----------|-------------|-----------|----------|-------|
-| **Mic Sensor** | Raspberry Pi | GPIO (ReSpeaker) or USB (Sipeed) | 0.3-0.8 | Choose one |
-| **USB WiFi** | Raspberry Pi | USB Port | 0.2-0.5 | Optional, for network |
-| **Micro SD** | Raspberry Pi | SD Card Slot | 0.1 | Local storage |
-| **Powerbank** | Raspberry Pi | Micro USB Power | Vout=5V | Primary power supply |
-| **Silica Gel** | Environment | Humidity control | N/A | Passive, absorbs moisture |
-
-### Mounting & Environmental Protection
-
-- **Rope & Rubber**: Tethered to tree for stability and fall prevention
-- **Food Container + Plastic Roof**: Protection from extreme weather (rain, UV, insects)
-- **Silica Gel**: Humidity control in tropical rainforest environment
-- **Membrane Vents (SEL-3254)**: Protect acoustic holes from water ingress
-
-### External & Cloud
-
-- **Cloud Storage (Box)**: Destination for audio files uploaded via rclone
-- **Network Access**: SSH via USB WiFi adapter (if connected)
+The Raspberry Pi and mic array sit in a plastic food box under a plastic roof, with the powerbank in a dry bag, tied to a tree with rope and rubber. Components, enclosure parts and the field deployment scenario are described in [physical-setup.md](physical-setup.md).
 
 ---
 
@@ -148,12 +70,6 @@ When the Raspberry Pi starts, systemd runs `eco-monitor.service` (installed by `
 ---
 
 ## Recording Workflow
-
-### Workflow Overview
-
-![System Workflow](./workflow.svg)
-
-(The diagram predates the systemd service; some labels use old names such as `python_record.py` and `.rclone_state.json`. The text below is current.)
 
 ### Offline (no internet reachable, or `upload_enabled: false`)
 
@@ -535,19 +451,10 @@ Best for: Ecosystem-wide monitoring, multiple locations. The Gist sync keeps one
 
 ## System Requirements
 
-### Minimum
-
-- **Raspberry Pi**: Zero 2 W (1 GHz, 512 MB RAM)
-- **Storage**: Class 10 SD card, 150 MB/s minimum
-- **Power**: 5V 2A supply
+- **Raspberry Pi**: tested on Zero 2 W, 3B+ and 4B (runtime tuning targets the Zero 2 W's 512 MB RAM)
 - **OS**: current Raspberry Pi OS, user `pi`; packages `python3-psutil python3-rpi.gpio alsa-utils ffmpeg rclone jq curl wget git`
-
-### Recommended
-
-- **Raspberry Pi**: 3B+, 4B (better stability, faster uploads)
-- **Storage**: UHS-I SD card, 200+ MB/s
-- **Power**: 5V 2.5A+ with UPS (optional)
-- **Network**: Wired Ethernet or strong WiFi for uploads
+- **Storage**: microSD card; see [physical-setup.md](physical-setup.md#micro-sd-card) for size per recording
+- **Power**: 5V into the Pi power port (powerbank in the field)
 
 ---
 

@@ -37,7 +37,7 @@ cd multi-channel-rpi-eco-monitoring
 
 There is no `requirements.txt` and no `pip install` step. The installer does not install packages.
 
-For the legacy ReSpeaker path (Raspbian Buster, Seeed voicecard driver, frozen kernel), follow the original repository: [BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring).
+For the legacy ReSpeaker path, set up Raspbian Buster with the Seeed voicecard driver and the frozen kernel as in the original repository ([BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring)), then clone this fork and continue below. The ReSpeaker units at Way Canguk (mostly Raspberry Pi 2B) run this way.
 
 ## Configuration
 
@@ -55,7 +55,7 @@ Menu:
   2) Install systemd service (eco-monitor.service)
   3) Configure GPIO shutdown button
   4) Install shell shortcuts (monitor, restarteco, ...)
-  5) Full setup (1 -> 2 -> 3 -> 4, recommended)
+  5) Full setup (1 -> 2 -> 3 -> 4 -> 9, recommended)
   6) Migrate from legacy /etc/profile startup
   7) Migrate config.json to latest schema (remove has_internet, rename offline_mode)
   8) Show current status

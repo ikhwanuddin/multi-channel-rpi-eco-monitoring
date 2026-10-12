@@ -67,7 +67,7 @@ MENU_ITEMS = [
         "Install shell shortcuts (monitor, restarteco, ...)",
         "install_shell_monitor_alias",
     ),
-    ("5", "Full setup (1 -> 2 -> 3 -> 4, recommended)", "full_setup"),
+    ("5", "Full setup (1 -> 2 -> 3 -> 4 -> 9, recommended)", "full_setup"),
     ("6", "Migrate from legacy /etc/profile startup", "migrate_legacy_profile"),
     (
         "7",

@@ -8,7 +8,7 @@ This repository is a fork of [BeckyHeath/multi-channel-rpi-eco-monitoring](https
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### New to this project?
 
@@ -26,7 +26,7 @@ This repository is a fork of [BeckyHeath/multi-channel-rpi-eco-monitoring](https
 
 ---
 
-## 📋 What This Does
+## What This Does
 
 Records multichannel audio at ecosystem monitoring sites:
 
@@ -39,7 +39,7 @@ Records multichannel audio at ecosystem monitoring sites:
 
 ---
 
-## 💾 Hardware Options
+## Hardware Options
 
 ### Recommended: Sipeed 6+1 Mic Array + MA-USB8 board (sensor `Sipeed7Mic`)
 - USB Audio Class device, no extra kernel driver
@@ -50,11 +50,11 @@ Records multichannel audio at ecosystem monitoring sites:
 ### Legacy: ReSpeaker 4-Mic / 6-Mic (sensors `Respeaker4Mic`, `Respeaker6Mic`, `Respeaker_Custom`)
 - Older hardware, still in the code
 - Needs the Seeed voicecard driver, so in practice an older Raspbian Buster image with the kernel frozen
-- For this path, use the original repository ([BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring)) as the reference
+- Set up the OS and driver as in the original repository ([BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring)), then install this fork with `installer.py` as below. The ReSpeaker units at Way Canguk (mostly Raspberry Pi 2B) run this way
 
 ---
 
-## 🔧 Installation
+## Installation
 
 There is **no prebuilt image** for the Sipeed version. (The disk image linked from Becky Heath's original repository is a legacy Raspbian Buster image for the ReSpeaker setup and does not contain this fork.)
 
@@ -78,7 +78,7 @@ See [`docs/quickstart.md`](docs/quickstart.md) for detailed steps.
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 | Document | Purpose |
 |----------|----------|
@@ -94,7 +94,7 @@ See [`docs/quickstart.md`](docs/quickstart.md) for detailed steps.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 multi-channel-rpi-eco-monitoring/
@@ -127,7 +127,7 @@ Recordings are written outside the repository, by default under `/home/pi/monito
 
 ---
 
-## 🎯 Common Tasks
+## Common Tasks
 
 **I want to record locally:**
 → [`docs/quickstart.md`](docs/quickstart.md)
@@ -143,7 +143,7 @@ Recordings are written outside the repository, by default under `/home/pi/monito
 
 ---
 
-## 💡 Key Features
+## Key Features
 
 - ✅ **8-channel recording** (Sipeed) with logging to file and journal
 - ✅ **Multiple cloud services** via rclone (Box, Drive, Dropbox, S3, etc.)
@@ -157,9 +157,9 @@ Recordings are written outside the repository, by default under `/home/pi/monito
 
 ---
 
-## ⚙️ System Requirements
+## System Requirements
 
-- **Raspberry Pi**: Zero 2 W, 3B+, 4B (tested; minimum 512 MB RAM)
+- **Raspberry Pi**: Zero 2 W, 3B+, 4B (tested; minimum 512 MB RAM); Pi 2B with the ReSpeaker in the field
 - **OS**: current Raspberry Pi OS, user `pi`
 - **Storage**: Class 10 SD card, **minimum 150 MB/s** read/write
 - **Power**: 5V 2A+ supply
@@ -167,7 +167,7 @@ Recordings are written outside the repository, by default under `/home/pi/monito
 
 ---
 
-## 📖 Full Setup Guide
+## Full Setup Guide
 
 Complete technical documentation available in `docs/` folder:
 
@@ -180,7 +180,7 @@ For a comprehensive index, see [`docs/index.md`](docs/index.md).
 
 ---
 
-## 👥 Credits
+## Credits
 
 **Original project**: Becky Heath and contributors ([BeckyHeath/multi-channel-rpi-eco-monitoring](https://github.com/BeckyHeath/multi-channel-rpi-eco-monitoring)), building on Sarab Sethi's [rpi-eco-monitoring](https://github.com/sarabsethi/rpi-eco-monitoring)
 
@@ -192,13 +192,13 @@ For a comprehensive index, see [`docs/index.md`](docs/index.md).
 
 ---
 
-## 📄 License
+## License
 
 See LICENSE file for details.
 
 ---
 
-## ❓ Need Help?
+## Need Help?
 
 - **Quick answers**: See [`docs/index.md`](docs/index.md)
 - **Setup issues**: See [`docs/troubleshooting.md`](docs/troubleshooting.md)

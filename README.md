@@ -116,6 +116,7 @@ multi-channel-rpi-eco-monitoring/
 ├── enable_system_shutdown_button.sh (helper for the gpio-shutdown overlay)
 ├── led_on.sh / led_off.sh        (Sipeed board LEDs on/off)
 ├── clean_live_data.sh            (manual deletion of local live_data files)
+├── hardware/case/                (3D-printed case parts: SLDPRT + STL)
 ├── sensors/                      (sensor classes)
 ├── audio_sensor_scripts/         (asound.state mixer levels)
 ├── pyproject.toml                (repository metadata only)

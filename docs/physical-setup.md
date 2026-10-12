@@ -44,7 +44,7 @@ Inside the box sit two 3D-printed parts per configuration: a Raspberry Pi suppor
 | ReSpeaker + Raspberry Pi | CaseV6-MainFrameV13-minimalis | CaseV6_MicCoverV6 |
 | Raspberry Pi Zero 2 W + Sipeed | CaseV6-PiZero2Wv2 | CaseV6_MicCoverSipeedV3 |
 
-CAD/STL files are available on request (they are not in this repository).
+The SolidWorks parts (`.SLDPRT`) and printable meshes (`.STL`) are in [`hardware/case/`](../hardware/case/).
 
 ### Other protection
 

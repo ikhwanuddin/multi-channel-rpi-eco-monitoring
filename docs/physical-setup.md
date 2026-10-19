@@ -126,7 +126,7 @@ There is no internet in the forest, so data are uploaded by hand: the unit is ca
 ### Village upload procedure
 
 1. In the village, connect the unit to a network with internet and SSH in (`pi@rpi-<station>` over Tailscale).
-2. `cd ~/multi-channel-rpi-eco-monitoring && git pull --ff-only`.
+2. `cd ~/multi-channel-rpi-eco-monitoring && git fetch origin && git reset --hard origin/master` (same as the auto-update on service start; `git pull` fails after a history rewrite).
 3. Set `"upload_enabled": true` in `config.json` and run `restarteco` (or `sudo systemctl restart eco-monitor.service`) so the upload thread starts. Recording pauses while the unit is online.
 4. When the upload cycle has finished, set `"upload_enabled"` back to `false` and leave the service alone. The running process keeps its old setting; the next boot in the forest reads `false` and only records.
 
